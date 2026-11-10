@@ -1,10 +1,23 @@
-FROM quay.io/quarkus/ubi-quarkus-mandrel-builder-image:latest AS build
+# syntax=docker/dockerfile:1.7
+FROM quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-25.0.5 AS build
 USER quarkus
 WORKDIR /project
+ARG GRADLE_PROXY_HOST
+ARG GRADLE_PROXY_PORT
 COPY --chown=quarkus:quarkus build.gradle settings.gradle gradle.properties gradlew ./
 COPY --chown=quarkus:quarkus gradle gradle
 COPY --chown=quarkus:quarkus src src
-RUN ./gradlew --no-daemon nativeBuild -Dquarkus.native.container-build=true -x test
+RUN --mount=type=secret,id=proxy-ca,target=/tmp/proxy-ca.crt,uid=1001,gid=1001,mode=0444 \
+    proxy_opts=""; \
+    if [ -n "${GRADLE_PROXY_HOST}" ] && [ -n "${GRADLE_PROXY_PORT}" ]; then \
+      proxy_opts="-Dhttps.proxyHost=${GRADLE_PROXY_HOST} -Dhttps.proxyPort=${GRADLE_PROXY_PORT} -Dhttp.proxyHost=${GRADLE_PROXY_HOST} -Dhttp.proxyPort=${GRADLE_PROXY_PORT}"; \
+    fi; \
+    if [ -s /tmp/proxy-ca.crt ]; then \
+      keytool -importcert -noprompt -alias build-proxy -file /tmp/proxy-ca.crt -keystore /tmp/gradle-truststore.p12 -storetype PKCS12 -storepass changeit; \
+      proxy_opts="${proxy_opts} -Djavax.net.ssl.trustStore=/tmp/gradle-truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit"; \
+    fi; \
+    export JAVA_TOOL_OPTIONS="${proxy_opts}"; \
+    ./gradlew --no-daemon nativeBuild -Dquarkus.native.container-build=true -x test
 
 FROM quay.io/quarkus/quarkus-micro-image:2.0
 WORKDIR /work/

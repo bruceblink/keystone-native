@@ -245,4 +245,23 @@ eval "set -- $(
         tr '\n' ' '
     )" '"$@"'
 
+# Gradle Wrapper's bootstrap downloader uses Java's networking stack and does
+# not read HTTPS_PROXY itself. Translate the environment proxy when present,
+# which keeps first-time builds working in restricted CI/build containers.
+if [ -z "${JAVA_TOOL_OPTIONS:-}" ]; then
+    gradle_proxy_url=${HTTPS_PROXY:-${https_proxy:-}}
+    case "$gradle_proxy_url" in
+        http://*|https://*)
+            gradle_proxy_host_port=${gradle_proxy_url#*://}
+            gradle_proxy_host_port=${gradle_proxy_host_port#*@}
+            gradle_proxy_host=${gradle_proxy_host_port%%:*}
+            gradle_proxy_port=${gradle_proxy_host_port##*:}
+            if [ -n "$gradle_proxy_host" ] && [ -n "$gradle_proxy_port" ]; then
+                JAVA_TOOL_OPTIONS="-Dhttps.proxyHost=$gradle_proxy_host -Dhttps.proxyPort=$gradle_proxy_port -Dhttp.proxyHost=$gradle_proxy_host -Dhttp.proxyPort=$gradle_proxy_port"
+                export JAVA_TOOL_OPTIONS
+            fi
+            ;;
+    esac
+fi
+
 exec "$JAVACMD" "$@"
