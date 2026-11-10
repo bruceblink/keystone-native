@@ -7,37 +7,63 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.event.Observes;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
+import java.time.Instant;
+import java.util.List;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.locks.ReentrantLock;
 
 @ApplicationScoped
 public class JobService {
     private static final Logger LOG = Logger.getLogger(JobService.class);
+    private static final int AUTO_TRIGGER = 1;
+    private static final int MANUAL_TRIGGER = 2;
+    private static final int SUCCESS = 1;
+    private static final int FAILED = 0;
+    private static final int SKIPPED = 2;
+
     @Inject Scheduler scheduler;
     @Inject JobRepository jobs;
+    @Inject JobInvocationService invocations;
+    @Inject JobLogRepository jobLogs;
+    private final Map<Long, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     void onStart(@Observes StartupEvent ignored) {
         for (Job job : jobs.enabled()) schedule(job);
     }
 
-    public Job create(String code, String name, String cron) {
+    public Job create(String code, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
         validateCron(cron);
-        Job job = jobs.create(code, name, cron);
+        String target = invokeTarget == null || invokeTarget.isBlank() ? "keystoneJob.heartbeat()" : invokeTarget;
+        invocations.validate(target, jobParams);
+        Job job = jobs.create(code, name, group, target, jobParams, cron, concurrent, enabled, remark);
         schedule(job);
         return job;
     }
 
-    public java.util.List<Job> jobs() { return jobs.list(); }
+    public List<Job> jobs() { return jobs.list(); }
 
-    public Job update(long id, String name, String cron, Boolean enabled) {
+    public Job update(long id, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
+        Job current = jobs.findById(id);
         if (cron != null && !cron.isBlank()) validateCron(cron);
+        String target = invokeTarget == null || invokeTarget.isBlank() ? current.invokeTarget() : invokeTarget;
+        String params = jobParams == null ? current.jobParams() : jobParams;
+        invocations.validate(target, params);
         unschedule(id);
-        Job job = jobs.update(id, name, cron, enabled);
+        Job job;
+        try { job = jobs.update(id, name, group, invokeTarget, jobParams, cron, concurrent, enabled, remark); }
+        catch (RuntimeException e) { if (current.enabled()) schedule(current); throw e; }
         if (job.enabled()) schedule(job);
         return job;
     }
 
-    public void delete(long id) { unschedule(id); jobs.delete(id); }
+    public void delete(long id) { unschedule(id); jobs.delete(id); locks.remove(id); }
 
-    public void trigger(long id) { run(id, null); }
+    public void trigger(long id) { run(jobs.findById(id), MANUAL_TRIGGER); }
+
+    public List<JobInvocationService.JobTarget> targets() { return invocations.targets(); }
+
+    public JobLogRepository.Page logs(Long jobId, int page, int size) { return jobLogs.list(jobId, page, size); }
 
     private void schedule(Job job) {
         String schedulerId = schedulerId(job.id());
@@ -45,8 +71,56 @@ public class JobService {
         scheduler.newJob(schedulerId).setCron(job.cron()).setDescription(job.name()).setTask((ScheduledExecution execution) -> run(job.id(), execution)).schedule();
     }
 
-    private void unschedule(long id) { if (scheduler.getScheduledJob(schedulerId(id)) != null) scheduler.unscheduleJob(schedulerId(id)); }
-    private void run(long id, ScheduledExecution execution) { try { LOG.infof("Executing Keystone job %d%s", id, execution == null ? " manually" : ""); jobs.markRun(id, "SUCCESS"); } catch (Exception e) { LOG.errorf(e, "Keystone job %d failed", id); jobs.markRun(id, "FAILED"); } }
+    private void unschedule(long id) {
+        String idValue = schedulerId(id);
+        if (scheduler.getScheduledJob(idValue) != null) scheduler.unscheduleJob(idValue);
+    }
+
+    private void run(long id, ScheduledExecution execution) {
+        try { run(jobs.findById(id), AUTO_TRIGGER); }
+        catch (Exception e) { LOG.errorf(e, "Keystone job %d failed", id); }
+    }
+
+    private void run(Job job, int triggerType) {
+        Instant started = Instant.now();
+        long startNanos = System.nanoTime();
+        int status = SUCCESS;
+        String message = "任务执行成功";
+        String exception = null;
+        RuntimeException failure = null;
+        ReentrantLock lock = locks.computeIfAbsent(job.id(), ignored -> new ReentrantLock());
+        boolean locked = job.concurrent() || lock.tryLock();
+        if (!locked) {
+            status = SKIPPED;
+            message = "任务正在执行，本次触发已跳过";
+        } else {
+            try {
+                LOG.infof("Executing Keystone job %d (%s)", job.id(), job.invokeTarget());
+                invocations.invoke(job.invokeTarget(), job.jobParams());
+                jobs.markRun(job.id(), "SUCCESS");
+            } catch (Exception e) {
+                status = FAILED;
+                message = "任务执行失败: " + trim(e.getMessage(), 450);
+                exception = trim(stackTrace(e), 4000);
+                failure = e instanceof RuntimeException runtime ? runtime : new IllegalStateException(e);
+                jobs.markRun(job.id(), "FAILED");
+                if (triggerType == AUTO_TRIGGER) LOG.errorf(e, "Keystone job %d failed", job.id());
+            } finally {
+                if (!job.concurrent()) lock.unlock();
+            }
+        }
+        if (status == SKIPPED) jobs.markRun(job.id(), "SKIPPED");
+        Instant finished = Instant.now();
+        jobLogs.save(new JobLog(null, job.id(), job.code(), job.name(), job.group(), job.invokeTarget(), job.jobParams(), job.cron(), triggerType, status, message, exception, started, finished, (System.nanoTime() - startNanos) / 1_000_000, finished));
+        if (failure != null && triggerType == MANUAL_TRIGGER) throw failure;
+    }
+
     private static String schedulerId(long id) { return "keystone-job-" + id; }
-    private static void validateCron(String cron) { if (cron == null || cron.isBlank()) throw new IllegalArgumentException("cron is required"); try { new io.quarkus.scheduler.common.runtime.CronParser(com.cronutils.model.CronType.QUARTZ).parse(cron); } catch (Exception e) { throw new IllegalArgumentException("invalid cron expression", e); } }
+    private static String trim(String value, int max) { if (value == null) return ""; return value.length() <= max ? value : value.substring(0, max); }
+    private static String stackTrace(Exception e) { var out = new java.io.StringWriter(); e.printStackTrace(new java.io.PrintWriter(out)); return out.toString(); }
+    private static void validateCron(String cron) {
+        if (cron == null || cron.isBlank()) throw new IllegalArgumentException("cron is required");
+        try { new io.quarkus.scheduler.common.runtime.CronParser(com.cronutils.model.CronType.QUARTZ).parse(cron); }
+        catch (Exception e) { throw new IllegalArgumentException("invalid cron expression", e); }
+    }
 }

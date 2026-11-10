@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS sys_job_log (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  job_id BIGINT NULL,
+  job_code VARCHAR(64) NOT NULL,
+  job_name VARCHAR(128) NOT NULL,
+  job_group VARCHAR(64) NOT NULL,
+  invoke_target VARCHAR(255) NOT NULL,
+  job_params TEXT NULL,
+  cron VARCHAR(128) NOT NULL,
+  trigger_type TINYINT NOT NULL,
+  status TINYINT NOT NULL,
+  job_message VARCHAR(500) NOT NULL,
+  exception_info TEXT NULL,
+  started_at TIMESTAMP(6) NOT NULL,
+  finished_at TIMESTAMP(6) NULL,
+  duration_ms BIGINT NULL,
+  created_at TIMESTAMP(6) NOT NULL DEFAULT CURRENT_TIMESTAMP(6),
+  INDEX idx_job_log_job_time (job_id, started_at),
+  INDEX idx_job_log_status_time (status, started_at)
+);
