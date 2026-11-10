@@ -26,6 +26,16 @@ public class ProfileResource {
         catch (java.util.NoSuchElementException e) { return Response.status(404).entity(ApiResponse.error("user not found")).build(); }
     }
 
+    @PUT @Path("/password")
+    public Response password(PasswordRequest request) {
+        if (request == null || request.password() == null || request.password().isBlank()) return Response.status(400).entity(ApiResponse.error("password is required")).build();
+        var user = current();
+        users.update(user.id(), request.password(), null, null, null, null);
+        logs.record(user.username(), "UPDATE", "profile-password", String.valueOf(user.id()), null);
+        return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build();
+    }
+
     private UserRepository.AuthUser current() { return users.findAuthUserByUsername(identity.getPrincipal().getName()).orElseThrow(NotFoundException::new); }
     public record ProfileRequest(String displayName) {}
+    public record PasswordRequest(String password) {}
 }

@@ -35,6 +35,7 @@ public class LegacyAuthResource {
         if (request == null || request.username() == null || request.password() == null) return Response.status(400).entity(ApiResponse.error("username and password are required")).build();
         var user = users.authenticate(request.username(), request.password());
         if (user.isEmpty()) return Response.status(401).entity(ApiResponse.error("invalid credentials")).build();
+        if (user.get().mustChangePassword()) return Response.status(428).entity(ApiResponse.error("password change required")).build();
         return Response.ok(ApiResponse.ok(issue(user.get(), sessions.create(user.get().id())))).build();
     }
 

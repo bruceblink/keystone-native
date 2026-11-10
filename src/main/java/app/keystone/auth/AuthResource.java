@@ -31,6 +31,7 @@ public class AuthResource {
         var user = users.authenticate(request.username(), request.password());
         if (user.isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid credentials")).build();
         var u = user.get();
+        if (u.mustChangePassword()) return Response.status(428).entity(ApiResponse.error("password change required")).build();
         return Response.ok(ApiResponse.ok(issue(u, sessions.create(u.id())))).build();
     }
 

@@ -1,7 +1,10 @@
 package app.keystone;
 
 import io.quarkus.test.junit.QuarkusTest;
+import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import javax.sql.DataSource;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
@@ -11,6 +14,13 @@ import static org.hamcrest.Matchers.emptyOrNullString;
 
 @QuarkusTest
 class AuthResourceTest {
+    @Inject DataSource dataSource;
+
+    @BeforeEach
+    void enableDevelopmentFixture() throws Exception {
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("UPDATE sys_user SET must_change_password = false WHERE username = 'admin'")) { p.executeUpdate(); }
+    }
+
     @Test
     void adminCanLoginAndReceiveRefreshToken() {
         given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\"}")

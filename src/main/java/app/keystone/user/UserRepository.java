@@ -47,11 +47,11 @@ public class UserRepository {
     }
 
     public Optional<AuthUser> findAuthUser(Connection c, long id) throws Exception {
-        try (var p = c.prepareStatement("SELECT id, username, display_name FROM sys_user WHERE id = ? AND enabled = true")) {
+        try (var p = c.prepareStatement("SELECT id, username, display_name, must_change_password FROM sys_user WHERE id = ? AND enabled = true")) {
             p.setLong(1, id);
             try (var rs = p.executeQuery()) {
                 if (!rs.next()) return Optional.empty();
-                return Optional.of(new AuthUser(rs.getLong("id"), rs.getString("username"), rs.getString("display_name"), roles(c, id)));
+                return Optional.of(new AuthUser(rs.getLong("id"), rs.getString("username"), rs.getString("display_name"), roles(c, id), rs.getBoolean("must_change_password")));
             }
         }
     }
@@ -80,7 +80,7 @@ public class UserRepository {
             c.setAutoCommit(false);
             try {
                 var fields = new java.util.ArrayList<String>(); var values = new java.util.ArrayList<Object>();
-                if (password != null && !password.isBlank()) { fields.add("password_hash = ?"); values.add(BcryptUtil.bcryptHash(password)); }
+                if (password != null && !password.isBlank()) { fields.add("password_hash = ?"); values.add(BcryptUtil.bcryptHash(password)); fields.add("must_change_password = false"); }
                 if (displayName != null && !displayName.isBlank()) { fields.add("display_name = ?"); values.add(displayName.trim()); }
                 if (deptId != null) { fields.add("dept_id = ?"); values.add(deptId); }
                 if (enabled != null) { fields.add("enabled = ?"); values.add(enabled); }
@@ -113,6 +113,6 @@ public class UserRepository {
     private static List<String> splitRoles(String value) { return value == null || value.isBlank() ? List.of("USER") : List.of(value.split(",")); }
     private static void replaceRoles(Connection c, long userId, List<String> roleCodes) throws Exception { var codes = roleCodes == null || roleCodes.isEmpty() ? List.of("USER") : roleCodes.stream().distinct().toList(); try (var d = c.prepareStatement("DELETE FROM sys_user_role WHERE user_id = ?")) { d.setLong(1, userId); d.executeUpdate(); } try (var p = c.prepareStatement("INSERT INTO sys_user_role(user_id, role_id) SELECT ?, id FROM sys_role WHERE code = ? AND enabled = true")) { for (String code : codes) { p.setLong(1, userId); p.setString(2, code); if (p.executeUpdate() == 0) throw new IllegalArgumentException("unknown role: " + code); } } }
 
-    public record AuthUser(long id, String username, String displayName, List<String> roles) {}
+    public record AuthUser(long id, String username, String displayName, List<String> roles, boolean mustChangePassword) {}
     public record Page(java.util.List<User> items, int page, int size, long total) {}
 }
