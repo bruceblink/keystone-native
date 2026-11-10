@@ -1,47 +1,70 @@
 # Keystone Native
 
-Keystone 的独立 Quarkus Native 重实现，首阶段以 **Quarkus REST + JDBC + MySQL + Flyway + SmallRye JWT（RS256）** 为基础。它与原有 Spring Boot 工程并行演进，不修改原项目。
+Keystone 的独立 Quarkus Native 重实现，使用 **Quarkus 3.40.1 + Gradle + Java 21 + MySQL + Flyway + SmallRye JWT（RS256）**。项目与原有 Spring Boot 工程并行演进，不修改原项目。
 
-## 当前垂直切片
+## 已实现功能
 
 - `GET /api/v1/health`：无数据库依赖的健康检查
-- `POST /api/v1/auth/login`：数据库用户认证，返回 HS256 JWT
-- `GET /api/v1/users?page=1&size=20`：JWT 保护的用户分页查询
-- `POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`：Refresh Token 轮换与注销
-- `GET/POST/PUT/DELETE /api/v1/users`：管理员用户 CRUD 与角色分配
-- `GET /api/v1/roles`、`GET/POST/PUT/DELETE /api/v1/departments`：角色权限和部门树
-- `GET/POST/PUT/DELETE /api/v1/menus`：角色菜单权限树
-- `GET/POST /api/v1/dictionaries`：字典类型与字典项管理
-- `GET/POST/PUT/DELETE /api/v1/configs`：系统配置管理
-- `GET /api/v1/operation-logs`：管理员操作日志分页查询
-- `GET/POST/PUT/DELETE /api/v1/jobs`、`POST /api/v1/jobs/{id}/trigger`：动态 Cron 任务
-- `/api/openapi`、`/api/swagger`：OpenAPI 与 Swagger UI
-- 启动时由 Flyway 创建 `sys_user` 并写入开发用 `admin/password` 用户
+- `POST /api/v1/auth/login`、`POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`
+- `POST /api/v1/auth/change-initial-password`：首次登录前修改初始管理员密码
+- 用户、角色、部门、菜单和权限管理，包含下拉树和兼容旧 Keystone 的接口
+- 字典类型与字典项、系统配置、操作日志、动态 Cron 任务
+- 通知、岗位、个人资料和密码修改
+- `/api/openapi`、`/api/swagger`：OpenAPI 文档和 Swagger UI
 
-API 响应统一为 `{ "success": true, "data": ..., "message": "OK" }`，便于后续对齐 Keystone 原接口契约。
+API 响应统一为 `{ "success": true, "data": ..., "message": "OK" }`，便于对齐原 Keystone 接口契约。
+
+Flyway 会在新数据库中创建初始 `admin/password` 账户，并将其标记为必须修改密码。该凭据仅用于首次初始化，首次使用时先调用：
+
+```bash
+curl -X POST http://localhost:8080/api/v1/auth/change-initial-password \
+  -H 'content-type: application/json' \
+  -d '{"username":"admin","currentPassword":"password","newPassword":"replace-with-a-strong-password"}'
+```
+
+生产环境必须通过 `JWT_PRIVATE_KEY_LOCATION` 提供签名私钥；建议同时通过 `JWT_PUBLIC_KEY_LOCATION` 提供外部验证公钥。镜像内的公钥仅用于默认 Native 验证和开发兼容，生产环境应使用外部密钥文件并定期轮换。
 
 ## 本地运行
 
-需要 JDK 21+ 和 Docker（用于 MySQL）。项目使用 Gradle Wrapper，无需预装 Gradle。先启动 MySQL：
+需要 JDK 21+ 和 Docker（用于 MySQL）。项目使用 Gradle Wrapper，无需预装 Gradle。
 
 ```bash
 docker compose up -d mysql
+
+# 本地开发使用测试密钥；不要用于生产环境
+export JWT_PRIVATE_KEY_LOCATION="file://${PWD}/src/test/resources/keys/privateKey.pem"
+export JWT_PUBLIC_KEY_LOCATION="file://${PWD}/src/test/resources/keys/publicKey.pem"
+
 ./gradlew quarkusDev
+```
+
+健康检查地址：<http://localhost:8080/api/v1/health>。
+
+运行测试：
+
+```bash
+./gradlew test
 ```
 
 如果机器上的 `JAVA_HOME` 不是完整 JDK，请先指向带有 `javac` 的 JDK。Gradle 会自动读取 `HTTPS_PROXY`/`https_proxy` 并配置依赖下载代理。
 
-然后访问 `http://localhost:8080/api/v1/health`。登录示例：
+## JVM 构建
+
+默认构建产物是 Quarkus fast-jar，需要保留整个 `build/quarkus-app` 目录：
 
 ```bash
-curl -X POST http://localhost:8080/api/v1/auth/login \
-  -H 'content-type: application/json' \
-  -d '{"username":"admin","password":"password"}'
+./gradlew quarkusBuild -x test
+java -jar build/quarkus-app/quarkus-run.jar
 ```
 
-测试使用 `src/test/resources/keys` 中的 RSA 密钥对。开发和生产运行时必须通过 `JWT_PRIVATE_KEY_LOCATION` 和 `JWT_PUBLIC_KEY_LOCATION` 指向外部密钥，并设置 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD`。
+`quarkus-run.jar` 是启动器，fast-jar 的实际大小应按整个 `build/quarkus-app` 目录计算。
 
-使用 Compose 前，将部署密钥放入 `docker/keys/privateKey.pem` 和 `docker/keys/publicKey.pem`；这些文件不会提交到 Git。
+也可以生成单文件 uber-jar：
+
+```bash
+./gradlew quarkusBuild -x test -Dquarkus.package.jar.type=uber-jar
+java -jar build/keystone-native-0.1.0-SNAPSHOT-runner.jar
+```
 
 ## Native 构建
 
@@ -55,11 +78,43 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
 或使用容器构建：
 
 ```bash
-docker build -t keystone-native .
+docker build -t keystone-native:native .
 ```
 
 GitHub Actions 在每次推送和 Pull Request 中执行 MySQL 集成测试、JVM 打包，并通过 Mandrel Builder 构建 Native 容器镜像。Native 镜像使用 `Dockerfile` 的多阶段构建，不需要在开发机安装 GraalVM。
 
-## 后续切片
+## 构建产物与性能基准
 
-按依赖关系继续实现角色/权限、部门、字典、会话刷新、操作日志和任务管理；每个切片先建立 HTTP 契约测试，再接入迁移脚本。旧 Keystone 的数据迁移脚本放在 `src/main/resources/db/migration`，通过双写或停机窗口完成平滑切换。
+以下数据来自当前项目的本地构建，用于比较 JVM 和 Native 的部署开销。镜像基础层、依赖版本和构建环境变化后，数值会随之变化。
+
+| 指标 | Spring Boot Keystone 基线 | Quarkus JVM | Quarkus Native |
+|---|---:|---:|---:|
+| 应用包 | 可执行 JAR **95.6 MB** | fast-jar 目录 **30,786,263 bytes**（约 29.36 MiB）；uber-jar **30,568,208 bytes**（约 29.15 MiB） | Native runner **90.57 MB** |
+| Docker 本地镜像 | 未在本次基准中测量 | **350,550,785 bytes**（约 334.2 MiB；`docker images` 显示 351 MB） | **208,212,535 bytes**（约 198.5 MiB；`docker images` 显示 208 MB） |
+| `docker save` + gzip | 未在本次基准中测量 | **138,748,526 bytes**（约 132.3 MiB） | **72,948,159 bytes**（约 69.6 MiB） |
+| Native 启动日志 | — | — | 约 **0.08 秒** |
+| Native 进程 RSS | — | — | 约 **70–76 MB** |
+| Native 构建开销 | — | — | 约 **6 分 31 秒**；峰值构建 RSS 约 **4.84 GB** |
+
+指标口径：
+
+- `docker image inspect .Size` 是镜像层解压后的本地占用，不是 registry 传输大小。
+- `docker save | gzip` 是压缩后的传输归档大小，不代表容器运行时占用。
+- `MiB` 使用 `1 MiB = 1,048,576 bytes`；Docker 的 `MB` 显示为四舍五入后的展示值。
+- JVM 对照镜像使用 `eclipse-temurin:21-jre`；Native 镜像使用 `Dockerfile` 中固定 digest 的 Quarkus Micro Image。
+- Spring Boot 的 95.6 MB 是原 Keystone 的可执行 Fat JAR，用作参考基线，不是本仓库生成的产物。
+
+## 配置与密钥
+
+开发和部署时设置以下环境变量：
+
+```text
+DB_URL
+DB_USERNAME
+DB_PASSWORD
+JWT_PRIVATE_KEY_LOCATION
+JWT_PUBLIC_KEY_LOCATION
+JWT_ISSUER（可选，默认 keystone-native）
+```
+
+使用 Compose 前，将部署密钥放入 `docker/keys/privateKey.pem` 和 `docker/keys/publicKey.pem`；这些文件不会提交到 Git。
