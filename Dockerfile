@@ -17,7 +17,7 @@ RUN --mount=type=secret,id=proxy-ca,target=/tmp/proxy-ca.crt,uid=1001,gid=1001,m
       proxy_opts="${proxy_opts} -Djavax.net.ssl.trustStore=/tmp/gradle-truststore.p12 -Djavax.net.ssl.trustStorePassword=changeit"; \
     fi; \
     export JAVA_TOOL_OPTIONS="${proxy_opts}"; \
-    ./gradlew --no-daemon nativeBuild -Dquarkus.native.container-build=true -x test
+    ./gradlew --no-daemon nativeBuild -x test
 
 FROM quay.io/quarkus/quarkus-micro-image:2.0
 WORKDIR /work/
