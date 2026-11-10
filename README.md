@@ -7,6 +7,12 @@ Keystone 的独立 Quarkus Native 重实现，首阶段以 **Quarkus REST + JDBC
 - `GET /api/v1/health`：无数据库依赖的健康检查
 - `POST /api/v1/auth/login`：数据库用户认证，返回 HS256 JWT
 - `GET /api/v1/users?page=1&size=20`：JWT 保护的用户分页查询
+- `POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`：Refresh Token 轮换与注销
+- `GET/POST/PUT/DELETE /api/v1/users`：管理员用户 CRUD 与角色分配
+- `GET /api/v1/roles`、`GET/POST/PUT/DELETE /api/v1/departments`：角色权限和部门树
+- `GET/POST /api/v1/dictionaries`：字典类型与字典项管理
+- `GET /api/v1/operation-logs`：管理员操作日志分页查询
+- `GET/POST/PUT/DELETE /api/v1/jobs`、`POST /api/v1/jobs/{id}/trigger`：动态 Cron 任务
 - `/api/openapi`、`/api/swagger`：OpenAPI 与 Swagger UI
 - 启动时由 Flyway 创建 `sys_user` 并写入开发用 `admin/password` 用户
 
@@ -20,6 +26,8 @@ API 响应统一为 `{ "success": true, "data": ..., "message": "OK" }`，便于
 docker compose up -d mysql
 ./gradlew quarkusDev
 ```
+
+如果机器上的 `JAVA_HOME` 不是完整 JDK，请先指向带有 `javac` 的 JDK。Gradle 会自动读取 `HTTPS_PROXY`/`https_proxy` 并配置依赖下载代理。
 
 然后访问 `http://localhost:8080/api/v1/health`。登录示例：
 
@@ -45,6 +53,8 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
 ```bash
 docker build -t keystone-native .
 ```
+
+GitHub Actions 在每次推送和 Pull Request 中执行 MySQL 集成测试、JVM 打包，并通过 Mandrel Builder 构建 Native 容器镜像。Native 镜像使用 `Dockerfile` 的多阶段构建，不需要在开发机安装 GraalVM。
 
 ## 后续切片
 
