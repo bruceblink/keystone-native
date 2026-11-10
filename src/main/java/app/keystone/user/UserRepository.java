@@ -31,6 +31,13 @@ public class UserRepository {
         catch (Exception e) { throw new IllegalStateException("Could not find user", e); }
     }
 
+    public Optional<AuthUser> findAuthUserByUsername(String username) {
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("SELECT id FROM sys_user WHERE username = ?")) {
+            p.setString(1, username);
+            try (var rs = p.executeQuery()) { return rs.next() ? findAuthUser(c, rs.getLong(1)) : Optional.empty(); }
+        } catch (Exception e) { throw new IllegalStateException("Could not find user", e); }
+    }
+
     private Optional<AuthUser> findAuthUser(Connection c, long id) throws Exception {
         try (var p = c.prepareStatement("SELECT id, username, display_name FROM sys_user WHERE id = ? AND enabled = true")) {
             p.setLong(1, id);
