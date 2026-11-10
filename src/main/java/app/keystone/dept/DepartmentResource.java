@@ -20,6 +20,7 @@ public class DepartmentResource {
     @Inject SecurityIdentity identity;
 
     @GET public ApiResponse<List<Department>> list() { return ApiResponse.ok(departments.list()); }
+    @GET @Path("/dropdown") public ApiResponse<List<Department>> dropdown() { return ApiResponse.ok(departments.list()); }
 
     @POST @RolesAllowed("ADMIN")
     public Response create(DepartmentRequest request) {

@@ -21,6 +21,7 @@ public class MenuResource {
     @Inject SecurityIdentity identity;
 
     @GET public ApiResponse<List<MenuNode>> tree() { return ApiResponse.ok(toTree(menus.listForRoles(identity.getRoles().stream().toList()))); }
+    @GET @Path("/dropdown") public ApiResponse<List<Menu>> dropdown() { return ApiResponse.ok(menus.listForRoles(identity.getRoles().stream().toList())); }
 
     @POST @RolesAllowed("ADMIN") public Response create(MenuRepository.MenuRequest request) { if (request == null) return bad("request body is required"); try { var menu = menus.create(request); logs.record(actor(), "CREATE", "menu", String.valueOf(menu.id()), menu.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(menu)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
     @PUT @Path("/{id}") @RolesAllowed("ADMIN") public Response update(@PathParam("id") long id, MenuRepository.MenuRequest request) { if (request == null) return bad("request body is required"); try { var menu = menus.update(id, request); logs.record(actor(), "UPDATE", "menu", String.valueOf(id), menu.code()); return Response.ok(ApiResponse.ok(menu)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
