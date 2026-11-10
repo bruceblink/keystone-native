@@ -2,6 +2,7 @@ package app.keystone.auth;
 
 import app.keystone.ApiResponse;
 import app.keystone.HealthResource;
+import app.keystone.audit.LoginLogRepository;
 import app.keystone.menu.MenuRepository;
 import app.keystone.user.UserRepository;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -29,18 +30,21 @@ import java.util.Map;
 public class LegacyAuthResource {
     @Inject UserRepository users;
     @Inject SessionRepository sessions;
+    @Inject LoginLogRepository loginLogs;
     @Inject MenuRepository menus;
     @Inject SecurityIdentity identity;
     @ConfigProperty(name = "mp.jwt.verify.issuer") String issuer;
 
     @POST @Path("login") @PermitAll
-    public Response login(AuthResource.LoginRequest request) {
+    public Response login(AuthResource.LoginRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
         if (request == null || request.username() == null || request.password() == null) return Response.status(400).entity(ApiResponse.error("username and password are required")).build();
         var user = users.authenticate(request.username(), request.password());
-        if (user.isEmpty()) return Response.status(401).entity(ApiResponse.error("invalid credentials")).build();
-        if (user.get().mustChangePassword()) return Response.status(428).entity(ApiResponse.error("password change required")).build();
+        if (user.isEmpty()) { loginLogs.record(request.username(), "FAILURE", ipAddress, "invalid credentials", userAgent); return Response.status(401).entity(ApiResponse.error("invalid credentials")).build(); }
+        if (user.get().mustChangePassword()) { loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "password change required", userAgent); return Response.status(428).entity(ApiResponse.error("password change required")).build(); }
         var refresh = sessions.create(user.get().id(), Boolean.TRUE.equals(request.forceLogin()));
-        if (refresh.isEmpty()) return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build();
+        if (refresh.isEmpty()) { loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
+        users.markLogin(user.get().id(), ipAddress);
+        loginLogs.record(user.get().username(), "SUCCESS", ipAddress, "login successful", userAgent);
         return Response.ok(ApiResponse.ok(issue(user.get(), refresh.get()))).build();
     }
 

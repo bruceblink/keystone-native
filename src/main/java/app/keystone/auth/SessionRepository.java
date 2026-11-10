@@ -79,6 +79,23 @@ public class SessionRepository {
         catch (Exception e) { throw new IllegalStateException("Could not revoke user sessions", e); }
     }
 
+    public java.util.List<OnlineSession> activeSessions(String username, String ipAddress) {
+        StringBuilder sql = new StringBuilder("SELECT s.id, s.user_id, u.username, u.display_name, u.login_ip, s.created_at, s.expires_at, s.access_expires_at FROM sys_refresh_token s JOIN sys_user u ON u.id = s.user_id WHERE s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP AND (s.access_expires_at IS NULL OR s.access_expires_at > CURRENT_TIMESTAMP)");
+        if (username != null && !username.isBlank()) sql.append(" AND u.username LIKE ?");
+        if (ipAddress != null && !ipAddress.isBlank()) sql.append(" AND u.login_ip LIKE ?");
+        sql.append(" ORDER BY s.created_at DESC");
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql.toString())) {
+            int index = 1; if (username != null && !username.isBlank()) p.setString(index++, "%" + username.trim() + "%"); if (ipAddress != null && !ipAddress.isBlank()) p.setString(index, "%" + ipAddress.trim() + "%");
+            var result = new java.util.ArrayList<OnlineSession>(); try (var rs = p.executeQuery()) { while (rs.next()) { var created = rs.getTimestamp("created_at"); var expires = rs.getTimestamp("expires_at"); var access = rs.getTimestamp("access_expires_at"); result.add(new OnlineSession(rs.getLong("id"), rs.getLong("user_id"), rs.getString("username"), rs.getString("display_name"), rs.getString("login_ip"), created == null ? null : created.toInstant(), expires == null ? null : expires.toInstant(), access == null ? null : access.toInstant())); } } return result;
+        } catch (Exception e) { throw new IllegalStateException("Could not list online sessions", e); }
+    }
+
+    public void revokeById(long sessionId) {
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL")) { p.setLong(1, sessionId); if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("session not found"); }
+        catch (java.util.NoSuchElementException e) { throw e; }
+        catch (Exception e) { throw new IllegalStateException("Could not revoke session", e); }
+    }
+
     private static String randomToken() {
         byte[] bytes = new byte[48];
         new SecureRandom().nextBytes(bytes);
@@ -93,4 +110,5 @@ public class SessionRepository {
     }
 
     public record RotatedSession(UserRepository.AuthUser user, String refreshToken) {}
+    public record OnlineSession(long sessionId, long userId, String username, String displayName, String ipAddress, java.time.Instant createdAt, java.time.Instant expiresAt, java.time.Instant accessExpiresAt) {}
 }
