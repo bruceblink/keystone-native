@@ -1,0 +1,49 @@
+plugins {
+    id 'java'
+    id 'io.quarkus' version '3.40.0'
+}
+
+group = 'app.keystone'
+version = '0.1.0-SNAPSHOT'
+
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
+}
+
+compileJava.options.encoding = 'UTF-8'
+compileTestJava.options.encoding = 'UTF-8'
+
+dependencies {
+    implementation enforcedPlatform("io.quarkus.platform:quarkus-bom:3.40.0")
+    implementation 'io.quarkus:quarkus-arc'
+    implementation 'io.quarkus:quarkus-rest-jackson'
+    implementation 'io.quarkus:quarkus-jdbc-mysql'
+    implementation 'io.quarkus:quarkus-flyway'
+    implementation 'io.quarkus:quarkus-smallrye-jwt'
+    implementation 'io.quarkus:quarkus-smallrye-jwt-build'
+    implementation 'io.quarkus:quarkus-smallrye-openapi'
+    implementation 'io.quarkus:quarkus-smallrye-health'
+    implementation 'io.quarkus:quarkus-scheduler'
+    implementation 'io.quarkus:quarkus-elytron-security-common'
+    testImplementation 'io.quarkus:quarkus-junit5'
+    testImplementation 'io.rest-assured:rest-assured'
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    systemProperty 'java.util.logging.manager', 'org.jboss.logmanager.LogManager'
+}
+
+// `./gradlew build -Dquarkus.native.enabled=true` produces the native runner.
+tasks.register('nativeBuild') {
+    group = 'build'
+    description = 'Build the Quarkus application as a GraalVM/Mandrel native executable.'
+    dependsOn 'quarkusBuild'
+}
+
+// Enable native mode before the Quarkus task graph is configured. This keeps
+// `./gradlew nativeBuild` convenient while leaving normal `build` on JVM mode.
+if (gradle.startParameter.taskNames.any { it == 'nativeBuild' }) {
+    System.setProperty('quarkus.native.enabled', 'true')
+}
