@@ -1,25 +1,21 @@
 pluginManagement {
+    def proxyValue = System.getenv('HTTPS_PROXY') ?: System.getenv('https_proxy')
+    if (proxyValue) {
+        try {
+            def proxyUri = new URI(proxyValue)
+            if (proxyUri.host) {
+                System.setProperty('https.proxyHost', proxyUri.host)
+                System.setProperty('https.proxyPort', String.valueOf(proxyUri.port > 0 ? proxyUri.port : 443))
+                System.setProperty('http.proxyHost', proxyUri.host)
+                System.setProperty('http.proxyPort', String.valueOf(proxyUri.port > 0 ? proxyUri.port : 80))
+            }
+        } catch (Exception ignored) {
+            // Leave Gradle's default networking untouched for malformed proxy values.
+        }
+    }
     repositories {
         gradlePluginPortal()
         mavenCentral()
-    }
-}
-
-// Gradle does not automatically translate HTTPS_PROXY into JVM proxy
-// properties. Configure it only when the execution environment provides one;
-// GitHub-hosted runners and normal developer machines remain proxy-free.
-def proxyValue = System.getenv('HTTPS_PROXY') ?: System.getenv('https_proxy')
-if (proxyValue) {
-    try {
-        def proxyUri = new URI(proxyValue)
-        if (proxyUri.host) {
-            System.setProperty('https.proxyHost', proxyUri.host)
-            System.setProperty('https.proxyPort', String.valueOf(proxyUri.port > 0 ? proxyUri.port : 443))
-            System.setProperty('http.proxyHost', proxyUri.host)
-            System.setProperty('http.proxyPort', String.valueOf(proxyUri.port > 0 ? proxyUri.port : 80))
-        }
-    } catch (Exception ignored) {
-        // Leave Gradle's default networking untouched for malformed proxy values.
     }
 }
 dependencyResolutionManagement {
