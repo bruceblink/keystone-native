@@ -1,5 +1,5 @@
 # syntax=docker/dockerfile:1.7
-FROM quay.io/quarkus/ubi-quarkus-mandrel-builder-image:jdk-25.0.5 AS build
+FROM quay.io/quarkus/ubi-quarkus-mandrel-builder-image@sha256:c5d1cbf82de4c9eb95135d85280f9d3b43cbdd6313913264fd7fc6c0abdedbd7 AS build
 USER quarkus
 WORKDIR /project
 ARG GRADLE_PROXY_HOST
@@ -19,7 +19,7 @@ RUN --mount=type=secret,id=proxy-ca,target=/tmp/proxy-ca.crt,uid=1001,gid=1001,m
     export JAVA_TOOL_OPTIONS="${proxy_opts}"; \
     ./gradlew --no-daemon nativeBuild -x test
 
-FROM quay.io/quarkus/quarkus-micro-image:2.0
+FROM quay.io/quarkus/quarkus-micro-image@sha256:5f3b9c2c6868e14e899f682ebd42e2d0cd519e457dfe0698f58a81d6a26593c6
 WORKDIR /work/
 COPY --from=build /project/build/keystone-native-*-runner /work/application
 RUN chmod 775 /work /work/application
