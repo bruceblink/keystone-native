@@ -47,8 +47,10 @@ public class SessionRepository {
                         insert.setLong(1, userId); insert.setString(2, hash(replacement));
                         insert.setTimestamp(3, Timestamp.from(Instant.now().plus(REFRESH_LIFETIME))); insert.executeUpdate();
                     }
+                    var user = users.findAuthUser(c, userId);
+                    if (user.isEmpty()) { c.rollback(); return Optional.empty(); }
                     c.commit();
-                    return users.findAuthUser(userId).map(user -> new RotatedSession(user, replacement));
+                    return Optional.of(new RotatedSession(user.get(), replacement));
                 }
             } catch (Exception e) { c.rollback(); throw e; }
         } catch (Exception e) { throw new IllegalStateException("Could not rotate refresh session", e); }

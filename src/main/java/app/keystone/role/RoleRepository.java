@@ -43,9 +43,13 @@ public class RoleRepository {
 
     public void assignPermissions(String code, List<String> permissions) {
         try (var c = dataSource.getConnection()) {
-            long roleId = roleId(c, code);
-            try (var d = c.prepareStatement("DELETE FROM sys_role_permission WHERE role_id = ?")) { d.setLong(1, roleId); d.executeUpdate(); }
-            try (var p = c.prepareStatement("INSERT INTO sys_role_permission(role_id, permission_id) SELECT ?, id FROM sys_permission WHERE code = ?")) { for (String permission : permissions == null ? List.<String>of() : permissions) { p.setLong(1, roleId); p.setString(2, permission); if (p.executeUpdate() == 0) throw new IllegalArgumentException("unknown permission: " + permission); } }
+            c.setAutoCommit(false);
+            try {
+                long roleId = roleId(c, code);
+                try (var d = c.prepareStatement("DELETE FROM sys_role_permission WHERE role_id = ?")) { d.setLong(1, roleId); d.executeUpdate(); }
+                try (var p = c.prepareStatement("INSERT INTO sys_role_permission(role_id, permission_id) SELECT ?, id FROM sys_permission WHERE code = ?")) { for (String permission : permissions == null ? List.<String>of() : permissions) { p.setLong(1, roleId); p.setString(2, permission); if (p.executeUpdate() == 0) throw new IllegalArgumentException("unknown permission: " + permission); } }
+                c.commit();
+            } catch (Exception e) { c.rollback(); throw e; }
         } catch (java.util.NoSuchElementException | IllegalArgumentException e) { throw e; }
         catch (Exception e) { throw new IllegalStateException("Could not assign role permissions", e); }
     }

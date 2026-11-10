@@ -55,8 +55,12 @@ public class MenuRepository {
 
     public void assignRoles(long menuId, List<String> roleCodes) {
         try (var c = dataSource.getConnection()) {
-            try (var d = c.prepareStatement("DELETE FROM sys_role_menu WHERE menu_id = ?")) { d.setLong(1, menuId); d.executeUpdate(); }
-            try (var p = c.prepareStatement("INSERT INTO sys_role_menu(role_id, menu_id) SELECT id, ? FROM sys_role WHERE code = ?")) { for (String code : roleCodes == null ? List.<String>of() : roleCodes) { p.setLong(1, menuId); p.setString(2, code); if (p.executeUpdate() == 0) throw new IllegalArgumentException("unknown role: " + code); } }
+            c.setAutoCommit(false);
+            try {
+                try (var d = c.prepareStatement("DELETE FROM sys_role_menu WHERE menu_id = ?")) { d.setLong(1, menuId); d.executeUpdate(); }
+                try (var p = c.prepareStatement("INSERT INTO sys_role_menu(role_id, menu_id) SELECT id, ? FROM sys_role WHERE code = ?")) { for (String code : roleCodes == null ? List.<String>of() : roleCodes) { p.setLong(1, menuId); p.setString(2, code); if (p.executeUpdate() == 0) throw new IllegalArgumentException("unknown role: " + code); } }
+                c.commit();
+            } catch (Exception e) { c.rollback(); throw e; }
         } catch (Exception e) { if (e instanceof IllegalArgumentException) throw (IllegalArgumentException) e; throw new IllegalStateException("Could not assign menu roles", e); }
     }
 
