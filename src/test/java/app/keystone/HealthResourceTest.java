@@ -9,6 +9,6 @@ import static org.hamcrest.Matchers.is;
 class HealthResourceTest {
     @Test
     void healthIsAvailable() {
-        given().when().get("/api/v1/health").then().statusCode(200).body("success", is(true)).body("data.status", is("UP"));
+        given().when().get("/v1/health").then().statusCode(200).body("success", is(true)).body("data.status", is("UP"));
     }
 }
