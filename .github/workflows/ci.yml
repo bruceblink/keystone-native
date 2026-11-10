@@ -43,7 +43,6 @@ jobs:
           DB_URL: jdbc:mysql://127.0.0.1:3306/keystone
           DB_USERNAME: keystone
           DB_PASSWORD: keystone
-          JWT_SECRET: ci-only-secret-change-me-ci-only-secret
         run: ./gradlew --no-daemon test
       - name: Package JVM artifact
         run: ./gradlew --no-daemon quarkusBuild -x test

@@ -20,5 +20,4 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/keystone
       DB_USERNAME: keystone
       DB_PASSWORD: keystone
-      JWT_SECRET: change-this-development-secret-change-this-development-secret
     ports: ["8080:8080"]

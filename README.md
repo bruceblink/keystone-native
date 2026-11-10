@@ -39,7 +39,7 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
   -d '{"username":"admin","password":"password"}'
 ```
 
-开发环境默认密钥仅用于本地验证，部署时必须设置 `JWT_SECRET`（至少 32 字符）以及 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD`。
+开发环境使用仓库内的 RSA 密钥对，部署时应通过 `JWT_PRIVATE_KEY_LOCATION` 和 `JWT_PUBLIC_KEY_LOCATION` 指向外部密钥，并设置 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD`。
 
 ## Native 构建
 
