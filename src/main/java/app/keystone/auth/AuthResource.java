@@ -38,7 +38,7 @@ public class AuthResource {
         if (refresh.isEmpty()) { loginLogs.record(u.username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
         users.markLogin(u.id(), ipAddress);
         loginLogs.record(u.username(), "SUCCESS", ipAddress, "login successful", userAgent);
-        return Response.ok(ApiResponse.ok(issue(u, refresh.get()))).build();
+        return Response.ok(ApiResponse.ok(issue(u, refresh.get().refreshToken(), refresh.get().accessTokenId()))).build();
     }
 
     @POST @Path("/refresh") @PermitAll
@@ -47,7 +47,7 @@ public class AuthResource {
         var rotated = sessions.rotate(request.refreshToken(), users);
         if (rotated.isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid or expired refresh token")).build();
         var session = rotated.get();
-        return Response.ok(ApiResponse.ok(issue(session.user(), session.refreshToken()))).build();
+        return Response.ok(ApiResponse.ok(issue(session.user(), session.refreshToken(), session.accessTokenId()))).build();
     }
 
     @POST @Path("/logout") @PermitAll
@@ -66,8 +66,8 @@ public class AuthResource {
         return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build();
     }
 
-    private TokenResponse issue(UserRepository.AuthUser user, String refreshToken) {
-        String accessToken = Jwt.issuer(issuer).upn(user.username()).groups(new java.util.HashSet<>(user.roles())).claim("userId", user.id()).expiresIn(Duration.ofHours(2)).sign();
+    private TokenResponse issue(UserRepository.AuthUser user, String refreshToken, String accessTokenId) {
+        String accessToken = Jwt.issuer(issuer).upn(user.username()).claim("jti", accessTokenId).groups(new java.util.HashSet<>(user.roles())).claim("userId", user.id()).expiresIn(Duration.ofHours(2)).sign();
         return new TokenResponse(accessToken, accessToken, refreshToken, "Bearer", 7200, 1209600, user.username(), user.displayName(), user.roles());
     }
 

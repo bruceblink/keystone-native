@@ -45,7 +45,7 @@ public class LegacyAuthResource {
         if (refresh.isEmpty()) { loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
         users.markLogin(user.get().id(), ipAddress);
         loginLogs.record(user.get().username(), "SUCCESS", ipAddress, "login successful", userAgent);
-        return Response.ok(ApiResponse.ok(issue(user.get(), refresh.get()))).build();
+        return Response.ok(ApiResponse.ok(issue(user.get(), refresh.get().refreshToken(), refresh.get().accessTokenId()))).build();
     }
 
     @POST @Path("refresh-token") @PermitAll
@@ -54,7 +54,7 @@ public class LegacyAuthResource {
         var rotated = sessions.rotate(request.refreshToken(), users);
         if (rotated.isEmpty()) return Response.status(401).entity(ApiResponse.error("invalid or expired refresh token")).build();
         var session = rotated.get();
-        return Response.ok(ApiResponse.ok(issue(session.user(), session.refreshToken()))).build();
+        return Response.ok(ApiResponse.ok(issue(session.user(), session.refreshToken(), session.accessTokenId()))).build();
     }
 
     @POST @Path("logout-refresh-token") @PermitAll
@@ -115,8 +115,8 @@ public class LegacyAuthResource {
         return roots.stream().map(RouterBuilder::build).toList();
     }
 
-    private AuthResource.TokenResponse issue(UserRepository.AuthUser user, String refreshToken) {
-        String access = Jwt.issuer(issuer).upn(user.username()).groups(new HashSet<>(user.roles())).claim("userId", user.id()).expiresIn(Duration.ofHours(2)).sign();
+    private AuthResource.TokenResponse issue(UserRepository.AuthUser user, String refreshToken, String accessTokenId) {
+        String access = Jwt.issuer(issuer).upn(user.username()).claim("jti", accessTokenId).groups(new HashSet<>(user.roles())).claim("userId", user.id()).expiresIn(Duration.ofHours(2)).sign();
         return new AuthResource.TokenResponse(access, access, refreshToken, "Bearer", 7200, 1209600, user.username(), user.displayName(), user.roles());
     }
 

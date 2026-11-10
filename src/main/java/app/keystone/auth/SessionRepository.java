@@ -20,11 +20,12 @@ public class SessionRepository {
     @Inject DataSource dataSource;
 
     public String create(long userId) {
-        return create(userId, true).orElseThrow(() -> new IllegalStateException("account already has an active session"));
+        return create(userId, true).orElseThrow(() -> new IllegalStateException("account already has an active session")).refreshToken();
     }
 
-    public Optional<String> create(long userId, boolean forceLogin) {
+    public Optional<CreatedSession> create(long userId, boolean forceLogin) {
         String token = randomToken();
+        String accessTokenId = java.util.UUID.randomUUID().toString();
         try (var c = dataSource.getConnection()) {
             c.setAutoCommit(false);
             try {
@@ -33,10 +34,10 @@ public class SessionRepository {
                 try (var find = c.prepareStatement("SELECT id FROM sys_refresh_token WHERE user_id = ? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP AND (access_expires_at IS NULL OR access_expires_at > CURRENT_TIMESTAMP) FOR UPDATE")) { find.setLong(1, userId); try (var rs = find.executeQuery()) { active = rs.next(); } }
                 if (active && !forceLogin) { c.rollback(); return Optional.empty(); }
                 if (active) try (var revoke = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL")) { revoke.setLong(1, userId); revoke.executeUpdate(); }
-                try (var p = c.prepareStatement("INSERT INTO sys_refresh_token(user_id, token_hash, expires_at, access_expires_at) VALUES (?, ?, ?, ?)")) {
-                    p.setLong(1, userId); p.setString(2, hash(token)); p.setTimestamp(3, Timestamp.from(Instant.now().plus(REFRESH_LIFETIME))); p.setTimestamp(4, Timestamp.from(Instant.now().plus(ACCESS_LIFETIME))); p.executeUpdate();
+                try (var p = c.prepareStatement("INSERT INTO sys_refresh_token(user_id, token_hash, expires_at, access_expires_at, access_token_id) VALUES (?, ?, ?, ?, ?)")) {
+                    p.setLong(1, userId); p.setString(2, hash(token)); p.setTimestamp(3, Timestamp.from(Instant.now().plus(REFRESH_LIFETIME))); p.setTimestamp(4, Timestamp.from(Instant.now().plus(ACCESS_LIFETIME))); p.setString(5, accessTokenId); p.executeUpdate();
                 }
-                c.commit(); return Optional.of(token);
+                c.commit(); return Optional.of(new CreatedSession(token, accessTokenId));
             } catch (Exception e) { c.rollback(); throw e; }
         } catch (Exception e) { throw new IllegalStateException("Could not create refresh session", e); }
     }
@@ -53,15 +54,15 @@ public class SessionRepository {
                     try (var revoke = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?")) {
                         revoke.setLong(1, sessionId); revoke.executeUpdate();
                     }
-                    String replacement = randomToken();
-                    try (var insert = c.prepareStatement("INSERT INTO sys_refresh_token(user_id, token_hash, expires_at, access_expires_at) VALUES (?, ?, ?, ?)")) {
+                    String replacement = randomToken(); String accessTokenId = java.util.UUID.randomUUID().toString();
+                    try (var insert = c.prepareStatement("INSERT INTO sys_refresh_token(user_id, token_hash, expires_at, access_expires_at, access_token_id) VALUES (?, ?, ?, ?, ?)")) {
                         insert.setLong(1, userId); insert.setString(2, hash(replacement));
-                        insert.setTimestamp(3, Timestamp.from(Instant.now().plus(REFRESH_LIFETIME))); insert.setTimestamp(4, Timestamp.from(Instant.now().plus(ACCESS_LIFETIME))); insert.executeUpdate();
+                        insert.setTimestamp(3, Timestamp.from(Instant.now().plus(REFRESH_LIFETIME))); insert.setTimestamp(4, Timestamp.from(Instant.now().plus(ACCESS_LIFETIME))); insert.setString(5, accessTokenId); insert.executeUpdate();
                     }
                     var user = users.findAuthUser(c, userId);
                     if (user.isEmpty()) { c.rollback(); return Optional.empty(); }
                     c.commit();
-                    return Optional.of(new RotatedSession(user.get(), replacement));
+                    return Optional.of(new RotatedSession(user.get(), replacement, accessTokenId));
                 }
             } catch (Exception e) { c.rollback(); throw e; }
         } catch (Exception e) { throw new IllegalStateException("Could not rotate refresh session", e); }
@@ -77,6 +78,12 @@ public class SessionRepository {
     public void revokeAll(long userId) {
         try (var c = dataSource.getConnection(); var p = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL")) { p.setLong(1, userId); p.executeUpdate(); }
         catch (Exception e) { throw new IllegalStateException("Could not revoke user sessions", e); }
+    }
+
+    public boolean isAccessTokenActive(String accessTokenId) {
+        if (accessTokenId == null || accessTokenId.isBlank()) return true;
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("SELECT 1 FROM sys_refresh_token WHERE access_token_id = ? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP AND (access_expires_at IS NULL OR access_expires_at > CURRENT_TIMESTAMP)")) { p.setString(1, accessTokenId); try (var rs = p.executeQuery()) { return rs.next(); } }
+        catch (Exception e) { throw new IllegalStateException("Could not validate access session", e); }
     }
 
     public java.util.List<OnlineSession> activeSessions(String username, String ipAddress) {
@@ -109,6 +116,7 @@ public class SessionRepository {
         } catch (Exception e) { throw new IllegalStateException("SHA-256 is unavailable", e); }
     }
 
-    public record RotatedSession(UserRepository.AuthUser user, String refreshToken) {}
+    public record CreatedSession(String refreshToken, String accessTokenId) {}
+    public record RotatedSession(UserRepository.AuthUser user, String refreshToken, String accessTokenId) {}
     public record OnlineSession(long sessionId, long userId, String username, String displayName, String ipAddress, java.time.Instant createdAt, java.time.Instant expiresAt, java.time.Instant accessExpiresAt) {}
 }

@@ -62,4 +62,16 @@ class AuthResourceTest {
         given().contentType(JSON).body("{\"refreshToken\":\"" + replacement + "\"}")
                 .when().post("/v1/auth/refresh").then().statusCode(401);
     }
+
+    @Test
+    void logoutInvalidatesTheAccessTokenImmediately() {
+        var response = given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\"}")
+                .when().post("/v1/auth/login").then().statusCode(200).extract();
+        String access = response.path("data.accessToken");
+        String refresh = response.path("data.refreshToken");
+        given().auth().oauth2(access).when().get("/v1/profile").then().statusCode(200);
+        given().auth().oauth2(access).contentType(JSON).body("{\"refreshToken\":\"" + refresh + "\"}")
+                .when().post("/v1/auth/logout").then().statusCode(200);
+        given().auth().oauth2(access).when().get("/v1/profile").then().statusCode(401);
+    }
 }
