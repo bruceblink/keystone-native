@@ -19,6 +19,7 @@ class AuthResourceTest {
     @BeforeEach
     void enableDevelopmentFixture() throws Exception {
         try (var c = dataSource.getConnection(); var p = c.prepareStatement("UPDATE sys_user SET must_change_password = false WHERE username = 'admin'")) { p.executeUpdate(); }
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = (SELECT id FROM sys_user WHERE username = 'admin') AND revoked_at IS NULL")) { p.executeUpdate(); }
     }
 
     @Test
@@ -36,6 +37,16 @@ class AuthResourceTest {
         given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"wrong\"}")
                 .when().post("/v1/auth/login")
                 .then().statusCode(401).body("success", is(false));
+    }
+
+    @Test
+    void secondLoginIsRejectedUnlessExplicitlyForced() {
+        given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\"}")
+                .when().post("/v1/auth/login").then().statusCode(200);
+        given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\"}")
+                .when().post("/v1/auth/login").then().statusCode(409).body("success", is(false));
+        given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
+                .when().post("/v1/auth/login").then().statusCode(200).body("data.token", not(emptyOrNullString()));
     }
 
     @Test

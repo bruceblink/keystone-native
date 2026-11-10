@@ -30,7 +30,7 @@ class JobResourceTest {
     }
 
     private static String login() {
-        return given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\"}")
+        return given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
                 .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");
     }
 }

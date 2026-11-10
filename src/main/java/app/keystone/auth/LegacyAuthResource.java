@@ -36,7 +36,9 @@ public class LegacyAuthResource {
         var user = users.authenticate(request.username(), request.password());
         if (user.isEmpty()) return Response.status(401).entity(ApiResponse.error("invalid credentials")).build();
         if (user.get().mustChangePassword()) return Response.status(428).entity(ApiResponse.error("password change required")).build();
-        return Response.ok(ApiResponse.ok(issue(user.get(), sessions.create(user.get().id())))).build();
+        var refresh = sessions.create(user.get().id(), Boolean.TRUE.equals(request.forceLogin()));
+        if (refresh.isEmpty()) return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build();
+        return Response.ok(ApiResponse.ok(issue(user.get(), refresh.get()))).build();
     }
 
     @POST @Path("refresh-token") @PermitAll
@@ -83,6 +85,6 @@ public class LegacyAuthResource {
 
     private AuthResource.TokenResponse issue(UserRepository.AuthUser user, String refreshToken) {
         String access = Jwt.issuer(issuer).upn(user.username()).groups(new HashSet<>(user.roles())).claim("userId", user.id()).expiresIn(Duration.ofHours(2)).sign();
-        return new AuthResource.TokenResponse(access, refreshToken, "Bearer", 7200, user.username(), user.displayName(), user.roles());
+        return new AuthResource.TokenResponse(access, access, refreshToken, "Bearer", 7200, 1209600, user.username(), user.displayName(), user.roles());
     }
 }

@@ -32,7 +32,9 @@ public class AuthResource {
         if (user.isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid credentials")).build();
         var u = user.get();
         if (u.mustChangePassword()) return Response.status(428).entity(ApiResponse.error("password change required")).build();
-        return Response.ok(ApiResponse.ok(issue(u, sessions.create(u.id())))).build();
+        var refresh = sessions.create(u.id(), Boolean.TRUE.equals(request.forceLogin()));
+        if (refresh.isEmpty()) return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build();
+        return Response.ok(ApiResponse.ok(issue(u, refresh.get()))).build();
     }
 
     @POST @Path("/refresh") @PermitAll
@@ -62,11 +64,11 @@ public class AuthResource {
 
     private TokenResponse issue(UserRepository.AuthUser user, String refreshToken) {
         String accessToken = Jwt.issuer(issuer).upn(user.username()).groups(new java.util.HashSet<>(user.roles())).claim("userId", user.id()).expiresIn(Duration.ofHours(2)).sign();
-        return new TokenResponse(accessToken, refreshToken, "Bearer", 7200, user.username(), user.displayName(), user.roles());
+        return new TokenResponse(accessToken, accessToken, refreshToken, "Bearer", 7200, 1209600, user.username(), user.displayName(), user.roles());
     }
 
-    public record LoginRequest(String username, String password) {}
+    public record LoginRequest(String username, String password, Boolean forceLogin) {}
     public record RefreshRequest(String refreshToken) {}
     public record InitialPasswordRequest(String username, String currentPassword, String newPassword) {}
-    public record TokenResponse(String accessToken, String refreshToken, String tokenType, long expiresIn, String username, String displayName, java.util.List<String> roles) {}
+    public record TokenResponse(String accessToken, String token, String refreshToken, String tokenType, long expiresIn, long refreshExpiresIn, String username, String displayName, java.util.List<String> roles) {}
 }
