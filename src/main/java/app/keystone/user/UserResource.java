@@ -31,6 +31,9 @@ public class UserResource {
         return ApiResponse.ok(users.list(page == null ? 1 : page, size == null ? 20 : size));
     }
 
+    @GET @Path("/{id}")
+    public ApiResponse<User> get(@PathParam("id") long id) { try { return ApiResponse.ok(users.findPublic(id)); } catch (java.util.NoSuchElementException e) { throw new jakarta.ws.rs.NotFoundException("user not found"); } }
+
     @POST
     @RolesAllowed("ADMIN")
     public Response create(UserRequest request) {
@@ -48,6 +51,20 @@ public class UserResource {
         catch (java.util.NoSuchElementException e) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("user not found")).build(); }
     }
 
+    @PUT @Path("/{id}/password") @RolesAllowed("ADMIN")
+    public Response password(@PathParam("id") long id, PasswordRequest request) {
+        if (request == null || request.password() == null || request.password().isBlank()) return Response.status(400).entity(ApiResponse.error("password is required")).build();
+        try { var updated = users.update(id, request.password(), null, null, null, null); logs.record(actor(), "UPDATE", "user-password", String.valueOf(id), null); return Response.ok(ApiResponse.ok(updated)).build(); }
+        catch (java.util.NoSuchElementException e) { return Response.status(404).entity(ApiResponse.error("user not found")).build(); }
+    }
+
+    @PUT @Path("/{id}/status") @RolesAllowed("ADMIN")
+    public Response status(@PathParam("id") long id, StatusRequest request) {
+        if (request == null || request.enabled() == null) return Response.status(400).entity(ApiResponse.error("enabled is required")).build();
+        try { var updated = users.update(id, null, null, null, request.enabled(), null); logs.record(actor(), "UPDATE", "user-status", String.valueOf(id), String.valueOf(request.enabled())); return Response.ok(ApiResponse.ok(updated)).build(); }
+        catch (java.util.NoSuchElementException e) { return Response.status(404).entity(ApiResponse.error("user not found")).build(); }
+    }
+
     @DELETE @Path("/{id}")
     @RolesAllowed("ADMIN")
     public Response delete(@PathParam("id") long id) {
@@ -55,6 +72,15 @@ public class UserResource {
         catch (java.util.NoSuchElementException e) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("user not found")).build(); }
     }
 
+    @DELETE @RolesAllowed("ADMIN")
+    public Response deleteBatch(@QueryParam("ids") String ids) {
+        if (ids == null || ids.isBlank()) return Response.status(400).entity(ApiResponse.error("ids is required")).build();
+        try { var values = java.util.Arrays.stream(ids.split(",")).map(String::trim).map(Long::valueOf).toList(); users.deleteAll(values); logs.record(actor(), "DELETE", "users", ids, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", values.size()))).build(); }
+        catch (NumberFormatException e) { return Response.status(400).entity(ApiResponse.error("ids must be comma separated numbers")).build(); }
+    }
+
     public record UserRequest(String username, String password, String displayName, Long deptId, Boolean enabled, List<String> roleCodes) {}
+    public record PasswordRequest(String password) {}
+    public record StatusRequest(Boolean enabled) {}
     private String actor() { return identity.getPrincipal().getName(); }
 }

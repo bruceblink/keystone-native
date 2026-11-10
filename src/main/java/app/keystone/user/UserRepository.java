@@ -38,6 +38,12 @@ public class UserRepository {
         } catch (Exception e) { throw new IllegalStateException("Could not find user", e); }
     }
 
+    public User findPublic(long id) {
+        try (var c = dataSource.getConnection()) { return find(c, id).orElseThrow(); }
+        catch (java.util.NoSuchElementException e) { throw e; }
+        catch (Exception e) { throw new IllegalStateException("Could not find user", e); }
+    }
+
     private Optional<AuthUser> findAuthUser(Connection c, long id) throws Exception {
         try (var p = c.prepareStatement("SELECT id, username, display_name FROM sys_user WHERE id = ? AND enabled = true")) {
             p.setLong(1, id);
@@ -88,6 +94,12 @@ public class UserRepository {
         try (var c = dataSource.getConnection(); var p = c.prepareStatement("DELETE FROM sys_user WHERE id = ?")) { p.setLong(1, id); if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("user not found"); }
         catch (java.util.NoSuchElementException e) { throw e; }
         catch (Exception e) { throw new IllegalStateException("Could not delete user", e); }
+    }
+
+    public void deleteAll(List<Long> ids) {
+        if (ids == null || ids.isEmpty()) return;
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("DELETE FROM sys_user WHERE id = ?")) { for (Long id : ids) { p.setLong(1, id); p.addBatch(); } p.executeBatch(); }
+        catch (Exception e) { throw new IllegalStateException("Could not delete users", e); }
     }
 
     private Optional<User> find(Connection c, long id) throws Exception {
