@@ -32,7 +32,10 @@ public class UserResource {
     }
 
     @GET @Path("/{id}")
-    public ApiResponse<User> get(@PathParam("id") long id) { try { return ApiResponse.ok(users.findPublic(id)); } catch (java.util.NoSuchElementException e) { throw new jakarta.ws.rs.NotFoundException("user not found"); } }
+    public ApiResponse<User> get(@PathParam("id") long id) {
+        if (!identity.hasRole("ADMIN") && users.findAuthUserByUsername(identity.getPrincipal().getName()).map(user -> user.id() != id).orElse(true)) throw new jakarta.ws.rs.ForbiddenException("cannot read another user");
+        try { return ApiResponse.ok(users.findPublic(id)); } catch (java.util.NoSuchElementException e) { throw new jakarta.ws.rs.NotFoundException("user not found"); }
+    }
 
     @POST
     @RolesAllowed("ADMIN")
