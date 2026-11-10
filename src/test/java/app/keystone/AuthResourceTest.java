@@ -27,4 +27,18 @@ class AuthResourceTest {
                 .when().post("/v1/auth/login")
                 .then().statusCode(401).body("success", is(false));
     }
+
+    @Test
+    void refreshTokenRotatesAndLogoutRevokesIt() {
+        String refresh = given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\"}")
+                .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.refreshToken");
+        String replacement = given().contentType(JSON).body("{\"refreshToken\":\"" + refresh + "\"}")
+                .when().post("/v1/auth/refresh").then().statusCode(200).extract().path("data.refreshToken");
+        given().contentType(JSON).body("{\"refreshToken\":\"" + refresh + "\"}")
+                .when().post("/v1/auth/refresh").then().statusCode(401);
+        given().contentType(JSON).body("{\"refreshToken\":\"" + replacement + "\"}")
+                .when().post("/v1/auth/logout").then().statusCode(200);
+        given().contentType(JSON).body("{\"refreshToken\":\"" + replacement + "\"}")
+                .when().post("/v1/auth/refresh").then().statusCode(401);
+    }
 }
