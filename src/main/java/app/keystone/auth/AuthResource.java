@@ -50,6 +50,16 @@ public class AuthResource {
         return Response.ok(ApiResponse.ok(java.util.Map.of("loggedOut", true))).build();
     }
 
+    @POST @Path("/change-initial-password") @PermitAll
+    public Response changeInitialPassword(InitialPasswordRequest request) {
+        if (request == null || request.username() == null || request.currentPassword() == null || request.newPassword() == null || request.newPassword().isBlank()) return Response.status(400).entity(ApiResponse.error("username, currentPassword and newPassword are required")).build();
+        var user = users.authenticate(request.username(), request.currentPassword());
+        if (user.isEmpty()) return Response.status(401).entity(ApiResponse.error("invalid credentials")).build();
+        if (!user.get().mustChangePassword()) return Response.status(409).entity(ApiResponse.error("password change is not required")).build();
+        users.update(user.get().id(), request.newPassword(), null, null, null, null);
+        return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build();
+    }
+
     private TokenResponse issue(UserRepository.AuthUser user, String refreshToken) {
         String accessToken = Jwt.issuer(issuer).upn(user.username()).groups(new java.util.HashSet<>(user.roles())).claim("userId", user.id()).expiresIn(Duration.ofHours(2)).sign();
         return new TokenResponse(accessToken, refreshToken, "Bearer", 7200, user.username(), user.displayName(), user.roles());
@@ -57,5 +67,6 @@ public class AuthResource {
 
     public record LoginRequest(String username, String password) {}
     public record RefreshRequest(String refreshToken) {}
+    public record InitialPasswordRequest(String username, String currentPassword, String newPassword) {}
     public record TokenResponse(String accessToken, String refreshToken, String tokenType, long expiresIn, String username, String displayName, java.util.List<String> roles) {}
 }

@@ -51,6 +51,16 @@ public class LegacyAuthResource {
     @POST @Path("logout-refresh-token") @PermitAll
     public Response logout(AuthResource.RefreshRequest request) { if (request != null) sessions.revoke(request.refreshToken()); return Response.ok(ApiResponse.ok(Map.of("loggedOut", true))).build(); }
 
+    @POST @Path("change-initial-password") @PermitAll
+    public Response changeInitialPassword(AuthResource.InitialPasswordRequest request) {
+        if (request == null || request.username() == null || request.currentPassword() == null || request.newPassword() == null || request.newPassword().isBlank()) return Response.status(400).entity(ApiResponse.error("username, currentPassword and newPassword are required")).build();
+        var user = users.authenticate(request.username(), request.currentPassword());
+        if (user.isEmpty()) return Response.status(401).entity(ApiResponse.error("invalid credentials")).build();
+        if (!user.get().mustChangePassword()) return Response.status(409).entity(ApiResponse.error("password change is not required")).build();
+        users.update(user.get().id(), request.newPassword(), null, null, null, null);
+        return Response.ok(ApiResponse.ok(Map.of("updated", true))).build();
+    }
+
     @GET @Path("getLoginUserInfo") @RolesAllowed({"USER", "ADMIN"})
     public ApiResponse<UserRepository.AuthUser> loginUserInfo() { return ApiResponse.ok(users.findAuthUserByUsername(identity.getPrincipal().getName()).orElseThrow(NotFoundException::new)); }
 
