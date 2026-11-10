@@ -10,7 +10,9 @@ Keystone 的独立 Quarkus Native 重实现，首阶段以 **Quarkus REST + JDBC
 - `POST /api/v1/auth/refresh`、`POST /api/v1/auth/logout`：Refresh Token 轮换与注销
 - `GET/POST/PUT/DELETE /api/v1/users`：管理员用户 CRUD 与角色分配
 - `GET /api/v1/roles`、`GET/POST/PUT/DELETE /api/v1/departments`：角色权限和部门树
+- `GET/POST/PUT/DELETE /api/v1/menus`：角色菜单权限树
 - `GET/POST /api/v1/dictionaries`：字典类型与字典项管理
+- `GET/POST/PUT/DELETE /api/v1/configs`：系统配置管理
 - `GET /api/v1/operation-logs`：管理员操作日志分页查询
 - `GET/POST/PUT/DELETE /api/v1/jobs`、`POST /api/v1/jobs/{id}/trigger`：动态 Cron 任务
 - `/api/openapi`、`/api/swagger`：OpenAPI 与 Swagger UI
