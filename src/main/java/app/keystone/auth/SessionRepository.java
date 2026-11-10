@@ -15,7 +15,6 @@ import java.util.Optional;
 
 @ApplicationScoped
 public class SessionRepository {
-    private static final SecureRandom RANDOM = new SecureRandom();
     private static final Duration REFRESH_LIFETIME = Duration.ofDays(14);
     @Inject DataSource dataSource;
 
@@ -63,7 +62,8 @@ public class SessionRepository {
     }
 
     private static String randomToken() {
-        byte[] bytes = new byte[48]; RANDOM.nextBytes(bytes);
+        byte[] bytes = new byte[48];
+        new SecureRandom().nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
