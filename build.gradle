@@ -44,6 +44,6 @@ tasks.register('nativeBuild') {
 
 // Enable native mode before the Quarkus task graph is configured. This keeps
 // `./gradlew nativeBuild` convenient while leaving normal `build` on JVM mode.
-if (gradle.startParameter.taskNames.any { it == 'nativeBuild' }) {
+if (gradle.startParameter.taskNames.any { it.endsWith(':nativeBuild') || it == 'nativeBuild' }) {
     System.setProperty('quarkus.native.enabled', 'true')
 }

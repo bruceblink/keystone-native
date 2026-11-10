@@ -1,6 +1,6 @@
 # Keystone Native
 
-Keystone 的独立 Quarkus Native 重实现，首阶段以 **Quarkus REST + JDBC + MySQL + Flyway + SmallRye JWT** 为基础。它与原有 Spring Boot 工程并行演进，不修改原项目。
+Keystone 的独立 Quarkus Native 重实现，首阶段以 **Quarkus REST + JDBC + MySQL + Flyway + SmallRye JWT（RS256）** 为基础。它与原有 Spring Boot 工程并行演进，不修改原项目。
 
 ## 当前垂直切片
 
