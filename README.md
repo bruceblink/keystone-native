@@ -10,6 +10,9 @@ Keystone 的独立 Quarkus Native 重实现，使用 **Quarkus 3.40.1 + Gradle +
 - 用户、角色、部门、菜单和权限管理，包含下拉树和兼容旧 Keystone 的接口
 - 字典类型与字典项、系统配置、操作日志、动态 Cron 任务
 - 通知、岗位、个人资料和密码修改
+- 在线会话、登录审计、服务器信息和强制下线
+- 文件上传、批量上传和安全下载
+- 原 Keystone `/system/*`、`/logs/*`、`/monitor/*` 兼容路由，以及 CSV 导出/用户导入入口
 - `/api/openapi`、`/api/swagger`：OpenAPI 文档和 Swagger UI
 
 API 响应统一为 `{ "success": true, "data": ..., "message": "OK" }`，便于对齐原 Keystone 接口契约。
