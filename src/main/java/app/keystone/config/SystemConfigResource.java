@@ -19,8 +19,8 @@ public class SystemConfigResource {
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
 
-    @GET public ApiResponse<List<SystemConfig>> list() { return ApiResponse.ok(configs.list()); }
-    @GET @Path("/{key}") public ApiResponse<SystemConfig> get(@PathParam("key") String key) { try { return ApiResponse.ok(configs.find(key)); } catch (java.util.NoSuchElementException e) { throw new NotFoundException("config not found"); } }
+    @GET @RolesAllowed("ADMIN") public ApiResponse<List<SystemConfig>> list() { return ApiResponse.ok(configs.list()); }
+    @GET @Path("/{key}") @RolesAllowed("ADMIN") public ApiResponse<SystemConfig> get(@PathParam("key") String key) { try { return ApiResponse.ok(configs.find(key)); } catch (java.util.NoSuchElementException e) { throw new NotFoundException("config not found"); } }
     @POST @RolesAllowed("ADMIN") public Response create(ConfigRequest request) { if (request == null) return bad("request body is required"); try { var config = configs.create(request.key(), request.value(), request.description()); logs.record(actor(), "CREATE", "config", String.valueOf(config.id()), config.key()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(config)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
     @PUT @Path("/{key}") @RolesAllowed("ADMIN") public Response update(@PathParam("key") String key, ConfigRequest request) { if (request == null) return bad("request body is required"); try { var config = configs.update(key, request.value(), request.description(), request.enabled()); logs.record(actor(), "UPDATE", "config", String.valueOf(config.id()), config.key()); return Response.ok(ApiResponse.ok(config)).build(); } catch (java.util.NoSuchElementException e) { return notFound(); } }
     @DELETE @Path("/{key}") @RolesAllowed("ADMIN") public Response delete(@PathParam("key") String key) { try { configs.delete(key); logs.record(actor(), "DELETE", "config", key, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (java.util.NoSuchElementException e) { return notFound(); } }
