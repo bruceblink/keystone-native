@@ -2,18 +2,10 @@ package app.keystone.user;
 
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
+import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
-import io.quarkus.security.identity.SecurityIdentity;
-import jakarta.ws.rs.GET;
-import jakarta.ws.rs.POST;
-import jakarta.ws.rs.PUT;
-import jakarta.ws.rs.DELETE;
-import jakarta.ws.rs.Path;
-import jakarta.ws.rs.PathParam;
-import jakarta.ws.rs.Consumes;
-import jakarta.ws.rs.Produces;
-import jakarta.ws.rs.QueryParam;
+import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.util.List;
@@ -21,69 +13,79 @@ import java.util.List;
 @Path("/v1/users")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@RolesAllowed({"USER", "ADMIN"})
+@RolesAllowed("ADMIN")
 public class UserResource {
     @Inject UserRepository users;
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
+
     @GET
-    public ApiResponse<UserRepository.Page> list(@QueryParam("page") Integer page, @QueryParam("size") Integer size) {
-        return ApiResponse.ok(users.list(page == null ? 1 : page, size == null ? 20 : size));
+    public ApiResponse<UserRepository.Page> list(@QueryParam("page") Integer page, @QueryParam("size") Integer size,
+                                                  @QueryParam("username") String username, @QueryParam("displayName") String displayName,
+                                                  @QueryParam("deptId") Long deptId, @QueryParam("enabled") Boolean enabled) {
+        return ApiResponse.ok(users.list(page == null ? 1 : page, size == null ? 20 : size, username, displayName, deptId, enabled));
     }
 
     @GET @Path("/{id}")
     public ApiResponse<User> get(@PathParam("id") long id) {
-        if (!identity.hasRole("ADMIN") && users.findAuthUserByUsername(identity.getPrincipal().getName()).map(user -> user.id() != id).orElse(true)) throw new jakarta.ws.rs.ForbiddenException("cannot read another user");
-        try { return ApiResponse.ok(users.findPublic(id)); } catch (java.util.NoSuchElementException e) { throw new jakarta.ws.rs.NotFoundException("user not found"); }
+        try { return ApiResponse.ok(users.findPublic(id)); }
+        catch (java.util.NoSuchElementException e) { throw new NotFoundException("user not found"); }
     }
 
     @POST
-    @RolesAllowed("ADMIN")
     public Response create(UserRequest request) {
-        if (request == null) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("request body is required")).build();
-        try { var created = users.create(request.username(), request.password(), request.displayName(), request.deptId(), request.roleCodes()); logs.record(actor(), "CREATE", "user", String.valueOf(created.id()), created.username()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build(); }
-        catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        if (request == null) return bad("request body is required");
+        try {
+            var created = users.create(request.username(), request.password(), request.displayName(), request.deptId(), request.postId(), request.email(), request.phoneNumber(), request.sex(), request.avatar(), request.remark(), request.roleCodes());
+            logs.record(actor(), "CREATE", "user", String.valueOf(created.id()), created.username());
+            return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build();
+        } catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
     @PUT @Path("/{id}")
-    @RolesAllowed("ADMIN")
     public Response update(@PathParam("id") long id, UserRequest request) {
-        if (request == null) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("request body is required")).build();
-        try { var updated = users.update(id, request.password(), request.displayName(), request.deptId(), request.enabled(), request.roleCodes()); logs.record(actor(), "UPDATE", "user", String.valueOf(id), updated.username()); return Response.ok(ApiResponse.ok(updated)).build(); }
-        catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
-        catch (java.util.NoSuchElementException e) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("user not found")).build(); }
+        if (request == null) return bad("request body is required");
+        try {
+            var updated = users.updateExtended(id, request.password(), request.displayName(), request.clearDepartment() || request.deptId() != null, request.deptId(), request.postId(), request.email(), request.phoneNumber(), request.sex(), request.avatar(), request.remark(), request.enabled(), request.roleCodes());
+            logs.record(actor(), "UPDATE", "user", String.valueOf(id), updated.username());
+            return Response.ok(ApiResponse.ok(updated)).build();
+        } catch (IllegalArgumentException e) { return bad(e.getMessage()); }
+        catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @PUT @Path("/{id}/password") @RolesAllowed("ADMIN")
+    @PUT @Path("/{id}/password")
     public Response password(@PathParam("id") long id, PasswordRequest request) {
-        if (request == null || request.password() == null || request.password().isBlank()) return Response.status(400).entity(ApiResponse.error("password is required")).build();
+        if (request == null || request.password() == null || request.password().isBlank()) return bad("password is required");
         try { var updated = users.update(id, request.password(), null, null, null, null); logs.record(actor(), "UPDATE", "user-password", String.valueOf(id), null); return Response.ok(ApiResponse.ok(updated)).build(); }
-        catch (java.util.NoSuchElementException e) { return Response.status(404).entity(ApiResponse.error("user not found")).build(); }
+        catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @PUT @Path("/{id}/status") @RolesAllowed("ADMIN")
+    @PUT @Path("/{id}/status")
     public Response status(@PathParam("id") long id, StatusRequest request) {
-        if (request == null || request.enabled() == null) return Response.status(400).entity(ApiResponse.error("enabled is required")).build();
+        if (request == null || request.enabled() == null) return bad("enabled is required");
         try { var updated = users.update(id, null, null, null, request.enabled(), null); logs.record(actor(), "UPDATE", "user-status", String.valueOf(id), String.valueOf(request.enabled())); return Response.ok(ApiResponse.ok(updated)).build(); }
-        catch (java.util.NoSuchElementException e) { return Response.status(404).entity(ApiResponse.error("user not found")).build(); }
+        catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
     @DELETE @Path("/{id}")
-    @RolesAllowed("ADMIN")
     public Response delete(@PathParam("id") long id) {
         try { users.delete(id); logs.record(actor(), "DELETE", "user", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
-        catch (java.util.NoSuchElementException e) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("user not found")).build(); }
+        catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @DELETE @RolesAllowed("ADMIN")
+    @DELETE
     public Response deleteBatch(@QueryParam("ids") String ids) {
-        if (ids == null || ids.isBlank()) return Response.status(400).entity(ApiResponse.error("ids is required")).build();
-        try { var values = java.util.Arrays.stream(ids.split(",")).map(String::trim).map(Long::valueOf).toList(); users.deleteAll(values); logs.record(actor(), "DELETE", "users", ids, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", values.size()))).build(); }
-        catch (NumberFormatException e) { return Response.status(400).entity(ApiResponse.error("ids must be comma separated numbers")).build(); }
+        if (ids == null || ids.isBlank()) return bad("ids is required");
+        try { var values = java.util.Arrays.stream(ids.split(",")).map(String::trim).map(Long::valueOf).toList(); int deleted = users.deleteAll(values); logs.record(actor(), "DELETE", "users", ids, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", deleted))).build(); }
+        catch (NumberFormatException e) { return bad("ids must be comma separated numbers"); }
     }
 
-    public record UserRequest(String username, String password, String displayName, Long deptId, Boolean enabled, List<String> roleCodes) {}
+    private String actor() { return identity.getPrincipal().getName(); }
+    private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).build(); }
+    private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("user not found")).build(); }
+    public record UserRequest(String username, String password, String displayName, Long deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, Boolean clearDept, List<String> roleCodes) {
+        public boolean clearDepartment() { return Boolean.TRUE.equals(clearDept); }
+    }
     public record PasswordRequest(String password) {}
     public record StatusRequest(Boolean enabled) {}
-    private String actor() { return identity.getPrincipal().getName(); }
 }
