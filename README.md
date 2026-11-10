@@ -89,12 +89,12 @@ GitHub Actions 在每次推送和 Pull Request 中执行 MySQL 集成测试、JV
 
 | 指标 | Spring Boot Keystone 基线 | Quarkus JVM | Quarkus Native |
 |---|---:|---:|---:|
-| 应用包 | 可执行 JAR **95.6 MB** | fast-jar 目录 **30,786,263 bytes**（约 29.36 MiB）；uber-jar **30,568,208 bytes**（约 29.15 MiB） | Native runner **90.57 MB** |
-| Docker 本地镜像 | 未在本次基准中测量 | **350,550,785 bytes**（约 334.2 MiB；`docker images` 显示 351 MB） | **208,212,535 bytes**（约 198.5 MiB；`docker images` 显示 208 MB） |
-| `docker save` + gzip | 未在本次基准中测量 | **138,748,526 bytes**（约 132.3 MiB） | **72,948,159 bytes**（约 69.6 MiB） |
-| Native 启动日志 | — | — | 约 **0.08 秒** |
-| Native 进程 RSS | — | — | 约 **70–76 MB** |
-| Native 构建开销 | — | — | 约 **6 分 31 秒**；峰值构建 RSS 约 **4.84 GB** |
+| 应用包 | 可执行 JAR **95.6 MB** | fast-jar 目录 **31,175,407 bytes**（约 29.73 MiB）；uber-jar **30,921,462 bytes**（约 29.49 MiB） | Native runner **71,436,608 bytes**（约 68.13 MiB） |
+| Docker 本地镜像 | 未在本次基准中测量 | **350,939,929 bytes**（约 334.68 MiB；`docker images` 显示 351 MB） | **169,936,439 bytes**（约 162.06 MiB；`docker images` 显示 170 MB） |
+| `docker save` + gzip | 未在本次基准中测量 | **139,045,709 bytes**（约 132.60 MiB） | **63,461,403 bytes**（约 60.52 MiB） |
+| Native 启动日志 | — | — | 约 **0.089 秒** |
+| Native 进程 RSS | — | — | 约 **57.6 MB** |
+| Native 构建开销 | — | — | 约 **5 分 22 秒**；峰值构建 RSS 约 **3.37 GB** |
 
 指标口径：
 
@@ -102,6 +102,7 @@ GitHub Actions 在每次推送和 Pull Request 中执行 MySQL 集成测试、JV
 - `docker save | gzip` 是压缩后的传输归档大小，不代表容器运行时占用。
 - `MiB` 使用 `1 MiB = 1,048,576 bytes`；Docker 的 `MB` 显示为四舍五入后的展示值。
 - JVM 对照镜像使用 `eclipse-temurin:21-jre`；Native 镜像使用 `Dockerfile` 中固定 digest 的 Quarkus Micro Image。
+- Native 镜像大小按当前 runner 与固定 digest 的运行时镜像层实测；完整多阶段 Docker 构建需要向 Docker BuildKit 提供 `proxy-ca` secret（如使用代理环境）。
 - Spring Boot 的 95.6 MB 是原 Keystone 的可执行 Fat JAR，用作参考基线，不是本仓库生成的产物。
 
 ## 配置与密钥
