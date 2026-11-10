@@ -16,7 +16,10 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 /** Compatibility endpoints matching the original Keystone login contract. */
@@ -67,10 +70,13 @@ public class LegacyAuthResource {
     public ApiResponse<UserRepository.AuthUser> loginUserInfo() { return ApiResponse.ok(users.findAuthUserByUsername(identity.getPrincipal().getName()).orElseThrow(NotFoundException::new)); }
 
     @GET @Path("getRouters") @RolesAllowed({"USER", "ADMIN"})
-    public ApiResponse<java.util.List<app.keystone.menu.Menu>> routers() { return ApiResponse.ok(menus.listForRoles(identity.getRoles().stream().toList())); }
+    public ApiResponse<List<Router>> routers() { return ApiResponse.ok(toRouters(menus.listForRoles(identity.getRoles().stream().toList()))); }
 
     @GET @Path("getConfig") @PermitAll
-    public ApiResponse<Map<String, Object>> config() { return ApiResponse.ok(Map.of("captchaEnabled", false, "registerEnabled", false)); }
+    public ApiResponse<Map<String, Object>> config() { return ApiResponse.ok(Map.of("captchaEnabled", false, "isCaptchaOn", false, "registerEnabled", false)); }
+
+    @GET @Path("captchaImage") @PermitAll
+    public ApiResponse<Map<String, Object>> captchaImage() { return ApiResponse.ok(Map.of("captchaEnabled", false, "isCaptchaOn", false, "captchaCodeKey", "", "captchaCodeImg", "")); }
 
     @GET @Path("health") @PermitAll
     public ApiResponse<HealthResource.Health> health() { return ApiResponse.ok(new HealthResource.Health("UP", "keystone-native")); }
@@ -79,12 +85,38 @@ public class LegacyAuthResource {
     public Response rsaPublicKey() {
         try (InputStream in = Thread.currentThread().getContextClassLoader().getResourceAsStream("keys/publicKey.pem")) {
             if (in == null) return Response.status(404).entity(ApiResponse.error("public key not found")).build();
-            return Response.ok(ApiResponse.ok(new String(in.readAllBytes(), StandardCharsets.UTF_8))).build();
+            return Response.ok(ApiResponse.ok(Map.of("publicKey", new String(in.readAllBytes(), StandardCharsets.UTF_8)))).build();
         } catch (Exception e) { return Response.serverError().entity(ApiResponse.error("could not load public key")).build(); }
+    }
+
+    @POST @Path("register") @PermitAll
+    public Response register() { return Response.status(Response.Status.NOT_IMPLEMENTED).entity(ApiResponse.error("registration is not supported")).build(); }
+
+    private static List<Router> toRouters(List<app.keystone.menu.Menu> menus) {
+        Map<Long, RouterBuilder> nodes = new LinkedHashMap<>();
+        for (var menu : menus) {
+            if ("BUTTON".equalsIgnoreCase(menu.menuType())) continue;
+            Map<String, Object> meta = new LinkedHashMap<>(); meta.put("title", menu.name());
+            if (menu.permission() != null && !menu.permission().isBlank()) meta.put("permission", menu.permission());
+            nodes.put(menu.id(), new RouterBuilder(menu, new Router(menu.code(), menu.path() == null ? "/" + menu.code() : menu.path(), menu.component(), meta, List.of())));
+        }
+        List<RouterBuilder> roots = new ArrayList<>();
+        for (var node : nodes.values()) {
+            if (node.menu.parentId() == null || !nodes.containsKey(node.menu.parentId())) roots.add(node);
+            else nodes.get(node.menu.parentId()).children.add(node);
+        }
+        return roots.stream().map(RouterBuilder::build).toList();
     }
 
     private AuthResource.TokenResponse issue(UserRepository.AuthUser user, String refreshToken) {
         String access = Jwt.issuer(issuer).upn(user.username()).groups(new HashSet<>(user.roles())).claim("userId", user.id()).expiresIn(Duration.ofHours(2)).sign();
         return new AuthResource.TokenResponse(access, access, refreshToken, "Bearer", 7200, 1209600, user.username(), user.displayName(), user.roles());
+    }
+
+    public record Router(String name, String path, String component, Map<String, Object> meta, List<Router> children) {}
+    private static final class RouterBuilder {
+        private final app.keystone.menu.Menu menu; private final Router router; private final List<RouterBuilder> children = new ArrayList<>();
+        private RouterBuilder(app.keystone.menu.Menu menu, Router router) { this.menu = menu; this.router = router; }
+        private Router build() { return new Router(router.name(), router.path(), router.component(), router.meta(), children.stream().map(RouterBuilder::build).toList()); }
     }
 }
