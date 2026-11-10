@@ -40,6 +40,31 @@ public class DictionaryRepository {
         catch (Exception e) { throw new IllegalStateException("Could not create dictionary item", e); }
     }
 
+    public DictionaryType updateType(String code, String name, Boolean enabled) {
+        var fields = new ArrayList<String>(); var values = new ArrayList<Object>();
+        if (name != null && !name.isBlank()) { fields.add("name = ?"); values.add(name.trim()); }
+        if (enabled != null) { fields.add("enabled = ?"); values.add(enabled); }
+        try (var c = dataSource.getConnection()) { if (!fields.isEmpty()) try (var p = c.prepareStatement("UPDATE sys_dict_type SET " + String.join(", ", fields) + " WHERE code = ?")) { for (int i = 0; i < values.size(); i++) p.setObject(i + 1, values.get(i)); p.setString(values.size() + 1, code); if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("dictionary type not found"); } try (var p = c.prepareStatement("SELECT id, code, name, enabled FROM sys_dict_type WHERE code = ?")) { p.setString(1, code); try (var rs = p.executeQuery()) { if (!rs.next()) throw new java.util.NoSuchElementException("dictionary type not found"); return new DictionaryType(rs.getLong("id"), rs.getString("code"), rs.getString("name"), rs.getBoolean("enabled")); } } }
+        catch (java.util.NoSuchElementException e) { throw e; }
+        catch (Exception e) { throw new IllegalStateException("Could not update dictionary type", e); }
+    }
+
+    public DictionaryItem updateItem(long id, String label, Integer sortOrder, Boolean enabled) {
+        var fields = new ArrayList<String>(); var values = new ArrayList<Object>();
+        if (label != null && !label.isBlank()) { fields.add("item_label = ?"); values.add(label.trim()); }
+        if (sortOrder != null) { fields.add("sort_order = ?"); values.add(sortOrder); }
+        if (enabled != null) { fields.add("enabled = ?"); values.add(enabled); }
+        try (var c = dataSource.getConnection()) { if (!fields.isEmpty()) try (var p = c.prepareStatement("UPDATE sys_dict_item SET " + String.join(", ", fields) + " WHERE id = ?")) { for (int i = 0; i < values.size(); i++) p.setObject(i + 1, values.get(i)); p.setLong(values.size() + 1, id); if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("dictionary item not found"); } return findItem(c, id); }
+        catch (java.util.NoSuchElementException e) { throw e; }
+        catch (Exception e) { throw new IllegalStateException("Could not update dictionary item", e); }
+    }
+
+    public void deleteType(String code) {
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("DELETE FROM sys_dict_type WHERE code = ?")) { p.setString(1, code); if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("dictionary type not found"); }
+        catch (java.util.NoSuchElementException e) { throw e; }
+        catch (Exception e) { throw new IllegalStateException("Could not delete dictionary type", e); }
+    }
+
     public void deleteItem(long id) {
         try (var c = dataSource.getConnection(); var p = c.prepareStatement("DELETE FROM sys_dict_item WHERE id = ?")) { p.setLong(1, id); if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("dictionary item not found"); }
         catch (java.util.NoSuchElementException e) { throw e; }

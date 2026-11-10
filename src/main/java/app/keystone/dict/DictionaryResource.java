@@ -37,6 +37,15 @@ public class DictionaryResource {
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
+    @PUT @Path("/types/{code}") @RolesAllowed("ADMIN")
+    public Response updateType(@PathParam("code") String code, TypeRequest request) { if (request == null) return bad("request body is required"); try { var type = dictionaries.updateType(code, request.name(), request.enabled()); logs.record(actor(), "UPDATE", "dictionary-type", String.valueOf(type.id()), type.code()); return Response.ok(ApiResponse.ok(type)).build(); } catch (java.util.NoSuchElementException e) { return notFoundType(); } }
+
+    @DELETE @Path("/types/{code}") @RolesAllowed("ADMIN")
+    public Response deleteType(@PathParam("code") String code) { try { dictionaries.deleteType(code); logs.record(actor(), "DELETE", "dictionary-type", code, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (java.util.NoSuchElementException e) { return notFoundType(); } }
+
+    @PUT @Path("/items/{id}") @RolesAllowed("ADMIN")
+    public Response updateItem(@PathParam("id") long id, ItemRequest request) { if (request == null) return bad("request body is required"); try { var item = dictionaries.updateItem(id, request.label(), request.sortOrder(), request.enabled()); logs.record(actor(), "UPDATE", "dictionary-item", String.valueOf(id), item.value()); return Response.ok(ApiResponse.ok(item)).build(); } catch (java.util.NoSuchElementException e) { return notFound(); } }
+
     @DELETE @Path("/items/{id}") @RolesAllowed("ADMIN")
     public Response deleteItem(@PathParam("id") long id) {
         try { dictionaries.deleteItem(id); logs.record(actor(), "DELETE", "dictionary-item", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
@@ -45,7 +54,8 @@ public class DictionaryResource {
 
     private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).build(); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("dictionary item not found")).build(); }
-    public record TypeRequest(String code, String name) {}
-    public record ItemRequest(String value, String label, Integer sortOrder) {}
+    private static Response notFoundType() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("dictionary type not found")).build(); }
+    public record TypeRequest(String code, String name, Boolean enabled) {}
+    public record ItemRequest(String value, String label, Integer sortOrder, Boolean enabled) {}
     private String actor() { return identity.getPrincipal().getName(); }
 }
