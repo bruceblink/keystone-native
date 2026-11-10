@@ -2,9 +2,9 @@ package app.keystone.job;
 
 import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import io.quarkus.arc.Arc;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Any;
-import jakarta.enterprise.inject.Instance;
 import jakarta.inject.Inject;
 import jakarta.inject.Named;
 import java.lang.reflect.InvocationTargetException;
@@ -23,7 +23,6 @@ import java.util.regex.Pattern;
 public class JobInvocationService {
     private static final Pattern TARGET = Pattern.compile("^([A-Za-z][A-Za-z0-9_]*)\\.([A-Za-z][A-Za-z0-9_]*)\\(\\)$");
 
-    @Inject @Any Instance<Object> beans;
     @Inject SystemJobTasks systemJobTasks;
     @Inject ObjectMapper objectMapper;
 
@@ -63,7 +62,14 @@ public class JobInvocationService {
             Map<String, Invocation> discovered = new LinkedHashMap<>();
             List<Object> candidates = new ArrayList<>();
             candidates.add(systemJobTasks);
-            for (Object bean : beans) if (bean != systemJobTasks) candidates.add(bean);
+            for (var handle : Arc.container().listAll(Object.class, Any.Literal.INSTANCE)) {
+                Class<?> beanClass = handle.getBean().getBeanClass();
+                if (hasJobTask(beanClass)) {
+                    Object bean = handle.get();
+                    if (bean != systemJobTasks) candidates.add(bean);
+                }
+                handle.close();
+            }
             for (Object bean : candidates) {
                 Class<?> type = userClass(bean.getClass());
                 String beanName = beanName(bean, type);
@@ -108,6 +114,8 @@ public class JobInvocationService {
         }
         return result;
     }
+
+    private static boolean hasJobTask(Class<?> type) { return methods(type).stream().anyMatch(method -> method.getAnnotation(JobTask.class) != null); }
 
     private static Class<?> userClass(Class<?> type) {
         Class<?> current = type;
