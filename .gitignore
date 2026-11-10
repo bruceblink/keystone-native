@@ -1,6 +1,8 @@
 target/
 build/
 .gradle/
+.env
+docker/keys/*.pem
 .idea/
 .vscode/
 *.iml

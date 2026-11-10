@@ -20,4 +20,8 @@ services:
       DB_URL: jdbc:mysql://mysql:3306/keystone
       DB_USERNAME: keystone
       DB_PASSWORD: keystone
+      JWT_PRIVATE_KEY_LOCATION: /run/keys/privateKey.pem
+      JWT_PUBLIC_KEY_LOCATION: /run/keys/publicKey.pem
+    volumes:
+      - ./docker/keys:/run/keys:ro
     ports: ["8080:8080"]

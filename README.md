@@ -39,7 +39,9 @@ curl -X POST http://localhost:8080/api/v1/auth/login \
   -d '{"username":"admin","password":"password"}'
 ```
 
-开发环境使用仓库内的 RSA 密钥对，部署时应通过 `JWT_PRIVATE_KEY_LOCATION` 和 `JWT_PUBLIC_KEY_LOCATION` 指向外部密钥，并设置 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD`。
+测试使用 `src/test/resources/keys` 中的 RSA 密钥对。开发和生产运行时必须通过 `JWT_PRIVATE_KEY_LOCATION` 和 `JWT_PUBLIC_KEY_LOCATION` 指向外部密钥，并设置 `DB_URL`、`DB_USERNAME`、`DB_PASSWORD`。
+
+使用 Compose 前，将部署密钥放入 `docker/keys/privateKey.pem` 和 `docker/keys/publicKey.pem`；这些文件不会提交到 Git。
 
 ## Native 构建
 
