@@ -1,0 +1,36 @@
+package app.keystone.notice;
+
+import app.keystone.ApiResponse;
+import app.keystone.audit.OperationLogRepository;
+import io.quarkus.security.identity.SecurityIdentity;
+import jakarta.annotation.security.PermitAll;
+import jakarta.annotation.security.RolesAllowed;
+import jakarta.inject.Inject;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import java.util.List;
+import java.util.NoSuchElementException;
+
+@Path("/v1/notices")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
+@RolesAllowed({"USER", "ADMIN"})
+public class NoticeResource {
+    @Inject NoticeRepository notices;
+    @Inject OperationLogRepository logs;
+    @Inject SecurityIdentity identity;
+
+    @GET @PermitAll public ApiResponse<List<Notice>> publicList() { return ApiResponse.ok(notices.list(true)); }
+    @GET @Path("/manage") @RolesAllowed("ADMIN") public ApiResponse<List<Notice>> manageList() { return ApiResponse.ok(notices.list(false)); }
+    @POST @RolesAllowed("ADMIN") public Response create(NoticeRequest request) { if (request == null) return bad("request body is required"); try { var notice = notices.create(request.title(), request.content(), request.noticeType(), actor()); logs.record(actor(), "CREATE", "notice", String.valueOf(notice.id()), notice.title()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(notice)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
+    @PUT @Path("/{id}") @RolesAllowed("ADMIN") public Response update(@PathParam("id") long id, NoticeRequest request) { if (request == null) return bad("request body is required"); try { var notice = notices.update(id, request.title(), request.content(), request.noticeType(), request.enabled()); logs.record(actor(), "UPDATE", "notice", String.valueOf(id), notice.title()); return Response.ok(ApiResponse.ok(notice)).build(); } catch (NoSuchElementException e) { return notFound(); } }
+    @POST @Path("/{id}/publish") @RolesAllowed("ADMIN") public Response publish(@PathParam("id") long id, PublishRequest request) { if (request == null || request.published() == null) return bad("published is required"); try { var notice = notices.publish(id, request.published()); logs.record(actor(), "PUBLISH", "notice", String.valueOf(id), String.valueOf(request.published())); return Response.ok(ApiResponse.ok(notice)).build(); } catch (NoSuchElementException e) { return notFound(); } }
+    @DELETE @Path("/{id}") @RolesAllowed("ADMIN") public Response delete(@PathParam("id") long id) { try { notices.delete(id); logs.record(actor(), "DELETE", "notice", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (NoSuchElementException e) { return notFound(); } }
+
+    private String actor() { return identity.getPrincipal().getName(); }
+    private static Response bad(String message) { return Response.status(400).entity(ApiResponse.error(message)).build(); }
+    private static Response notFound() { return Response.status(404).entity(ApiResponse.error("notice not found")).build(); }
+    public record NoticeRequest(String title, String content, String noticeType, Boolean enabled) {}
+    public record PublishRequest(Boolean published) {}
+}
