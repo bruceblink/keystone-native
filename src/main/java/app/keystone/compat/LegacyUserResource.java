@@ -11,6 +11,9 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.jboss.resteasy.reactive.RestForm;
+import org.jboss.resteasy.reactive.multipart.FileUpload;
+import java.nio.file.Files;
 import java.util.Arrays;
 import java.util.List;
 
@@ -27,6 +30,13 @@ public class LegacyUserResource {
     public ApiResponse<UserRepository.Page> list(@QueryParam("pageNum") Integer pageNum, @QueryParam("pageSize") Integer pageSize, @QueryParam("username") String username, @QueryParam("nickname") String nickname, @QueryParam("deptId") Long deptId, @QueryParam("status") Integer status) {
         return ApiResponse.ok(users.list(pageNum == null ? 1 : pageNum, pageSize == null ? 20 : pageSize, username, nickname, deptId, status == null ? null : status == 1));
     }
+
+    @GET @Path("/excel")
+    public Response export(@QueryParam("username") String username, @QueryParam("nickname") String nickname) { var page = users.list(1, 100, username, nickname, null, null); var rows = new java.util.ArrayList<String[]>(); rows.add(new String[]{"id", "username", "displayName", "email", "phoneNumber", "enabled"}); for (User user : page.items()) rows.add(new String[]{String.valueOf(user.id()), user.username(), user.displayName(), user.email(), user.phoneNumber(), String.valueOf(user.enabled())}); return CsvExport.response("users.csv", rows); }
+    @GET @Path("/excelTemplate")
+    public Response template() { return CsvExport.response("users-template.csv", java.util.Collections.singletonList(new String[]{"username", "password", "displayName", "email", "phoneNumber", "roleCode"})); }
+    @POST @Path("/excel") @Consumes(MediaType.MULTIPART_FORM_DATA)
+    public Response importCsv(@RestForm("file") FileUpload file) { if (file == null) return bad("file is required"); int imported = 0; try { for (String line : Files.readAllLines(file.uploadedFile())) { if (line.isBlank() || line.toLowerCase().startsWith("username,")) continue; String[] columns = line.split(",", -1); if (columns.length < 3) continue; users.create(columns[0].trim(), columns[1].trim(), columns[2].trim(), null, null, columns.length > 3 ? columns[3].trim() : null, columns.length > 4 ? columns[4].trim() : null, null, null, null, columns.length > 5 && !columns[5].isBlank() ? List.of(columns[5].trim()) : List.of("USER")); imported++; } return Response.ok(ApiResponse.ok(java.util.Map.of("imported", imported))).build(); } catch (Exception e) { return bad("invalid user import file"); } }
 
     @GET @Path("/{id}")
     public ApiResponse<User> get(@PathParam("id") long id) { try { return ApiResponse.ok(users.findPublic(id)); } catch (java.util.NoSuchElementException e) { throw new NotFoundException("user not found"); } }

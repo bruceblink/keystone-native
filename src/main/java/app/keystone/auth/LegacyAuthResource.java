@@ -85,6 +85,9 @@ public class LegacyAuthResource {
     @GET @Path("health") @PermitAll
     public ApiResponse<HealthResource.Health> health() { return ApiResponse.ok(new HealthResource.Health("UP", "keystone-native")); }
 
+    @GET @Path("") @PermitAll
+    public ApiResponse<HealthResource.Health> index() { return health(); }
+
     @GET @Path("login/rsa-public-key") @PermitAll
     public Response rsaPublicKey() {
         try (InputStream in = Thread.currentThread().getContextClassLoader().getResourceAsStream("keys/publicKey.pem")) {

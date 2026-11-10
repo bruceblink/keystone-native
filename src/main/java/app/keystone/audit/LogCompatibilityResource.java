@@ -22,11 +22,17 @@ public class LogCompatibilityResource {
     @GET @Path("/loginLogs")
     public ApiResponse<LoginLogRepository.Page> loginLogs(@QueryParam("page") Integer page, @QueryParam("size") Integer size, @QueryParam("username") String username, @QueryParam("status") String status) { return ApiResponse.ok(loginLogs.list(page == null ? 1 : page, size == null ? 20 : size, username, status)); }
 
+    @GET @Path("/loginLogs/excel")
+    public Response loginLogsExport(@QueryParam("username") String username, @QueryParam("status") String status) { var page = loginLogs.list(1, 100, username, status); var rows = new java.util.ArrayList<String[]>(); rows.add(new String[]{"id", "username", "status", "ipAddress", "message", "loginAt"}); for (LoginLog log : page.items()) rows.add(new String[]{String.valueOf(log.id()), log.username(), log.status(), log.ipAddress(), log.message(), String.valueOf(log.loginAt())}); return app.keystone.compat.CsvExport.response("login-logs.csv", rows); }
+
     @DELETE @Path("/loginLogs")
     public Response deleteLoginLogs(@QueryParam("ids") String ids) { try { return Response.ok(ApiResponse.ok(Map.of("deleted", loginLogs.delete(parseIds(ids))))).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
 
     @GET @Path("/operationLogs")
     public ApiResponse<OperationLogRepository.Page> operationLogs(@QueryParam("page") Integer page, @QueryParam("size") Integer size, @QueryParam("actor") String actor, @QueryParam("action") String action, @QueryParam("resource") String resource) { return ApiResponse.ok(operationLogs.list(page == null ? 1 : page, size == null ? 20 : size, actor, action, resource)); }
+
+    @GET @Path("/operationLogs/excel")
+    public Response operationLogsExport(@QueryParam("actor") String actor, @QueryParam("action") String action, @QueryParam("resource") String resource) { var page = operationLogs.list(1, 100, actor, action, resource); var rows = new java.util.ArrayList<String[]>(); rows.add(new String[]{"id", "actor", "action", "resource", "resourceId", "detail", "createdAt"}); for (OperationLog log : page.items()) rows.add(new String[]{String.valueOf(log.id()), log.actorUsername(), log.action(), log.resource(), log.resourceId(), log.detail(), String.valueOf(log.createdAt())}); return app.keystone.compat.CsvExport.response("operation-logs.csv", rows); }
 
     @POST @Path("/operationLogs") @Consumes(MediaType.APPLICATION_JSON)
     public Response addOperationLog(OperationLogRequest request) { if (request == null || request.action() == null || request.resource() == null) return bad("action and resource are required"); operationLogs.record(identity.getPrincipal().getName(), request.action(), request.resource(), request.resourceId(), request.detail()); return Response.ok(ApiResponse.ok(Map.of("recorded", true))).build(); }
