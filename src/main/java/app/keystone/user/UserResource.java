@@ -35,7 +35,7 @@ public class UserResource {
     @RolesAllowed("ADMIN")
     public Response create(UserRequest request) {
         if (request == null) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("request body is required")).build();
-        try { var created = users.create(request.username(), request.password(), request.displayName(), request.roleCodes()); logs.record(actor(), "CREATE", "user", String.valueOf(created.id()), created.username()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build(); }
+        try { var created = users.create(request.username(), request.password(), request.displayName(), request.deptId(), request.roleCodes()); logs.record(actor(), "CREATE", "user", String.valueOf(created.id()), created.username()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build(); }
         catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
     }
 
@@ -43,7 +43,7 @@ public class UserResource {
     @RolesAllowed("ADMIN")
     public Response update(@PathParam("id") long id, UserRequest request) {
         if (request == null) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("request body is required")).build();
-        try { var updated = users.update(id, request.password(), request.displayName(), request.enabled(), request.roleCodes()); logs.record(actor(), "UPDATE", "user", String.valueOf(id), updated.username()); return Response.ok(ApiResponse.ok(updated)).build(); }
+        try { var updated = users.update(id, request.password(), request.displayName(), request.deptId(), request.enabled(), request.roleCodes()); logs.record(actor(), "UPDATE", "user", String.valueOf(id), updated.username()); return Response.ok(ApiResponse.ok(updated)).build(); }
         catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (java.util.NoSuchElementException e) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("user not found")).build(); }
     }
@@ -55,6 +55,6 @@ public class UserResource {
         catch (java.util.NoSuchElementException e) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("user not found")).build(); }
     }
 
-    public record UserRequest(String username, String password, String displayName, Boolean enabled, List<String> roleCodes) {}
+    public record UserRequest(String username, String password, String displayName, Long deptId, Boolean enabled, List<String> roleCodes) {}
     private String actor() { return identity.getPrincipal().getName(); }
 }
