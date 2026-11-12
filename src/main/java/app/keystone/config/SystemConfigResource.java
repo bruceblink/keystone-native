@@ -2,8 +2,8 @@ package app.keystone.config;
 
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
+import app.keystone.auth.RequiresPermission;
 import io.quarkus.security.identity.SecurityIdentity;
-import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -13,17 +13,16 @@ import java.util.List;
 @Path("/v1/configs")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@RolesAllowed({"USER", "ADMIN"})
 public class SystemConfigResource {
     @Inject SystemConfigRepository configs;
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
 
-    @GET @RolesAllowed("ADMIN") public ApiResponse<List<SystemConfig>> list() { return ApiResponse.ok(configs.list()); }
-    @GET @Path("/{key}") @RolesAllowed("ADMIN") public ApiResponse<SystemConfig> get(@PathParam("key") String key) { try { return ApiResponse.ok(configs.find(key)); } catch (java.util.NoSuchElementException e) { throw new NotFoundException("config not found"); } }
-    @POST @RolesAllowed("ADMIN") public Response create(ConfigRequest request) { if (request == null) return bad("request body is required"); try { var config = configs.create(request.key(), request.value(), request.description()); logs.record(actor(), "CREATE", "config", String.valueOf(config.id()), config.key()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(config)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
-    @PUT @Path("/{key}") @RolesAllowed("ADMIN") public Response update(@PathParam("key") String key, ConfigRequest request) { if (request == null) return bad("request body is required"); try { var config = configs.update(key, request.value(), request.description(), request.enabled()); logs.record(actor(), "UPDATE", "config", String.valueOf(config.id()), config.key()); return Response.ok(ApiResponse.ok(config)).build(); } catch (java.util.NoSuchElementException e) { return notFound(); } }
-    @DELETE @Path("/{key}") @RolesAllowed("ADMIN") public Response delete(@PathParam("key") String key) { try { configs.delete(key); logs.record(actor(), "DELETE", "config", key, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (java.util.NoSuchElementException e) { return notFound(); } }
+    @GET @RequiresPermission("config:read") public ApiResponse<List<SystemConfig>> list() { return ApiResponse.ok(configs.list()); }
+    @GET @Path("/{key}") @RequiresPermission("config:read") public ApiResponse<SystemConfig> get(@PathParam("key") String key) { try { return ApiResponse.ok(configs.find(key)); } catch (java.util.NoSuchElementException e) { throw new NotFoundException("config not found"); } }
+    @POST @RequiresPermission("config:write") public Response create(ConfigRequest request) { if (request == null) return bad("request body is required"); try { var config = configs.create(request.key(), request.value(), request.description()); logs.record(actor(), "CREATE", "config", String.valueOf(config.id()), config.key()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(config)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
+    @PUT @Path("/{key}") @RequiresPermission("config:write") public Response update(@PathParam("key") String key, ConfigRequest request) { if (request == null) return bad("request body is required"); try { var config = configs.update(key, request.value(), request.description(), request.enabled()); logs.record(actor(), "UPDATE", "config", String.valueOf(config.id()), config.key()); return Response.ok(ApiResponse.ok(config)).build(); } catch (java.util.NoSuchElementException e) { return notFound(); } }
+    @DELETE @Path("/{key}") @RequiresPermission("config:write") public Response delete(@PathParam("key") String key) { try { configs.delete(key); logs.record(actor(), "DELETE", "config", key, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (java.util.NoSuchElementException e) { return notFound(); } }
 
     private String actor() { return identity.getPrincipal().getName(); }
     private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).build(); }

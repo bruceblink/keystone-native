@@ -2,7 +2,7 @@ package app.keystone.dept;
 
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
-import jakarta.annotation.security.RolesAllowed;
+import app.keystone.auth.RequiresPermission;
 import jakarta.inject.Inject;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.ws.rs.*;
@@ -13,23 +13,24 @@ import java.util.List;
 @Path("/v1/departments")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
-@RolesAllowed({"USER", "ADMIN"})
 public class DepartmentResource {
     @Inject DepartmentRepository departments;
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
 
-    @GET public ApiResponse<List<Department>> list() { return ApiResponse.ok(departments.list()); }
-    @GET @Path("/dropdown") public ApiResponse<List<Department>> dropdown() { return ApiResponse.ok(departments.list()); }
+    @GET @RequiresPermission("department:read")
+    public ApiResponse<List<Department>> list() { return ApiResponse.ok(departments.list()); }
+    @GET @Path("/dropdown") @RequiresPermission("department:read")
+    public ApiResponse<List<Department>> dropdown() { return ApiResponse.ok(departments.list()); }
 
-    @POST @RolesAllowed("ADMIN")
+    @POST @RequiresPermission("department:write")
     public Response create(DepartmentRequest request) {
         if (request == null) return bad("request body is required");
         try { var created = departments.create(request.code(), request.name(), request.parentId(), request.sortOrder()); logs.record(actor(), "CREATE", "department", String.valueOf(created.id()), created.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build(); }
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
-    @PUT @Path("/{id}") @RolesAllowed("ADMIN")
+    @PUT @Path("/{id}") @RequiresPermission("department:write")
     public Response update(@PathParam("id") long id, DepartmentRequest request) {
         if (request == null) return bad("request body is required");
         try { var updated = departments.update(id, request.name(), request.parentId(), request.sortOrder(), request.enabled()); logs.record(actor(), "UPDATE", "department", String.valueOf(id), updated.code()); return Response.ok(ApiResponse.ok(updated)).build(); }
@@ -37,7 +38,7 @@ public class DepartmentResource {
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @DELETE @Path("/{id}") @RolesAllowed("ADMIN")
+    @DELETE @Path("/{id}") @RequiresPermission("department:write")
     public Response delete(@PathParam("id") long id) {
         try { departments.delete(id); logs.record(actor(), "DELETE", "department", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }
