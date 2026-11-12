@@ -25,7 +25,9 @@ public class ApiKeyAuthenticationMechanism implements HttpAuthenticationMechanis
 
     @Override
     public io.smallrye.mutiny.Uni<SecurityIdentity> authenticate(RoutingContext context, IdentityProviderManager manager) {
-        String header = context.request().getHeader("Authorization");
+        var headers = context.request().headers().getAll("Authorization");
+        if (headers.size() > 1) return io.smallrye.mutiny.Uni.createFrom().failure(new io.quarkus.security.AuthenticationFailedException("multiple authorization credentials are not allowed"));
+        String header = headers.isEmpty() ? null : headers.get(0);
         if (header == null || !header.regionMatches(true, 0, SCHEME + " ", 0, SCHEME.length() + 1)) {
             return jwt.authenticate(context, manager);
         }
