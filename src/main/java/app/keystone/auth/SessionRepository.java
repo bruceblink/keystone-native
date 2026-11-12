@@ -99,7 +99,8 @@ public class SessionRepository {
     }
 
     public boolean isAccessTokenActive(String accessTokenId) {
-        if (accessTokenId == null || accessTokenId.isBlank()) return true;
+        // 访问令牌必须携带非空 jti；缺少会话标识时按无效令牌处理。
+        if (accessTokenId == null || accessTokenId.isBlank()) return false;
         try (var c = dataSource.getConnection(); var p = c.prepareStatement("SELECT 1 FROM sys_refresh_token WHERE access_token_id = ? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP AND access_expires_at > CURRENT_TIMESTAMP AND idle_expires_at > CURRENT_TIMESTAMP")) { p.setString(1, accessTokenId); try (var rs = p.executeQuery()) { return rs.next(); } }
         catch (Exception e) { throw new IllegalStateException("Could not validate access session", e); }
     }

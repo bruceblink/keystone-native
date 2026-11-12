@@ -19,14 +19,17 @@ public class AccessSessionFilter implements ContainerRequestFilter {
 
     @Override
     public void filter(ContainerRequestContext context) {
-        String accessTokenId = null;
-        if (identity.getPrincipal() instanceof JsonWebToken jwt) accessTokenId = jwt.getClaim("jti");
-        if (accessTokenId != null) {
-            try {
-                if (!sessions.isAccessTokenActive(accessTokenId)) context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access session is no longer active").build());
-            } catch (IllegalStateException e) {
-                context.abortWith(Response.status(Response.Status.SERVICE_UNAVAILABLE).entity("authentication state is unavailable").build());
-            }
+        if (!(identity.getPrincipal() instanceof JsonWebToken jwt)) return;
+        String accessTokenId = jwt.getClaim("jti");
+        // JWT 已经通过签名校验后仍必须绑定到活动会话，缺少 jti 时直接拒绝。
+        if (accessTokenId == null || accessTokenId.isBlank()) {
+            context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access token session identifier is required").build());
+            return;
+        }
+        try {
+            if (!sessions.isAccessTokenActive(accessTokenId)) context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access session is no longer active").build());
+        } catch (IllegalStateException e) {
+            context.abortWith(Response.status(Response.Status.SERVICE_UNAVAILABLE).entity("authentication state is unavailable").build());
         }
     }
 }
