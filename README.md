@@ -25,7 +25,7 @@ curl -X POST http://localhost:8080/api/v1/auth/change-initial-password \
   -d '{"username":"admin","currentPassword":"password","newPassword":"replace-with-a-strong-password"}'
 ```
 
-生产环境必须通过 `JWT_PRIVATE_KEY_LOCATION` 提供签名私钥；建议同时通过 `JWT_PUBLIC_KEY_LOCATION` 提供外部验证公钥。镜像内的公钥仅用于默认 Native 验证和开发兼容，生产环境应使用外部密钥文件并定期轮换。
+生产环境必须通过 `JWT_PRIVATE_KEY_LOCATION` 提供签名私钥，通过 `JWT_PUBLIC_KEY_LOCATION` 提供外部验证公钥，并通过 `JWT_KEY_ID` 提供当前签名密钥的标识。应用没有内置生产公钥回退；缺少外部公钥或密钥标识时，令牌验证或签发会失败。
 
 ## 本地运行
 
@@ -118,6 +118,7 @@ DB_USERNAME
 DB_PASSWORD
 JWT_PRIVATE_KEY_LOCATION
 JWT_PUBLIC_KEY_LOCATION
+JWT_KEY_ID
 JWT_ISSUER（可选，默认 keystone-native）
 JWT_AUDIENCE（可选，默认 keystone-api）
 ```

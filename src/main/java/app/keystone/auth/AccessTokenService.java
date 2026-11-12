@@ -15,6 +15,7 @@ public class AccessTokenService {
     @Inject UserRepository users;
     @ConfigProperty(name = "mp.jwt.verify.issuer") String issuer;
     @ConfigProperty(name = "mp.jwt.verify.audiences", defaultValue = "keystone-api") String audience;
+    @ConfigProperty(name = "keystone.security.jwt.key-id", defaultValue = "") String keyId;
 
     public AuthResource.TokenResponse issue(UserRepository.AuthUser user, String refreshToken, String accessTokenId, String sessionId, Instant refreshExpiresAt) {
         return issue(user, refreshToken, accessTokenId, sessionId, SessionRepository.DEFAULT_CLIENT_ID, refreshExpiresAt);
@@ -47,8 +48,20 @@ public class AccessTokenService {
                 .groups(new HashSet<>(user.roles()))
                 .issuedAt(Instant.now())
                 .expiresAt(expiresAt)
+                .jws()
+                .keyId(requireKeyId(keyId))
                 .sign();
         long refreshSeconds = Math.max(0, Duration.between(Instant.now(), refreshExpiresAt).getSeconds());
         return new AuthResource.TokenResponse(accessToken, accessToken, refreshToken, "Bearer", ACCESS_LIFETIME.toSeconds(), refreshSeconds, user.username(), user.displayName(), user.roles(), sessionId, clientId);
+    }
+
+    /** 验证签名密钥标识，避免发行没有可轮换来源的匿名密钥令牌。 */
+    static String requireKeyId(String value) {
+        if (value == null || value.isBlank()) throw new IllegalStateException("JWT key id is not configured");
+        String normalized = value.trim();
+        if (normalized.length() > 128 || !normalized.matches("[A-Za-z0-9][A-Za-z0-9._:-]{0,127}")) {
+            throw new IllegalStateException("JWT key id is invalid");
+        }
+        return normalized;
     }
 }
