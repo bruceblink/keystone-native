@@ -35,6 +35,11 @@ class MfaRecoveryCodeServiceTest {
         assertThrows(IllegalArgumentException.class, () -> service.hash("ABCD-EFGH-1234-5678-90AB-CDEF-1234-5678"));
         assertFalse(service.matches("ABCD-1234", "not-a-hash"));
 
+        var valid = service.generateBatch().codes();
+        var duplicate = new java.util.ArrayList<>(valid);
+        duplicate.set(1, duplicate.get(0));
+        assertThrows(IllegalArgumentException.class, () -> new MfaRecoveryCodeService.RecoveryCodeBatch("batch", duplicate));
+
         var missing = new MfaRecoveryCodeService("");
         assertThrows(IllegalStateException.class, missing::generateBatch);
         assertThrows(IllegalStateException.class, () -> missing.hash("ABCD-1234-5678-90AB-CDEF-1234-5678-90AB"));

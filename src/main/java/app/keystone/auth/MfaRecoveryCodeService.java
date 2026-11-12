@@ -8,8 +8,10 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.util.HexFormat;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Set;
 import java.util.UUID;
 
 import javax.crypto.Mac;
@@ -41,10 +43,12 @@ public class MfaRecoveryCodeService {
     public RecoveryCodeBatch generateBatch() {
         requirePepper();
         var codes = new java.util.ArrayList<String>(CODE_COUNT);
-        for (int i = 0; i < CODE_COUNT; i++) {
+        Set<String> seen = new HashSet<>(CODE_COUNT);
+        while (codes.size() < CODE_COUNT) {
             byte[] bytes = new byte[CODE_BYTES];
             RANDOM.nextBytes(bytes);
-            codes.add(format(HEX.formatHex(bytes)));
+            String code = format(HEX.formatHex(bytes));
+            if (seen.add(code)) codes.add(code);
         }
         return new RecoveryCodeBatch(UUID.randomUUID().toString(), List.copyOf(codes));
     }
@@ -104,7 +108,11 @@ public class MfaRecoveryCodeService {
             if (batchId == null || batchId.isBlank() || codes == null || codes.size() != CODE_COUNT) {
                 throw new IllegalArgumentException("invalid recovery code batch");
             }
-            codes = List.copyOf(codes);
+            var normalized = codes.stream().map(MfaRecoveryCodeService::normalize).toList();
+            if (normalized.stream().distinct().count() != CODE_COUNT) {
+                throw new IllegalArgumentException("recovery code batch contains duplicates");
+            }
+            codes = List.copyOf(normalized);
         }
     }
 }
