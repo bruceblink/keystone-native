@@ -2,6 +2,7 @@ package app.keystone.auth;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.jboss.logging.Logger;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.net.URLEncoder;
@@ -19,6 +20,7 @@ import java.util.UUID;
  */
 @ApplicationScoped
 public class MfaService {
+    private static final Logger LOG = Logger.getLogger(MfaService.class);
     private static final String ASSURANCE = "AAL2";
     private static final String TOTP_AMR = "otp";
     private static final String RECOVERY_AMR = "recovery";
@@ -93,7 +95,7 @@ public class MfaService {
                 || !challenges.consume(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.ENROLL, boundSessionId)) {
             return Optional.empty();
         }
-        rateLimiter.clear(userId, ipAddress);
+        clearRateLimitAfterSuccess(userId, ipAddress);
         return Optional.of(new EnrollmentResult(batch.codes()));
     }
 
@@ -123,7 +125,7 @@ public class MfaService {
         var step = matchingStep(secret, code);
         if (step.isPresent() && mfa.acceptTotp(userId, stored.id(), step.getAsLong(), false)) {
             if (challenges.consume(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.LOGIN, null)) {
-                rateLimiter.clear(userId, ipAddress);
+                clearRateLimitAfterSuccess(userId, ipAddress);
                 return Optional.of(new LoginVerification(ASSURANCE, TOTP_AMR));
             }
             return Optional.empty();
@@ -132,7 +134,7 @@ public class MfaService {
             String hash = recoveryCodes.hash(code);
             if (mfa.consumeRecoveryCode(userId, hash)
                     && challenges.consume(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.LOGIN, null)) {
-                rateLimiter.clear(userId, ipAddress);
+                clearRateLimitAfterSuccess(userId, ipAddress);
                 return Optional.of(new LoginVerification(ASSURANCE, RECOVERY_AMR));
             }
         } catch (IllegalArgumentException ignored) {
@@ -165,6 +167,12 @@ public class MfaService {
         mfa.recordFailure(userId, mfaId);
         challenges.recordFailure(challengeId, userId, clientId, purpose, sessionId);
         rateLimiter.recordFailure(userId, ipAddress);
+    }
+
+    /** 因子消费已经成功后，限流清理失败只记录主体和结果，不把成功响应改成失败。 */
+    private void clearRateLimitAfterSuccess(long userId, String ipAddress) {
+        try { rateLimiter.clear(userId, ipAddress); }
+        catch (IllegalStateException e) { LOG.warnf(e, "MFA rate-limit cleanup failed after successful factor userId=%d", userId); }
     }
 
     private java.util.OptionalLong matchingStep(String secret, String code) {
