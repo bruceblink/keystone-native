@@ -32,7 +32,10 @@ class TotpServiceTest {
 
         assertTrue(totp.verify(RFC_SECRET, current, 60));
         assertTrue(totp.verify(RFC_SECRET, next, 60));
+        assertEquals(2L, totp.matchingStep(RFC_SECRET, current, 60).orElseThrow());
+        assertEquals(3L, totp.matchingStep(RFC_SECRET, next, 60).orElseThrow());
         assertFalse(totp.verify(RFC_SECRET, old, 60));
+        assertTrue(totp.matchingStep(RFC_SECRET, old, 60).isEmpty());
         assertFalse(totp.verify(RFC_SECRET, "12345", 60));
         assertFalse(totp.verify(RFC_SECRET, "abcdef", 60));
     }

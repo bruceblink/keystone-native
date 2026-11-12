@@ -10,6 +10,7 @@ import java.security.MessageDigest;
 import java.security.SecureRandom;
 import java.time.Instant;
 import java.util.Locale;
+import java.util.OptionalLong;
 
 /**
  * RFC 6238 TOTP 核心服务。
@@ -52,11 +53,17 @@ public class TotpService {
      * 三个候选值都会完成常量时间比较，再合并结果，避免因命中窗口位置提前返回。
      */
     public boolean verify(String base32Secret, String presentedCode, long epochSeconds) {
+        return matchingStep(base32Secret, presentedCode, epochSeconds).isPresent();
+    }
+
+    /** 返回实际命中的时间步；调用方可用它执行同一时间步的原子重放检查。 */
+    public OptionalLong matchingStep(String base32Secret, String presentedCode, long epochSeconds) {
         byte[] secret = decodeSecret(base32Secret);
         if (epochSeconds < 0) throw new IllegalArgumentException("epochSeconds must be non-negative");
-        if (!validCode(presentedCode)) return false;
+        if (!validCode(presentedCode)) return OptionalLong.empty();
         byte[] presented = presentedCode.getBytes(StandardCharsets.US_ASCII);
         boolean matched = false;
+        long matchedStep = Long.MIN_VALUE;
         for (int offset = -WINDOW_STEPS; offset <= WINDOW_STEPS; offset++) {
             long candidateTime;
             try {
@@ -66,9 +73,11 @@ public class TotpService {
             }
             if (candidateTime < 0) continue;
             byte[] expected = formatCode(hmac(secret, counter(candidateTime))).getBytes(StandardCharsets.US_ASCII);
-            matched |= MessageDigest.isEqual(expected, presented);
+            boolean equal = MessageDigest.isEqual(expected, presented);
+            matched |= equal;
+            if (equal) matchedStep = counter(candidateTime);
         }
-        return matched;
+        return matched ? OptionalLong.of(matchedStep) : OptionalLong.empty();
     }
 
     /** 使用当前时间验证代码。 */
