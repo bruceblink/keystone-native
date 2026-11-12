@@ -3,6 +3,7 @@ package app.keystone.profile;
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.user.UserRepository;
+import app.keystone.auth.SessionRepository;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -18,6 +19,7 @@ public class ProfileResource {
     @Inject UserRepository users;
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
+    @Inject SessionRepository sessions;
 
     @GET public ApiResponse<UserRepository.AuthUser> get() { return ApiResponse.ok(current()); }
     @PUT public Response update(ProfileRequest request) {
@@ -38,6 +40,7 @@ public class ProfileResource {
         if (request == null || request.password() == null || request.password().isBlank()) return Response.status(400).entity(ApiResponse.error("password is required")).build();
         var user = current();
         users.update(user.id(), request.password(), null, null, null, null);
+        sessions.revokeAll(user.id());
         logs.record(user.username(), "UPDATE", "profile-password", String.valueOf(user.id()), null);
         return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build();
     }

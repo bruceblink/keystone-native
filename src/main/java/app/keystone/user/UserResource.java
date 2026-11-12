@@ -2,6 +2,7 @@ package app.keystone.user;
 
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
+import app.keystone.auth.SessionRepository;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -18,6 +19,7 @@ public class UserResource {
     @Inject UserRepository users;
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
+    @Inject SessionRepository sessions;
 
     @GET
     public ApiResponse<UserRepository.Page> list(@QueryParam("page") Integer page, @QueryParam("size") Integer size,
@@ -56,14 +58,14 @@ public class UserResource {
     @PUT @Path("/{id}/password")
     public Response password(@PathParam("id") long id, PasswordRequest request) {
         if (request == null || request.password() == null || request.password().isBlank()) return bad("password is required");
-        try { var updated = users.update(id, request.password(), null, null, null, null); logs.record(actor(), "UPDATE", "user-password", String.valueOf(id), null); return Response.ok(ApiResponse.ok(updated)).build(); }
+        try { var updated = users.update(id, request.password(), null, null, null, null); sessions.revokeAll(id); logs.record(actor(), "UPDATE", "user-password", String.valueOf(id), null); return Response.ok(ApiResponse.ok(updated)).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
     @PUT @Path("/{id}/status")
     public Response status(@PathParam("id") long id, StatusRequest request) {
         if (request == null || request.enabled() == null) return bad("enabled is required");
-        try { var updated = users.update(id, null, null, null, request.enabled(), null); logs.record(actor(), "UPDATE", "user-status", String.valueOf(id), String.valueOf(request.enabled())); return Response.ok(ApiResponse.ok(updated)).build(); }
+        try { var updated = users.update(id, null, null, null, request.enabled(), null); if (!request.enabled()) sessions.revokeAll(id); logs.record(actor(), "UPDATE", "user-status", String.valueOf(id), String.valueOf(request.enabled())); return Response.ok(ApiResponse.ok(updated)).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
