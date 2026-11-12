@@ -2,8 +2,8 @@ package app.keystone.job;
 
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
+import app.keystone.auth.RequiresPermission;
 import io.quarkus.security.identity.SecurityIdentity;
-import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -12,29 +12,28 @@ import java.util.List;
 
 @Path("/v1/jobs")
 @Produces(MediaType.APPLICATION_JSON)
-@RolesAllowed("ADMIN")
 public class JobResource {
     @Inject JobService service;
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
 
-    @GET public ApiResponse<List<Job>> list() { return ApiResponse.ok(service.jobs()); }
+    @GET @RequiresPermission("job:read") public ApiResponse<List<Job>> list() { return ApiResponse.ok(service.jobs()); }
 
-    @GET @Path("/{id}")
+    @GET @Path("/{id}") @RequiresPermission("job:read")
     public Response get(@PathParam("id") long id) {
         try { return Response.ok(ApiResponse.ok(service.jobs().stream().filter(j -> j.id() == id).findFirst().orElseThrow())).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @GET @Path("/invoke-targets")
+    @GET @Path("/invoke-targets") @RequiresPermission("job:read")
     public ApiResponse<List<JobInvocationService.JobTarget>> targets() { return ApiResponse.ok(service.targets()); }
 
-    @GET @Path("/logs")
+    @GET @Path("/logs") @RequiresPermission("job:read")
     public ApiResponse<JobLogRepository.Page> logs(@QueryParam("jobId") Long jobId, @QueryParam("page") Integer page, @QueryParam("size") Integer size) {
         return ApiResponse.ok(service.logs(jobId, page == null ? 1 : page, size == null ? 20 : size));
     }
 
-    @POST @Consumes(MediaType.APPLICATION_JSON)
+    @POST @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("job:write")
     public Response create(JobRequest request) {
         if (request == null) return bad("request body is required");
         try {
@@ -44,7 +43,7 @@ public class JobResource {
         } catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
-    @PUT @Path("/{id}") @Consumes(MediaType.APPLICATION_JSON)
+    @PUT @Path("/{id}") @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("job:write")
     public Response update(@PathParam("id") long id, JobRequest request) {
         if (request == null) return bad("request body is required");
         try {
@@ -55,7 +54,7 @@ public class JobResource {
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @PUT @Path("/{id}/status") @Consumes(MediaType.APPLICATION_JSON)
+    @PUT @Path("/{id}/status") @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("job:write")
     public Response status(@PathParam("id") long id, StatusRequest request) {
         if (request == null || request.enabled() == null) return bad("enabled is required");
         try {
@@ -65,17 +64,17 @@ public class JobResource {
         } catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @POST @Path("/{id}/trigger")
+    @POST @Path("/{id}/trigger") @RequiresPermission("job:write")
     public Response trigger(@PathParam("id") long id) { return run(id); }
 
-    @POST @Path("/{id}/run")
+    @POST @Path("/{id}/run") @RequiresPermission("job:write")
     public Response run(@PathParam("id") long id) {
         try { service.trigger(id); logs.record(actor(), "TRIGGER", "job", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("triggered", true))).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
-    @DELETE @Path("/{id}")
+    @DELETE @Path("/{id}") @RequiresPermission("job:write")
     public Response delete(@PathParam("id") long id) {
         try { service.delete(id); logs.record(actor(), "DELETE", "job", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }

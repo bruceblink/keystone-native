@@ -1,7 +1,7 @@
 package app.keystone.file;
 
 import app.keystone.ApiResponse;
-import jakarta.annotation.security.RolesAllowed;
+import app.keystone.auth.RequiresPermission;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.HttpHeaders;
@@ -18,20 +18,19 @@ import java.util.List;
 import java.util.UUID;
 
 @Path("/file")
-@RolesAllowed({"USER", "ADMIN"})
 public class FileResource {
     private final java.nio.file.Path root;
 
     @Inject
     public FileResource(@ConfigProperty(name = "keystone.file.root") String root) { this.root = Paths.get(root).toAbsolutePath().normalize(); }
 
-    @POST @Path("/upload") @Consumes(MediaType.MULTIPART_FORM_DATA) @Produces(MediaType.APPLICATION_JSON)
+    @POST @Path("/upload") @RequiresPermission("file:write") @Consumes(MediaType.MULTIPART_FORM_DATA) @Produces(MediaType.APPLICATION_JSON)
     public Response upload(@RestForm("file") FileUpload file) { if (file == null) return bad("file is required"); try { return Response.ok(ApiResponse.ok(save(file))).build(); } catch (IOException e) { return Response.serverError().entity(ApiResponse.error("file upload failed")).build(); } }
 
-    @POST @Path("/uploads") @Consumes(MediaType.MULTIPART_FORM_DATA) @Produces(MediaType.APPLICATION_JSON)
+    @POST @Path("/uploads") @RequiresPermission("file:write") @Consumes(MediaType.MULTIPART_FORM_DATA) @Produces(MediaType.APPLICATION_JSON)
     public Response uploads(@RestForm("files") List<FileUpload> files) { if (files == null || files.isEmpty()) return bad("files are required"); try { return Response.ok(ApiResponse.ok(files.stream().filter(java.util.Objects::nonNull).map(file -> { try { return save(file); } catch (IOException e) { throw new FileUploadException(e); } }).toList())).build(); } catch (FileUploadException e) { return Response.serverError().entity(ApiResponse.error("file upload failed")).build(); } }
 
-    @GET @Path("/download") @Produces(MediaType.APPLICATION_OCTET_STREAM)
+    @GET @Path("/download") @RequiresPermission("file:read") @Produces(MediaType.APPLICATION_OCTET_STREAM)
     public Response download(@QueryParam("fileName") String fileName) { try { java.nio.file.Path path = safePath(fileName); if (!Files.isRegularFile(path)) return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("file not found")).type(MediaType.APPLICATION_JSON).build(); String name = path.getFileName().toString(); return Response.ok(Files.readAllBytes(path)).header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"").build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (IOException e) { return Response.serverError().entity(ApiResponse.error("file download failed")).type(MediaType.APPLICATION_JSON).build(); } }
 
     private Upload save(FileUpload file) throws IOException {
