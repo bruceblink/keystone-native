@@ -18,7 +18,7 @@
 
 ## 当前实现证据
 
-截至 `51278d1`，受保护资源已经使用 `@RequiresPermission` 和集中授权服务。用户接口已接入 `ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` 范围策略。API Key 已接入 Quarkus `HttpAuthenticationMechanism`，支持服务主体、范围交集、轮换、撤销、过期和最后使用时间节流。
+截至 `048b467`，受保护资源已经使用 `@RequiresPermission` 和集中授权服务。用户接口已接入 `ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` 范围策略。API Key 已接入 Quarkus `HttpAuthenticationMechanism`，支持服务主体、范围交集、轮换、撤销、过期和最后使用时间节流。
 
 当前会话状态保存在 `sys_auth_session`，刷新令牌保留在 `sys_refresh_token` 作为轮换明细。访问令牌有效期为五分钟，并校验 `iss`、`sub`、`aud`、`jti`、`sid`、`iat`、`exp` 和 `permission_version`。权限版本变化、密码变更、用户禁用和会话撤销都会使受影响的访问令牌失效。
 
@@ -26,7 +26,9 @@
 
 现代和兼容登录入口在密码正确且用户要求 MFA 时返回 `MFA_REQUIRED` 和不透明挑战 ID，不创建会话或令牌；`POST /api/v1/auth/mfa/verify` 校验 TOTP 或恢复码后才创建会话和令牌。`POST /api/v1/auth/mfa/enroll`、`POST /api/v1/auth/mfa/enroll/verify` 提供管理员 enrollment，`PUT /api/v1/auth/mfa/policy/{userId}` 只允许对已完成 enrollment 的用户启用策略。API Key 被拒绝进入这些人类 MFA 路径。恢复码只在 enrollment 成功响应中返回一次，数据库保存 HMAC，不保存恢复码明文。
 
-上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `kid`。Quarkus HTTP 运行、MySQL 8.4 迁移、并发 TOTP/恢复码消费、真实浏览器验收仍未完成。OIDC、WebAuthn、JWK Set 发布和密钥重叠轮换、跨租户边界和全资源数据范围仍未完成。
+上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `kid`。`GET /api/.well-known/jwks.json` 已发布当前 RSA 公钥，旧的 `GET /login/rsa-public-key` 兼容路由也改为读取相同的外部公钥配置；当前 JWK Set 只发布一个 key，尚未支持密钥重叠轮换。
+
+当前验证边界仍然明确：静态主源码和测试源码编译、JWK 字段 smoke 和差异检查已通过；Quarkus HTTP、MySQL 8.4 迁移、并发 TOTP/恢复码消费、真实浏览器验收仍未完成。`X-Forwarded-For` 只有在受信反向代理覆盖并清理时才可作为 MFA 来源地址；否则缺失或非法地址会进入共享 `unknown` 限流桶。账户锁定的初始读取与失败更新之间仍需 MySQL 8.4 并发验收，不能把静态事务代码当作并发证明。enrollment 校验、恢复码替换和挑战消费目前分属多个数据库事务，失败回滚边界仍需收紧。OIDC、WebAuthn、密钥重叠轮换、跨租户边界和全资源数据范围仍未完成。
 
 ## 目标架构
 
@@ -81,6 +83,12 @@ API Key 使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存 SHA-256 �
 ### 授权
 
 权限码采用小写的 `resource:action` 格式，例如 `user:read`、`user:write`、`session:revoke`、`api-key:create`。角色只绑定权限集合。接口、服务和数据查询使用同一个权限码；菜单只引用权限码，不参与安全判定。
+
+### JWT 公钥发现
+
+- `GET /api/.well-known/jwks.json`：公开返回当前外部 RSA 公钥的 RFC 7517 JWK Set。响应只包含 `kty`、`kid`、`alg`、`use`、`n` 和 `e`，公钥读取失败返回 `503`。缺少或非法的 `JWT_KEY_ID` 属于启动配置错误，应用应在就绪检查中失败。
+- 当前实现只发布一个配置 key，并设置短缓存。发布双 key、验证旧 key 的存留时间和旧 key 清理必须由后续 key registry 统一管理。
+- 兼容客户端仍可调用 `GET /login/rsa-public-key`，但该接口读取同一个外部公钥位置，不再读取仓库内资源。
 
 ## 数据模型变更
 
@@ -151,7 +159,8 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 - [x] 提供当前密码加 step-up 保护的恢复码独立轮换接口。
 - [x] 要求外部 JWT 公钥和 `kid` 密钥标识，删除仓库内生产公钥 fallback。
 - [ ] 增加 OIDC 授权码 + PKCE；校验 `state`、`nonce`、issuer、audience 和时间窗口。
-- [ ] 发布 JWK Set，支持双 key 重叠轮换和 `kid`。
+- [x] 发布 JWK Set，使用外部 RSA 公钥和 `kid`，公钥不可用时返回 `503`。
+- [ ] 增加 key registry、双 key 重叠轮换和旧 key 到期清理；当前端点只发布一个配置 key。
 
 #### 管理员 TOTP 第一版实现和限制
 
@@ -178,7 +187,7 @@ TOTP 使用 RFC 6238 的 30 秒时间步、六位数字和允许前后一个时�
 
 API Key、角色、用户、在线会话、MFA enrollment/策略变更和恢复码轮换均已接入 step-up。恢复码轮换还必须提供当前密码。API Key 不能执行这些人类用户 MFA 管理路径。
 
-实现验收必须证明：未完成 enrollment 的用户不获得强制 MFA 令牌；正确 TOTP 才能创建会话；错误、过期、错误客户端和重复挑战统一失败；恢复码只能消费一次；同一时间步并发请求只有一次成功；密钥、恢复码和完整 `otpauth` 数据不出现在日志、错误响应或数据库明文。当前只完成静态编译、固定向量和输入边界 smoke，MySQL 8.4 迁移、并发消费、失败回滚和真实 HTTP 运行验收仍未完成，因此 MFA 不能标记为生产完成。
+实现验收必须证明：未完成 enrollment 的用户不获得强制 MFA 令牌；正确 TOTP 才能创建会话；错误、过期、错误客户端和重复挑战统一失败；恢复码只能消费一次；同一时间步并发请求只有一次成功；密钥、恢复码和完整 `otpauth` 数据不出现在日志、错误响应或数据库明文。当前只完成静态编译、固定向量和输入边界 smoke，MySQL 8.4 迁移、并发消费、失败回滚和真实 HTTP 运行验收仍未完成。下一步必须把 enrollment 成功、恢复码替换、TOTP 接受和挑战消费合并为一个可回滚的数据库操作，或记录明确的补偿状态；在此之前 MFA 不能标记为生产完成。
 
 ### P4：运营与发布
 
@@ -211,6 +220,8 @@ API Key、角色、用户、在线会话、MFA enrollment/策略变更和恢复�
 4. 必须保留登录失败计数、账户锁定、请求限流和管理员 MFA 第一版，并完成 MySQL 与真实 HTTP 运行验收。
 5. 必须把权限码落实到每个接口、服务方法和查询条件。现有 `@RolesAllowed("ADMIN")` 仍然是角色级控制，不能作为新模型的验收证据。
 6. 必须继续补齐 API Key 的过期、审计和并发运行测试；列出、轮换、范围上限和一次性明文已经有实现与静态接口测试。
+7. 必须在受信反向代理配置明确后才启用 `X-Forwarded-For` 的 MFA 来源限流；部署直接暴露应用端口时，应使用连接远端地址，并对无法解析的地址采用独立、可观测的处理策略。
+8. 必须把 enrollment、恢复码批次替换、TOTP 接受和挑战消费放入同一事务，或实现失败后的补偿状态，避免验证成功后部分写入。
 
 ## 必须先确定的架构决策
 
@@ -251,7 +262,7 @@ API Key 认证成功后创建统一的 `SecurityIdentity`，身份属性必须�
 | 领域 | 必须证明的行为 | 当前状态 |
 | --- | --- | --- |
 | 密码认证 | 弱密码拒绝、失败退避、账户锁定、用户枚举防护、密码变更撤销会话 | 部分完成：密码策略和指数退避已实现，用户枚举防护及运行验收未完成 |
-| JWT | `iss/aud/sub/jti/sid/iat/exp/kid` 校验、算法白名单、时钟偏差、密钥轮换 | 部分完成：外部公钥要求和 `kid` 已实现，JWK Set、重叠轮换及运行验收未完成 |
+| JWT | `iss/aud/sub/jti/sid/iat/exp/kid` 校验、算法白名单、时钟偏差、密钥轮换 | 部分完成：外部公钥、`kid` 和单 key JWK Set 已实现，重叠轮换、JSON HTTP 验收及运行验收未完成 |
 | 刷新令牌 | 原子轮换、并发单成功、重用检测、整族撤销、客户端绑定、空闲过期 | 部分完成：会话状态和主路径已实现，并发 MySQL 验收未完成 |
 | API Key | 服务主体、范围交集、一次性明文、过期、撤销、轮换、审计、限速 | 部分完成 |
 | 授权 | 默认拒绝、权限码、显式拒绝、实时失效、服务层和查询层复核 | 部分完成：权限码和权限版本失效已实现，显式拒绝及全量服务层复核未完成 |
@@ -260,7 +271,7 @@ API Key 认证成功后创建统一的 `SecurityIdentity`，身份属性必须�
 | Web 与传输 | HTTPS、CORS、CSRF、Cookie 属性、浏览器存储、缓存控制 | 未完成 |
 | 审计 | 签发、使用、失败、撤销、重用、权限拒绝和管理员操作可追踪 | 未完成 |
 | 运维 | 密钥托管、轮换、备份恢复、告警、限流、数据库故障行为 | 未完成 |
-| 兼容清理 | 旧根路由、旧 token 字段、旧测试和文档全部删除或明确下线 | 未完成 |
+| 兼容清理 | 旧根路由、旧 token 字段、旧测试和文档全部删除或明确下线 | 部分完成：旧 RSA 公钥路由已改用外部配置，其他兼容入口仍待清理 |
 
 ## 审查后的阶段调整
 
