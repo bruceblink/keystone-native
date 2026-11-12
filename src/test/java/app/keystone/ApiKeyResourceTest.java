@@ -102,6 +102,24 @@ class ApiKeyResourceTest {
         revoke(admin, id);
     }
 
+    @Test
+    void apiKeyCannotEnterHumanProfileOrPasswordPathsEvenWithMatchingScope() {
+        String admin = login();
+        var issued = issue(admin, "human-boundary", "profile:write");
+        String key = issued.path("data.apiKey");
+        String id = issued.path("data.id");
+
+        given().header("Authorization", "ApiKey " + key)
+                .when().get("/v1/profile")
+                .then().statusCode(403);
+        given().header("Authorization", "ApiKey " + key).contentType(JSON)
+                .body("{\"password\":\"another-password\"}")
+                .when().put("/v1/profile/password")
+                .then().statusCode(403);
+
+        revoke(admin, id);
+    }
+
     private static String login() {
         return given().contentType(JSON)
                 .body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")

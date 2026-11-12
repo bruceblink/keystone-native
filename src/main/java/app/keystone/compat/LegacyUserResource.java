@@ -4,6 +4,7 @@ import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.DataScopeService;
 import app.keystone.auth.RequiresPermission;
+import app.keystone.auth.RejectApiKey;
 import app.keystone.auth.SessionRepository;
 import app.keystone.role.RoleRepository;
 import app.keystone.user.User;
@@ -60,10 +61,10 @@ public class LegacyUserResource {
         catch (java.util.NoSuchElementException e) { return notFound("user not found"); }
     }
 
-    @DELETE @Path("/{ids}") @RequiresPermission("user:write")
+    @DELETE @Path("/{ids}") @RequiresPermission("user:write") @RejectApiKey
     public Response delete(@PathParam("ids") String ids) { try { long subjectId = subjectId(); var values = parseIds(ids); int deleted = users.deleteAll(values, dataScopes.forUser(subjectId), subjectId); logs.record(actor(), "DELETE", "users", ids, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", deleted))).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
 
-    @PUT @Path("/{id}/password") @RequiresPermission("user:write") @Consumes(MediaType.APPLICATION_JSON)
+    @PUT @Path("/{id}/password") @RequiresPermission("user:write") @RejectApiKey @Consumes(MediaType.APPLICATION_JSON)
     public Response password(@PathParam("id") long id, PasswordCommand request) { if (request == null || request.passwordValue() == null || request.passwordValue().isBlank()) return bad("password is required"); try { long subjectId = subjectId(); users.findPublic(id, dataScopes.forUser(subjectId), subjectId); var updated = users.update(id, request.passwordValue(), null, null, null, null); sessions.revokeAll(id); return Response.ok(ApiResponse.ok(updated)).build(); } catch (java.util.NoSuchElementException e) { return notFound("user not found"); } }
 
     @PUT @Path("/{id}/status") @RequiresPermission("user:write") @Consumes(MediaType.APPLICATION_JSON)

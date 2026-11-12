@@ -26,7 +26,7 @@ public class AuthResource {
     @Inject SecurityIdentity identity;
     @Inject LoginRateLimiter loginRateLimiter;
 
-    @POST @Path("/login") @PermitAll
+    @POST @Path("/login") @PermitAll @RejectApiKey
     public Response login(LoginRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
         if (request == null || request.username() == null || request.password() == null) {
             return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("username and password are required")).build();
@@ -52,7 +52,7 @@ public class AuthResource {
         return Response.ok(ApiResponse.ok(tokens.issue(u, refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().clientId(), refresh.get().refreshExpiresAt()))).build();
     }
 
-    @POST @Path("/refresh") @PermitAll
+    @POST @Path("/refresh") @PermitAll @RejectApiKey
     public Response refresh(RefreshRequest request) {
         if (request == null || request.refreshToken() == null || request.refreshToken().isBlank()) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("refreshToken is required")).build();
         java.util.Optional<SessionRepository.RotatedSession> rotated;
@@ -70,7 +70,7 @@ public class AuthResource {
         return Response.ok(ApiResponse.ok(java.util.Map.of("loggedOut", true))).build();
     }
 
-    @POST @Path("/change-initial-password") @PermitAll
+    @POST @Path("/change-initial-password") @PermitAll @RejectApiKey
     public Response changeInitialPassword(InitialPasswordRequest request) {
         if (request == null || request.username() == null || request.currentPassword() == null || request.newPassword() == null || request.newPassword().isBlank()) return Response.status(400).entity(ApiResponse.error("username, currentPassword and newPassword are required")).build();
         var user = users.authenticate(request.username(), request.currentPassword());

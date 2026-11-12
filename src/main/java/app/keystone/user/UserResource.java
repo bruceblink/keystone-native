@@ -5,6 +5,7 @@ import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.DataScopeService;
 import app.keystone.auth.SessionRepository;
 import app.keystone.auth.RequiresPermission;
+import app.keystone.auth.RejectApiKey;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -66,7 +67,7 @@ public class UserResource {
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @PUT @Path("/{id}/password") @RequiresPermission("user:write")
+    @PUT @Path("/{id}/password") @RequiresPermission("user:write") @RejectApiKey
     public Response password(@PathParam("id") long id, PasswordRequest request) {
         if (request == null || request.password() == null || request.password().isBlank()) return bad("password is required");
         try { long subjectId = subjectId(); var scope = dataScopes.forUser(subjectId); users.findPublic(id, scope, subjectId); var updated = users.update(id, request.password(), null, null, null, null); sessions.revokeAll(id); logs.record(actor(), "UPDATE", "user-password", String.valueOf(id), null); return Response.ok(ApiResponse.ok(updated)).build(); }
@@ -80,13 +81,13 @@ public class UserResource {
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @DELETE @Path("/{id}") @RequiresPermission("user:write")
+    @DELETE @Path("/{id}") @RequiresPermission("user:write") @RejectApiKey
     public Response delete(@PathParam("id") long id) {
         try { long subjectId = subjectId(); users.delete(id, dataScopes.forUser(subjectId), subjectId); logs.record(actor(), "DELETE", "user", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @DELETE @RequiresPermission("user:write")
+    @DELETE @RequiresPermission("user:write") @RejectApiKey
     public Response deleteBatch(@QueryParam("ids") String ids) {
         if (ids == null || ids.isBlank()) return bad("ids is required");
         try { long subjectId = subjectId(); var values = java.util.Arrays.stream(ids.split(",")).map(String::trim).map(Long::valueOf).toList(); int deleted = users.deleteAll(values, dataScopes.forUser(subjectId), subjectId); logs.record(actor(), "DELETE", "users", ids, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", deleted))).build(); }

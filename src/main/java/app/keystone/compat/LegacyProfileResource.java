@@ -3,6 +3,7 @@ package app.keystone.compat;
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.RequiresPermission;
+import app.keystone.auth.RejectApiKey;
 import app.keystone.auth.SessionRepository;
 import app.keystone.profile.ProfileResource;
 import app.keystone.user.UserRepository;
@@ -14,6 +15,7 @@ import jakarta.ws.rs.core.Response;
 
 @Path("/system/user/profile")
 @Produces(MediaType.APPLICATION_JSON)
+@RejectApiKey
 public class LegacyProfileResource {
     @Inject UserRepository users;
     @Inject OperationLogRepository logs;

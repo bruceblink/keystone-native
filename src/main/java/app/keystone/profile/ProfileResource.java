@@ -4,6 +4,7 @@ import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.user.UserRepository;
 import app.keystone.auth.RequiresPermission;
+import app.keystone.auth.RejectApiKey;
 import app.keystone.auth.SessionRepository;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
@@ -14,6 +15,7 @@ import jakarta.ws.rs.core.Response;
 @Path("/v1/profile")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
+@RejectApiKey
 public class ProfileResource {
     @Inject UserRepository users;
     @Inject OperationLogRepository logs;

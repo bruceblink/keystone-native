@@ -35,7 +35,7 @@ public class LegacyAuthResource {
     @Inject AccessTokenService tokens;
     @Inject LoginRateLimiter loginRateLimiter;
 
-    @POST @Path("login") @PermitAll
+    @POST @Path("login") @PermitAll @RejectApiKey
     public Response login(AuthResource.LoginRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
         if (request == null || request.username() == null || request.password() == null) return Response.status(400).entity(ApiResponse.error("username and password are required")).build();
         try { if (loginRateLimiter.isBlocked(request.username(), ipAddress)) return Response.status(429).entity(ApiResponse.error("too many login attempts")).build(); }
@@ -51,7 +51,7 @@ public class LegacyAuthResource {
         return Response.ok(ApiResponse.ok(tokens.issue(user.get(), refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().refreshExpiresAt()))).build();
     }
 
-    @POST @Path("refresh-token") @PermitAll
+    @POST @Path("refresh-token") @PermitAll @RejectApiKey
     public Response refresh(AuthResource.RefreshRequest request) {
         if (request == null) return Response.status(400).entity(ApiResponse.error("refreshToken is required")).build();
         var rotated = sessions.rotate(request.refreshToken(), users);
@@ -63,7 +63,7 @@ public class LegacyAuthResource {
     @POST @Path("logout-refresh-token") @PermitAll
     public Response logout(AuthResource.RefreshRequest request) { if (request != null) sessions.revoke(request.refreshToken()); return Response.ok(ApiResponse.ok(Map.of("loggedOut", true))).build(); }
 
-    @POST @Path("change-initial-password") @PermitAll
+    @POST @Path("change-initial-password") @PermitAll @RejectApiKey
     public Response changeInitialPassword(AuthResource.InitialPasswordRequest request) {
         if (request == null || request.username() == null || request.currentPassword() == null || request.newPassword() == null || request.newPassword().isBlank()) return Response.status(400).entity(ApiResponse.error("username, currentPassword and newPassword are required")).build();
         var user = users.authenticate(request.username(), request.currentPassword());
