@@ -72,6 +72,7 @@ public class UserResource {
     public Response password(@PathParam("id") long id, PasswordRequest request) {
         if (request == null || request.password() == null || request.password().isBlank()) return bad("password is required");
         try { long subjectId = subjectId(); var scope = dataScopes.forUser(subjectId); users.findPublic(id, scope, subjectId); var updated = users.update(id, request.password(), null, null, null, null); sessions.revokeAll(id); logs.record(actor(), "UPDATE", "user-password", String.valueOf(id), null); return Response.ok(ApiResponse.ok(updated)).build(); }
+        catch (IllegalArgumentException e) { return bad(e.getMessage()); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 

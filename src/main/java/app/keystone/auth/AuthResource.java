@@ -189,7 +189,8 @@ public class AuthResource {
         var user = users.authenticate(request.username(), request.currentPassword());
         if (user.isEmpty()) return Response.status(401).entity(ApiResponse.error("invalid credentials")).build();
         if (!user.get().mustChangePassword()) return Response.status(409).entity(ApiResponse.error("password change is not required")).build();
-        users.update(user.get().id(), request.newPassword(), null, null, null, null);
+        try { users.update(user.get().id(), request.newPassword(), null, null, null, null); }
+        catch (IllegalArgumentException e) { return Response.status(400).entity(ApiResponse.error(e.getMessage())).build(); }
         sessions.revokeAll(user.get().id());
         return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build();
     }

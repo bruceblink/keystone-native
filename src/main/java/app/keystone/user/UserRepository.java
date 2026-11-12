@@ -26,17 +26,20 @@ public class UserRepository {
     public Optional<AuthUser> authenticate(String username, String password) {
         String sql = "SELECT id, password_hash, locked_until FROM sys_user WHERE username = ? AND enabled = true";
         try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql)) {
+            c.setAutoCommit(false);
             p.setString(1, username);
             long userId;
             try (ResultSet rs = p.executeQuery()) {
-                if (!rs.next()) return Optional.empty();
+                if (!rs.next()) { c.rollback(); return Optional.empty(); }
                 var lockedUntil = rs.getTimestamp("locked_until");
-                if (lockedUntil != null && lockedUntil.toInstant().isAfter(java.time.Instant.now())) return Optional.empty();
-                if (password == null || !BcryptUtil.matches(password, rs.getString("password_hash"))) { recordFailedLogin(c, rs.getLong("id")); return Optional.empty(); }
+                if (lockedUntil != null && lockedUntil.toInstant().isAfter(java.time.Instant.now())) { c.rollback(); return Optional.empty(); }
+                if (password == null || !BcryptUtil.matches(password, rs.getString("password_hash"))) { recordFailedLogin(c, rs.getLong("id")); c.commit(); return Optional.empty(); }
                 userId = rs.getLong("id");
             }
             clearFailedLogins(c, userId);
-            return findAuthUser(c, userId);
+            var user = findAuthUser(c, userId);
+            c.commit();
+            return user;
         } catch (Exception e) { throw new IllegalStateException("Could not authenticate user", e); }
     }
 
@@ -140,7 +143,8 @@ public class UserRepository {
                 if (roleCodes != null) replaceRoles(c, id, roleCodes);
                 c.commit(); return find(c, id).orElseThrow();
             } catch (Exception e) { c.rollback(); throw e; }
-        } catch (java.util.NoSuchElementException e) { throw e; }
+        } catch (IllegalArgumentException e) { throw e; }
+        catch (java.util.NoSuchElementException e) { throw e; }
         catch (Exception e) { throw new IllegalStateException("Could not update user", e); }
     }
 

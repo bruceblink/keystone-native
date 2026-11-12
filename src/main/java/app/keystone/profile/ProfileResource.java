@@ -40,11 +40,13 @@ public class ProfileResource {
     @PUT @Path("/password") @RequiresPermission("profile:write") @RequiresMfaStepUp
     public Response password(PasswordRequest request) {
         if (request == null || request.password() == null || request.password().isBlank()) return Response.status(400).entity(ApiResponse.error("password is required")).build();
-        var user = current();
-        users.update(user.id(), request.password(), null, null, null, null);
-        sessions.revokeAll(user.id());
-        logs.record(user.username(), "UPDATE", "profile-password", String.valueOf(user.id()), null);
-        return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build();
+        try {
+            var user = current();
+            users.update(user.id(), request.password(), null, null, null, null);
+            sessions.revokeAll(user.id());
+            logs.record(user.username(), "UPDATE", "profile-password", String.valueOf(user.id()), null);
+            return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build();
+        } catch (IllegalArgumentException e) { return Response.status(400).entity(ApiResponse.error(e.getMessage())).build(); }
     }
 
     private UserRepository.AuthUser current() { return users.findAuthUserByUsername(identity.getPrincipal().getName()).orElseThrow(NotFoundException::new); }
