@@ -2,6 +2,9 @@ package app.keystone.auth;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -32,5 +35,21 @@ class JwkSetServiceTest {
     void doesNotReadPrivateKeyAsPublicKey() {
         assertThrows(IllegalStateException.class,
                 () -> new JwkSetService("keys/privateKey.pem", "test-rs256-1").current());
+    }
+
+    @Test
+    void keepsOneValidatedSnapshotForJwkAndPemReaders() throws Exception {
+        Path key = Files.createTempFile("keystone-jwk-", ".pem");
+        try {
+            Files.writeString(key, Files.readString(Path.of("src/test/resources/keys/publicKey.pem")));
+            var service = new JwkSetService(key.toString(), "test-rs256-1", 60);
+            var first = service.current();
+            var pem = service.currentPem();
+            Files.delete(key);
+            assertEquals(first, service.current());
+            assertEquals(pem, service.currentPem());
+        } finally {
+            Files.deleteIfExists(key);
+        }
     }
 }
