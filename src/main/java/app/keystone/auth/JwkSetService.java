@@ -53,9 +53,10 @@ public class JwkSetService {
 
     /** 读取已校验的外部 PEM 公钥，供旧兼容接口返回公开材料。 */
     public String currentPem() {
-        readRsaPublicKey();
         try {
-            return new String(readLocation(publicKeyLocation), StandardCharsets.US_ASCII);
+            byte[] pem = readLocation(publicKeyLocation);
+            parseRsaPublicKey(pem);
+            return new String(pem, StandardCharsets.US_ASCII);
         } catch (Exception e) {
             throw unavailable();
         }
@@ -64,22 +65,21 @@ public class JwkSetService {
     private RSAPublicKey readRsaPublicKey() {
         if (publicKeyLocation.isBlank()) throw unavailable();
         try {
-            PublicKey key = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(readDer(publicKeyLocation)));
-            if (!(key instanceof RSAPublicKey rsa) || rsa.getModulus().bitLength() < 2048) throw unavailable();
-            return rsa;
+            return parseRsaPublicKey(readLocation(publicKeyLocation));
         } catch (Exception e) {
             throw unavailable();
         }
     }
 
-    private static byte[] readDer(String location) throws IOException {
-        byte[] pem = readLocation(location);
+    private static RSAPublicKey parseRsaPublicKey(byte[] pem) throws Exception {
         String text = new String(pem, StandardCharsets.US_ASCII).trim();
         if (!text.startsWith(BEGIN_PUBLIC_KEY) || !text.endsWith(END_PUBLIC_KEY)) throw unavailable();
         String body = text.substring(BEGIN_PUBLIC_KEY.length(), text.length() - END_PUBLIC_KEY.length())
                 .replaceAll("\\s", "");
         if (body.isBlank()) throw unavailable();
-        return Base64.getDecoder().decode(body);
+        PublicKey key = KeyFactory.getInstance("RSA").generatePublic(new X509EncodedKeySpec(Base64.getDecoder().decode(body)));
+        if (!(key instanceof RSAPublicKey rsa) || rsa.getModulus().bitLength() < 2048) throw unavailable();
+        return rsa;
     }
 
     private static byte[] readLocation(String location) throws IOException {
