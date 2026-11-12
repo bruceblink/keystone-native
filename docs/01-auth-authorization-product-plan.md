@@ -124,7 +124,8 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 - [x] 把现有 `@RolesAllowed` 替换为权限码；角色只作为权限集合管理。
 - [x] 迁移用户管理和角色管理接口到权限码。
 - [x] 迁移在线会话和操作审计接口到权限码。
-- [ ] 把 `data_scope` 转为明确策略：`ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`。
+- [x] 把 `data_scope` 转为明确策略：`ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`。
+- [ ] 将同一范围策略推广到所有资源、导出、批量操作和异步任务。
 - [ ] 每个列表、详情、更新和删除接口补充跨部门越权测试。
 
 当前已增加统一 `DataScopeService`，并把现代用户接口和用户兼容接口的列表、详情、更新、密码、状态、删除、批量删除、导出和导入路径接入范围条件。普通用户的默认角色范围在 `V31__default_user_data_scope.sql` 中收紧为 `SELF`。部门树递归和 `CUSTOM` 部门 ID 已进入查询条件；其他资源、异步任务和跨部门集成测试仍未完成。
