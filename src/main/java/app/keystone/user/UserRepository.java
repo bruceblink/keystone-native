@@ -154,6 +154,11 @@ public class UserRepository {
     }
 
     private static List<String> roles(Connection c, long userId) throws Exception { try (var p = c.prepareStatement("SELECT r.code FROM sys_role r JOIN sys_user_role ur ON ur.role_id = r.id WHERE ur.user_id = ? AND r.enabled = true ORDER BY r.code")) { p.setLong(1, userId); try (var rs = p.executeQuery()) { var result = new ArrayList<String>(); while (rs.next()) result.add(rs.getString(1)); return result; } } }
+    public List<String> permissions(long userId) {
+        String sql = "SELECT DISTINCT p.code FROM sys_permission p JOIN sys_role_permission rp ON rp.permission_id = p.id JOIN sys_user_role ur ON ur.role_id = rp.role_id JOIN sys_role r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.enabled = true ORDER BY p.code";
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql)) { p.setLong(1, userId); try (var rs = p.executeQuery()) { var result = new ArrayList<String>(); while (rs.next()) result.add(rs.getString(1)); return result; } }
+        catch (Exception e) { throw new IllegalStateException("Could not list user permissions", e); }
+    }
     private static List<String> splitRoles(String value) { return value == null || value.isBlank() ? List.of("USER") : List.of(value.split(",")); }
     private static void replaceRoles(Connection c, long userId, List<String> roleCodes) throws Exception { var codes = roleCodes == null || roleCodes.isEmpty() ? List.of("USER") : roleCodes.stream().filter(java.util.Objects::nonNull).map(String::trim).filter(s -> !s.isBlank()).distinct().toList(); try (var d = c.prepareStatement("DELETE FROM sys_user_role WHERE user_id = ?")) { d.setLong(1, userId); d.executeUpdate(); } try (var p = c.prepareStatement("INSERT INTO sys_user_role(user_id, role_id) SELECT ?, id FROM sys_role WHERE code = ? AND enabled = true")) { for (String code : codes) { p.setLong(1, userId); p.setString(2, code); if (p.executeUpdate() == 0) throw new IllegalArgumentException("unknown role: " + code); } } }
 

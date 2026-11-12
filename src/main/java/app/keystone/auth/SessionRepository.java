@@ -16,7 +16,8 @@ import java.util.Optional;
 @ApplicationScoped
 public class SessionRepository {
     private static final Duration REFRESH_LIFETIME = Duration.ofDays(14);
-    private static final Duration ACCESS_LIFETIME = Duration.ofHours(2);
+    private static final Duration ACCESS_LIFETIME = Duration.ofMinutes(5);
+    private static final Duration IDLE_LIFETIME = Duration.ofHours(24);
     @Inject DataSource dataSource;
 
     public String create(long userId) {
@@ -26,18 +27,23 @@ public class SessionRepository {
     public Optional<CreatedSession> create(long userId, boolean forceLogin) {
         String token = randomToken();
         String accessTokenId = java.util.UUID.randomUUID().toString();
+        String sessionId = java.util.UUID.randomUUID().toString();
+        String familyId = java.util.UUID.randomUUID().toString();
+        Instant now = Instant.now();
+        Instant refreshExpiry = now.plus(REFRESH_LIFETIME);
         try (var c = dataSource.getConnection()) {
             c.setAutoCommit(false);
             try {
-                try (var cleanup = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL AND (expires_at <= CURRENT_TIMESTAMP OR access_expires_at <= CURRENT_TIMESTAMP)")) { cleanup.setLong(1, userId); cleanup.executeUpdate(); }
+                try (var cleanup = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL AND (expires_at <= CURRENT_TIMESTAMP OR access_expires_at <= CURRENT_TIMESTAMP OR idle_expires_at <= CURRENT_TIMESTAMP)")) { cleanup.setLong(1, userId); cleanup.executeUpdate(); }
                 boolean active;
-                try (var find = c.prepareStatement("SELECT id FROM sys_refresh_token WHERE user_id = ? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP AND (access_expires_at IS NULL OR access_expires_at > CURRENT_TIMESTAMP) FOR UPDATE")) { find.setLong(1, userId); try (var rs = find.executeQuery()) { active = rs.next(); } }
+                try (var find = c.prepareStatement("SELECT id FROM sys_refresh_token WHERE user_id = ? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP AND access_expires_at > CURRENT_TIMESTAMP AND idle_expires_at > CURRENT_TIMESTAMP FOR UPDATE")) { find.setLong(1, userId); try (var rs = find.executeQuery()) { active = rs.next(); } }
                 if (active && !forceLogin) { c.rollback(); return Optional.empty(); }
                 if (active) try (var revoke = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL")) { revoke.setLong(1, userId); revoke.executeUpdate(); }
-                try (var p = c.prepareStatement("INSERT INTO sys_refresh_token(user_id, token_hash, expires_at, access_expires_at, access_token_id) VALUES (?, ?, ?, ?, ?)")) {
-                    p.setLong(1, userId); p.setString(2, hash(token)); p.setTimestamp(3, Timestamp.from(Instant.now().plus(REFRESH_LIFETIME))); p.setTimestamp(4, Timestamp.from(Instant.now().plus(ACCESS_LIFETIME))); p.setString(5, accessTokenId); p.executeUpdate();
+                try (var p = c.prepareStatement("INSERT INTO sys_refresh_token(user_id, session_id, refresh_family_id, client_id, token_hash, expires_at, idle_expires_at, access_expires_at, access_token_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    p.setLong(1, userId); p.setString(2, sessionId); p.setString(3, familyId); p.setString(4, "web"); p.setString(5, hash(token)); p.setTimestamp(6, Timestamp.from(refreshExpiry)); p.setTimestamp(7, Timestamp.from(now.plus(IDLE_LIFETIME))); p.setTimestamp(8, Timestamp.from(now.plus(ACCESS_LIFETIME))); p.setString(9, accessTokenId); p.executeUpdate();
                 }
-                c.commit(); return Optional.of(new CreatedSession(token, accessTokenId));
+                recordEvent(c, null, userId, familyId, "ISSUED", "web", null);
+                c.commit(); return Optional.of(new CreatedSession(token, accessTokenId, sessionId, refreshExpiry));
             } catch (Exception e) { c.rollback(); throw e; }
         } catch (Exception e) { throw new IllegalStateException("Could not create refresh session", e); }
     }
@@ -46,23 +52,29 @@ public class SessionRepository {
         if (token == null || token.isBlank()) return Optional.empty();
         try (var c = dataSource.getConnection()) {
             c.setAutoCommit(false);
-            try (var find = c.prepareStatement("SELECT id, user_id FROM sys_refresh_token WHERE token_hash = ? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP FOR UPDATE")) {
+            try (var find = c.prepareStatement("SELECT id, user_id, session_id, refresh_family_id, expires_at, idle_expires_at, revoked_at FROM sys_refresh_token WHERE token_hash = ? FOR UPDATE")) {
                 find.setString(1, hash(token));
                 try (var rs = find.executeQuery()) {
                     if (!rs.next()) { c.rollback(); return Optional.empty(); }
-                    long sessionId = rs.getLong("id"), userId = rs.getLong("user_id");
-                    try (var revoke = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE id = ?")) {
-                        revoke.setLong(1, sessionId); revoke.executeUpdate();
+                    long tokenId = rs.getLong("id"), userId = rs.getLong("user_id");
+                    String sessionId = rs.getString("session_id"), familyId = rs.getString("refresh_family_id");
+                    Timestamp refreshExpiry = rs.getTimestamp("expires_at"), idleExpiry = rs.getTimestamp("idle_expires_at");
+                    boolean invalid = rs.getTimestamp("revoked_at") != null || refreshExpiry == null || !refreshExpiry.toInstant().isAfter(Instant.now()) || (idleExpiry != null && !idleExpiry.toInstant().isAfter(Instant.now()));
+                    if (invalid) {
+                        if (familyId != null) try (var reuse = c.prepareStatement("UPDATE sys_refresh_token SET reused_at = COALESCE(reused_at, CURRENT_TIMESTAMP), revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP) WHERE refresh_family_id = ?")) { reuse.setString(1, familyId); reuse.executeUpdate(); }
+                        recordEvent(c, tokenId, userId, familyId, "REUSE_DETECTED", "web", "refresh token was already revoked or expired");
+                        c.commit(); return Optional.empty();
                     }
-                    String replacement = randomToken(); String accessTokenId = java.util.UUID.randomUUID().toString();
-                    try (var insert = c.prepareStatement("INSERT INTO sys_refresh_token(user_id, token_hash, expires_at, access_expires_at, access_token_id) VALUES (?, ?, ?, ?, ?)")) {
-                        insert.setLong(1, userId); insert.setString(2, hash(replacement));
-                        insert.setTimestamp(3, Timestamp.from(Instant.now().plus(REFRESH_LIFETIME))); insert.setTimestamp(4, Timestamp.from(Instant.now().plus(ACCESS_LIFETIME))); insert.setString(5, accessTokenId); insert.executeUpdate();
+                    try (var revoke = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL")) { revoke.setLong(1, tokenId); revoke.executeUpdate(); }
+                    String replacement = randomToken(), accessTokenId = java.util.UUID.randomUUID().toString();
+                    Instant nextIdle = Instant.now().plus(IDLE_LIFETIME); if (nextIdle.isAfter(refreshExpiry.toInstant())) nextIdle = refreshExpiry.toInstant();
+                    try (var insert = c.prepareStatement("INSERT INTO sys_refresh_token(user_id, session_id, refresh_family_id, client_id, token_hash, expires_at, idle_expires_at, access_expires_at, access_token_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                        insert.setLong(1, userId); insert.setString(2, sessionId); insert.setString(3, familyId); insert.setString(4, "web"); insert.setString(5, hash(replacement)); insert.setTimestamp(6, refreshExpiry); insert.setTimestamp(7, Timestamp.from(nextIdle)); insert.setTimestamp(8, Timestamp.from(Instant.now().plus(ACCESS_LIFETIME))); insert.setString(9, accessTokenId); insert.executeUpdate();
                     }
+                    recordEvent(c, tokenId, userId, familyId, "ROTATED", "web", null);
                     var user = users.findAuthUser(c, userId);
                     if (user.isEmpty()) { c.rollback(); return Optional.empty(); }
-                    c.commit();
-                    return Optional.of(new RotatedSession(user.get(), replacement, accessTokenId));
+                    c.commit(); return Optional.of(new RotatedSession(user.get(), replacement, accessTokenId, sessionId, refreshExpiry.toInstant()));
                 }
             } catch (Exception e) { c.rollback(); throw e; }
         } catch (Exception e) { throw new IllegalStateException("Could not rotate refresh session", e); }
@@ -80,14 +92,20 @@ public class SessionRepository {
         catch (Exception e) { throw new IllegalStateException("Could not revoke user sessions", e); }
     }
 
+    public void revokeSession(String sessionId) {
+        if (sessionId == null || sessionId.isBlank()) return;
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP) WHERE session_id = ? AND revoked_at IS NULL")) { p.setString(1, sessionId); p.executeUpdate(); }
+        catch (Exception e) { throw new IllegalStateException("Could not revoke session", e); }
+    }
+
     public boolean isAccessTokenActive(String accessTokenId) {
         if (accessTokenId == null || accessTokenId.isBlank()) return true;
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement("SELECT 1 FROM sys_refresh_token WHERE access_token_id = ? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP AND (access_expires_at IS NULL OR access_expires_at > CURRENT_TIMESTAMP)")) { p.setString(1, accessTokenId); try (var rs = p.executeQuery()) { return rs.next(); } }
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("SELECT 1 FROM sys_refresh_token WHERE access_token_id = ? AND revoked_at IS NULL AND expires_at > CURRENT_TIMESTAMP AND access_expires_at > CURRENT_TIMESTAMP AND idle_expires_at > CURRENT_TIMESTAMP")) { p.setString(1, accessTokenId); try (var rs = p.executeQuery()) { return rs.next(); } }
         catch (Exception e) { throw new IllegalStateException("Could not validate access session", e); }
     }
 
     public java.util.List<OnlineSession> activeSessions(String username, String ipAddress) {
-        StringBuilder sql = new StringBuilder("SELECT s.id, s.user_id, u.username, u.display_name, u.login_ip, s.created_at, s.expires_at, s.access_expires_at FROM sys_refresh_token s JOIN sys_user u ON u.id = s.user_id WHERE s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP AND (s.access_expires_at IS NULL OR s.access_expires_at > CURRENT_TIMESTAMP)");
+        StringBuilder sql = new StringBuilder("SELECT s.id, s.user_id, u.username, u.display_name, u.login_ip, s.created_at, s.expires_at, s.access_expires_at FROM sys_refresh_token s JOIN sys_user u ON u.id = s.user_id WHERE s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP AND s.access_expires_at > CURRENT_TIMESTAMP AND s.idle_expires_at > CURRENT_TIMESTAMP");
         if (username != null && !username.isBlank()) sql.append(" AND u.username LIKE ?");
         if (ipAddress != null && !ipAddress.isBlank()) sql.append(" AND u.login_ip LIKE ?");
         sql.append(" ORDER BY s.created_at DESC");
@@ -116,7 +134,11 @@ public class SessionRepository {
         } catch (Exception e) { throw new IllegalStateException("SHA-256 is unavailable", e); }
     }
 
-    public record CreatedSession(String refreshToken, String accessTokenId) {}
-    public record RotatedSession(UserRepository.AuthUser user, String refreshToken, String accessTokenId) {}
+    private static void recordEvent(java.sql.Connection c, Long tokenId, long userId, String familyId, String eventType, String clientId, String detail) throws Exception {
+        try (var p = c.prepareStatement("INSERT INTO sys_refresh_token_event(token_id, user_id, refresh_family_id, event_type, client_id, detail) VALUES (?, ?, ?, ?, ?, ?)")) { if (tokenId == null) p.setNull(1, java.sql.Types.BIGINT); else p.setLong(1, tokenId); p.setLong(2, userId); p.setString(3, familyId); p.setString(4, eventType); p.setString(5, clientId); p.setString(6, detail); p.executeUpdate(); }
+    }
+
+    public record CreatedSession(String refreshToken, String accessTokenId, String sessionId, Instant refreshExpiresAt) {}
+    public record RotatedSession(UserRepository.AuthUser user, String refreshToken, String accessTokenId, String sessionId, Instant refreshExpiresAt) {}
     public record OnlineSession(long sessionId, long userId, String username, String displayName, String ipAddress, java.time.Instant createdAt, java.time.Instant expiresAt, java.time.Instant accessExpiresAt) {}
 }

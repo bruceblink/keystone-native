@@ -1,0 +1,15 @@
+SET @add_session_id = (SELECT IF(COUNT(*) = 0, 'ALTER TABLE sys_refresh_token ADD COLUMN session_id CHAR(36) NULL AFTER user_id', 'SELECT 1') FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_refresh_token' AND column_name = 'session_id');
+PREPARE stmt FROM @add_session_id; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @add_family_id = (SELECT IF(COUNT(*) = 0, 'ALTER TABLE sys_refresh_token ADD COLUMN refresh_family_id CHAR(36) NULL AFTER session_id', 'SELECT 1') FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_refresh_token' AND column_name = 'refresh_family_id');
+PREPARE stmt FROM @add_family_id; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @add_client_id = (SELECT IF(COUNT(*) = 0, 'ALTER TABLE sys_refresh_token ADD COLUMN client_id VARCHAR(128) NULL AFTER refresh_family_id', 'SELECT 1') FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_refresh_token' AND column_name = 'client_id');
+PREPARE stmt FROM @add_client_id; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @add_idle_expiry = (SELECT IF(COUNT(*) = 0, 'ALTER TABLE sys_refresh_token ADD COLUMN idle_expires_at TIMESTAMP NULL AFTER expires_at', 'SELECT 1') FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_refresh_token' AND column_name = 'idle_expires_at');
+PREPARE stmt FROM @add_idle_expiry; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @add_reused_at = (SELECT IF(COUNT(*) = 0, 'ALTER TABLE sys_refresh_token ADD COLUMN reused_at TIMESTAMP NULL AFTER revoked_at', 'SELECT 1') FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = 'sys_refresh_token' AND column_name = 'reused_at');
+PREPARE stmt FROM @add_reused_at; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+UPDATE sys_refresh_token SET session_id = COALESCE(session_id, UUID()), refresh_family_id = COALESCE(refresh_family_id, UUID()), idle_expires_at = COALESCE(idle_expires_at, expires_at) WHERE session_id IS NULL OR refresh_family_id IS NULL OR idle_expires_at IS NULL;
+SET @add_session_index = (SELECT IF(COUNT(*) = 0, 'CREATE INDEX idx_refresh_session_state ON sys_refresh_token(session_id, revoked_at)', 'SELECT 1') FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'sys_refresh_token' AND index_name = 'idx_refresh_session_state');
+PREPARE stmt FROM @add_session_index; EXECUTE stmt; DEALLOCATE PREPARE stmt;
+SET @add_family_index = (SELECT IF(COUNT(*) = 0, 'CREATE INDEX idx_refresh_family_state ON sys_refresh_token(refresh_family_id, revoked_at)', 'SELECT 1') FROM information_schema.statistics WHERE table_schema = DATABASE() AND table_name = 'sys_refresh_token' AND index_name = 'idx_refresh_family_state');
+PREPARE stmt FROM @add_family_index; EXECUTE stmt; DEALLOCATE PREPARE stmt;

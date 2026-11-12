@@ -3,7 +3,6 @@ package app.keystone.auth;
 import app.keystone.ApiResponse;
 import app.keystone.audit.LoginLogRepository;
 import app.keystone.user.UserRepository;
-import io.smallrye.jwt.build.Jwt;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.POST;
@@ -13,8 +12,8 @@ import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
-import java.time.Duration;
+import io.quarkus.security.identity.SecurityIdentity;
+import org.eclipse.microprofile.jwt.JsonWebToken;
 
 @Path("/v1/auth")
 @Produces(MediaType.APPLICATION_JSON)
@@ -23,7 +22,8 @@ public class AuthResource {
     @Inject UserRepository users;
     @Inject SessionRepository sessions;
     @Inject LoginLogRepository loginLogs;
-    @ConfigProperty(name = "mp.jwt.verify.issuer") String issuer;
+    @Inject AccessTokenService tokens;
+    @Inject SecurityIdentity identity;
 
     @POST @Path("/login") @PermitAll
     public Response login(LoginRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
@@ -38,7 +38,7 @@ public class AuthResource {
         if (refresh.isEmpty()) { loginLogs.record(u.username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
         users.markLogin(u.id(), ipAddress);
         loginLogs.record(u.username(), "SUCCESS", ipAddress, "login successful", userAgent);
-        return Response.ok(ApiResponse.ok(issue(u, refresh.get().refreshToken(), refresh.get().accessTokenId()))).build();
+        return Response.ok(ApiResponse.ok(tokens.issue(u, refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().refreshExpiresAt()))).build();
     }
 
     @POST @Path("/refresh") @PermitAll
@@ -47,12 +47,13 @@ public class AuthResource {
         var rotated = sessions.rotate(request.refreshToken(), users);
         if (rotated.isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid or expired refresh token")).build();
         var session = rotated.get();
-        return Response.ok(ApiResponse.ok(issue(session.user(), session.refreshToken(), session.accessTokenId()))).build();
+        return Response.ok(ApiResponse.ok(tokens.issue(session.user(), session.refreshToken(), session.accessTokenId(), session.sessionId(), session.refreshExpiresAt()))).build();
     }
 
-    @POST @Path("/logout") @PermitAll
-    public Response logout(RefreshRequest request, @HeaderParam("Authorization") String authorization) {
-        if (request != null) sessions.revoke(request.refreshToken());
+    @POST @Path("/logout") @jakarta.annotation.security.RolesAllowed({"USER", "ADMIN"})
+    public Response logout() {
+        if (identity.isAnonymous() || !(identity.getPrincipal() instanceof JsonWebToken jwt)) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("authentication is required")).build();
+        sessions.revokeSession(jwt.getClaim("sid"));
         return Response.ok(ApiResponse.ok(java.util.Map.of("loggedOut", true))).build();
     }
 
@@ -64,11 +65,6 @@ public class AuthResource {
         if (!user.get().mustChangePassword()) return Response.status(409).entity(ApiResponse.error("password change is not required")).build();
         users.update(user.get().id(), request.newPassword(), null, null, null, null);
         return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build();
-    }
-
-    private TokenResponse issue(UserRepository.AuthUser user, String refreshToken, String accessTokenId) {
-        String accessToken = Jwt.issuer(issuer).upn(user.username()).claim("jti", accessTokenId).groups(new java.util.HashSet<>(user.roles())).claim("userId", user.id()).expiresIn(Duration.ofHours(2)).sign();
-        return new TokenResponse(accessToken, accessToken, refreshToken, "Bearer", 7200, 1209600, user.username(), user.displayName(), user.roles());
     }
 
     public record LoginRequest(String username, String password, Boolean forceLogin) {}

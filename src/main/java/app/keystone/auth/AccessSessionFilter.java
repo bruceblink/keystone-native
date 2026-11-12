@@ -21,8 +21,12 @@ public class AccessSessionFilter implements ContainerRequestFilter {
     public void filter(ContainerRequestContext context) {
         String accessTokenId = null;
         if (identity.getPrincipal() instanceof JsonWebToken jwt) accessTokenId = jwt.getClaim("jti");
-        if (accessTokenId != null && !sessions.isAccessTokenActive(accessTokenId)) {
-            context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access session is no longer active").build());
+        if (accessTokenId != null) {
+            try {
+                if (!sessions.isAccessTokenActive(accessTokenId)) context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access session is no longer active").build());
+            } catch (IllegalStateException e) {
+                context.abortWith(Response.status(Response.Status.SERVICE_UNAVAILABLE).entity("authentication state is unavailable").build());
+            }
         }
     }
 }

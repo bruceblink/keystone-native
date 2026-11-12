@@ -119,6 +119,7 @@ DB_PASSWORD
 JWT_PRIVATE_KEY_LOCATION
 JWT_PUBLIC_KEY_LOCATION
 JWT_ISSUER（可选，默认 keystone-native）
+JWT_AUDIENCE（可选，默认 keystone-api）
 ```
 
 使用 Compose 前，将部署密钥放入 `docker/keys/privateKey.pem` 和 `docker/keys/publicKey.pem`；这些文件不会提交到 Git。
