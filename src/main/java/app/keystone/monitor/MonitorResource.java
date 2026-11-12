@@ -3,6 +3,7 @@ package app.keystone.monitor;
 import app.keystone.ApiResponse;
 import app.keystone.auth.SessionRepository;
 import app.keystone.auth.RequiresPermission;
+import app.keystone.auth.RequiresMfaStepUp;
 import app.keystone.audit.LoginLogRepository;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -26,7 +27,7 @@ public class MonitorResource {
         return ApiResponse.ok(new Page(all.subList(from, to), safePage, safeSize, all.size()));
     }
 
-    @DELETE @Path("/onlineUser/{sessionId}") @RequiresPermission("session:revoke")
+    @DELETE @Path("/onlineUser/{sessionId}") @RequiresPermission("session:revoke") @RequiresMfaStepUp
     public Response logout(@PathParam("sessionId") long sessionId) {
         try { sessions.revokeById(sessionId); return Response.ok(ApiResponse.ok(Map.of("loggedOut", true))).build(); }
         catch (java.util.NoSuchElementException e) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("session not found")).build(); }

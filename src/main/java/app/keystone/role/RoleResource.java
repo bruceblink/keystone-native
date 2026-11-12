@@ -3,6 +3,7 @@ package app.keystone.role;
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.RequiresPermission;
+import app.keystone.auth.RequiresMfaStepUp;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -21,10 +22,10 @@ public class RoleResource {
     @GET @RequiresPermission("role:read")
     public ApiResponse<java.util.List<Role>> list() { return ApiResponse.ok(roles.list()); }
 
-    @POST @RequiresPermission("role:write") public Response create(RoleRequest request) { if (request == null) return bad("request body is required"); try { var role = roles.create(request.code(), request.name()); logs.record(actor(), "CREATE", "role", String.valueOf(role.id()), role.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(role)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
-    @PUT @Path("/{code}") @RequiresPermission("role:write") public Response update(@PathParam("code") String code, RoleRequest request) { if (request == null) return bad("request body is required"); try { var role = roles.update(code, request.name(), request.enabled()); logs.record(actor(), "UPDATE", "role", String.valueOf(role.id()), role.code()); return Response.ok(ApiResponse.ok(role)).build(); } catch (NoSuchElementException e) { return notFound(); } }
-    @PUT @Path("/{code}/permissions") @RequiresPermission("role:write") public Response permissions(@PathParam("code") String code, PermissionRequest request) { if (request == null) return bad("request body is required"); try { roles.assignPermissions(code, request.permissions()); logs.record(actor(), "UPDATE", "role-permission", code, null); return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
-    @DELETE @Path("/{code}") @RequiresPermission("role:write") public Response delete(@PathParam("code") String code) { try { roles.delete(code); logs.record(actor(), "DELETE", "role", code, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
+    @POST @RequiresPermission("role:write") @RequiresMfaStepUp public Response create(RoleRequest request) { if (request == null) return bad("request body is required"); try { var role = roles.create(request.code(), request.name()); logs.record(actor(), "CREATE", "role", String.valueOf(role.id()), role.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(role)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
+    @PUT @Path("/{code}") @RequiresPermission("role:write") @RequiresMfaStepUp public Response update(@PathParam("code") String code, RoleRequest request) { if (request == null) return bad("request body is required"); try { var role = roles.update(code, request.name(), request.enabled()); logs.record(actor(), "UPDATE", "role", String.valueOf(role.id()), role.code()); return Response.ok(ApiResponse.ok(role)).build(); } catch (NoSuchElementException e) { return notFound(); } }
+    @PUT @Path("/{code}/permissions") @RequiresPermission("role:write") @RequiresMfaStepUp public Response permissions(@PathParam("code") String code, PermissionRequest request) { if (request == null) return bad("request body is required"); try { roles.assignPermissions(code, request.permissions()); logs.record(actor(), "UPDATE", "role-permission", code, null); return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
+    @DELETE @Path("/{code}") @RequiresPermission("role:write") @RequiresMfaStepUp public Response delete(@PathParam("code") String code) { try { roles.delete(code); logs.record(actor(), "DELETE", "role", code, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
 
     private String actor() { return identity.getPrincipal().getName(); }
     private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).build(); }

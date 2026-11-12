@@ -6,6 +6,7 @@ import app.keystone.auth.DataScopeService;
 import app.keystone.auth.SessionRepository;
 import app.keystone.auth.RequiresPermission;
 import app.keystone.auth.RejectApiKey;
+import app.keystone.auth.RequiresMfaStepUp;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -37,7 +38,7 @@ public class UserResource {
         catch (java.util.NoSuchElementException e) { throw new NotFoundException("user not found"); }
     }
 
-    @POST @RequiresPermission("user:write")
+    @POST @RequiresPermission("user:write") @RequiresMfaStepUp
     public Response create(UserRequest request) {
         if (request == null) return bad("request body is required");
         try {
@@ -49,7 +50,7 @@ public class UserResource {
         } catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
-    @PUT @Path("/{id}") @RequiresPermission("user:write")
+    @PUT @Path("/{id}") @RequiresPermission("user:write") @RequiresMfaStepUp
     public Response update(@PathParam("id") long id, UserRequest request) {
         if (request == null) return bad("request body is required");
         try {
@@ -67,27 +68,27 @@ public class UserResource {
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @PUT @Path("/{id}/password") @RequiresPermission("user:write") @RejectApiKey
+    @PUT @Path("/{id}/password") @RequiresPermission("user:write") @RequiresMfaStepUp @RejectApiKey
     public Response password(@PathParam("id") long id, PasswordRequest request) {
         if (request == null || request.password() == null || request.password().isBlank()) return bad("password is required");
         try { long subjectId = subjectId(); var scope = dataScopes.forUser(subjectId); users.findPublic(id, scope, subjectId); var updated = users.update(id, request.password(), null, null, null, null); sessions.revokeAll(id); logs.record(actor(), "UPDATE", "user-password", String.valueOf(id), null); return Response.ok(ApiResponse.ok(updated)).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @PUT @Path("/{id}/status") @RequiresPermission("user:write")
+    @PUT @Path("/{id}/status") @RequiresPermission("user:write") @RequiresMfaStepUp
     public Response status(@PathParam("id") long id, StatusRequest request) {
         if (request == null || request.enabled() == null) return bad("enabled is required");
         try { long subjectId = subjectId(); var scope = dataScopes.forUser(subjectId); users.findPublic(id, scope, subjectId); var updated = users.update(id, null, null, null, request.enabled(), null); if (!request.enabled()) sessions.revokeAll(id); logs.record(actor(), "UPDATE", "user-status", String.valueOf(id), String.valueOf(request.enabled())); return Response.ok(ApiResponse.ok(updated)).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @DELETE @Path("/{id}") @RequiresPermission("user:write") @RejectApiKey
+    @DELETE @Path("/{id}") @RequiresPermission("user:write") @RequiresMfaStepUp @RejectApiKey
     public Response delete(@PathParam("id") long id) {
         try { long subjectId = subjectId(); users.delete(id, dataScopes.forUser(subjectId), subjectId); logs.record(actor(), "DELETE", "user", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @DELETE @RequiresPermission("user:write") @RejectApiKey
+    @DELETE @RequiresPermission("user:write") @RequiresMfaStepUp @RejectApiKey
     public Response deleteBatch(@QueryParam("ids") String ids) {
         if (ids == null || ids.isBlank()) return bad("ids is required");
         try { long subjectId = subjectId(); var values = java.util.Arrays.stream(ids.split(",")).map(String::trim).map(Long::valueOf).toList(); int deleted = users.deleteAll(values, dataScopes.forUser(subjectId), subjectId); logs.record(actor(), "DELETE", "users", ids, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", deleted))).build(); }

@@ -6,6 +6,7 @@ import app.keystone.user.UserRepository;
 import app.keystone.auth.RequiresPermission;
 import app.keystone.auth.RejectApiKey;
 import app.keystone.auth.SessionRepository;
+import app.keystone.auth.RequiresMfaStepUp;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -36,7 +37,7 @@ public class ProfileResource {
         return Response.ok(ApiResponse.ok(java.util.Map.of("avatar", request.avatar()))).build();
     }
 
-    @PUT @Path("/password") @RequiresPermission("profile:write")
+    @PUT @Path("/password") @RequiresPermission("profile:write") @RequiresMfaStepUp
     public Response password(PasswordRequest request) {
         if (request == null || request.password() == null || request.password().isBlank()) return Response.status(400).entity(ApiResponse.error("password is required")).build();
         var user = current();
