@@ -3,6 +3,7 @@ package app.keystone.user;
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.SessionRepository;
+import app.keystone.auth.RequiresPermission;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
@@ -21,20 +22,20 @@ public class UserResource {
     @Inject SecurityIdentity identity;
     @Inject SessionRepository sessions;
 
-    @GET
+    @GET @RequiresPermission("user:read")
     public ApiResponse<UserRepository.Page> list(@QueryParam("page") Integer page, @QueryParam("size") Integer size,
                                                   @QueryParam("username") String username, @QueryParam("displayName") String displayName,
                                                   @QueryParam("deptId") Long deptId, @QueryParam("enabled") Boolean enabled) {
         return ApiResponse.ok(users.list(page == null ? 1 : page, size == null ? 20 : size, username, displayName, deptId, enabled));
     }
 
-    @GET @Path("/{id}")
+    @GET @Path("/{id}") @RequiresPermission("user:read")
     public ApiResponse<User> get(@PathParam("id") long id) {
         try { return ApiResponse.ok(users.findPublic(id)); }
         catch (java.util.NoSuchElementException e) { throw new NotFoundException("user not found"); }
     }
 
-    @POST
+    @POST @RequiresPermission("user:write")
     public Response create(UserRequest request) {
         if (request == null) return bad("request body is required");
         try {
@@ -44,7 +45,7 @@ public class UserResource {
         } catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
-    @PUT @Path("/{id}")
+    @PUT @Path("/{id}") @RequiresPermission("user:write")
     public Response update(@PathParam("id") long id, UserRequest request) {
         if (request == null) return bad("request body is required");
         try {
@@ -55,27 +56,27 @@ public class UserResource {
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @PUT @Path("/{id}/password")
+    @PUT @Path("/{id}/password") @RequiresPermission("user:write")
     public Response password(@PathParam("id") long id, PasswordRequest request) {
         if (request == null || request.password() == null || request.password().isBlank()) return bad("password is required");
         try { var updated = users.update(id, request.password(), null, null, null, null); sessions.revokeAll(id); logs.record(actor(), "UPDATE", "user-password", String.valueOf(id), null); return Response.ok(ApiResponse.ok(updated)).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @PUT @Path("/{id}/status")
+    @PUT @Path("/{id}/status") @RequiresPermission("user:write")
     public Response status(@PathParam("id") long id, StatusRequest request) {
         if (request == null || request.enabled() == null) return bad("enabled is required");
         try { var updated = users.update(id, null, null, null, request.enabled(), null); if (!request.enabled()) sessions.revokeAll(id); logs.record(actor(), "UPDATE", "user-status", String.valueOf(id), String.valueOf(request.enabled())); return Response.ok(ApiResponse.ok(updated)).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @DELETE @Path("/{id}")
+    @DELETE @Path("/{id}") @RequiresPermission("user:write")
     public Response delete(@PathParam("id") long id) {
         try { users.delete(id); logs.record(actor(), "DELETE", "user", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @DELETE
+    @DELETE @RequiresPermission("user:write")
     public Response deleteBatch(@QueryParam("ids") String ids) {
         if (ids == null || ids.isBlank()) return bad("ids is required");
         try { var values = java.util.Arrays.stream(ids.split(",")).map(String::trim).map(Long::valueOf).toList(); int deleted = users.deleteAll(values); logs.record(actor(), "DELETE", "users", ids, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", deleted))).build(); }
