@@ -143,6 +143,22 @@ public class AuthResource {
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("MFA state is unavailable")).build(); }
     }
 
+    /** 使用当前密码和最近的 MFA 验证轮换恢复码，旧批次在数据库事务内失效。 */
+    @POST @Path("/mfa/recovery-codes/rotate") @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
+    public Response rotateRecoveryCodes(CurrentPasswordRequest request) {
+        if (request == null || request.currentPassword() == null || request.currentPassword().isBlank()) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("currentPassword is required")).build();
+        var current = currentHumanSession();
+        String username = identity.getPrincipal().getName();
+        try {
+            if (users.authenticate(username, request.currentPassword()).isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid credentials")).build();
+        } catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
+        try { return Response.ok(ApiResponse.ok(java.util.Map.of("recoveryCodes", mfa.rotateRecoveryCodes(current.userId())))).build(); }
+        catch (IllegalStateException e) {
+            if ("MFA is not enabled".equals(e.getMessage())) return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error(e.getMessage())).build();
+            return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("MFA state is unavailable")).build();
+        }
+    }
+
     /** 管理员只可为已经完成 enrollment 的用户启用或关闭强制 MFA。 */
     @PUT @Path("/mfa/policy/{userId}") @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
     public Response setMfaPolicy(@PathParam("userId") long userId, MfaPolicyRequest request) {
@@ -180,6 +196,7 @@ public class AuthResource {
     public record LoginMfaRequest(String username, String challengeId, String code, String clientId, Boolean forceLogin) {}
     public record MfaCodeRequest(String challengeId, String code) {}
     public record MfaPolicyRequest(Boolean required) {}
+    public record CurrentPasswordRequest(String currentPassword) {}
     public record TokenResponse(String accessToken, String token, String refreshToken, String tokenType, long expiresIn, long refreshExpiresIn, String username, String displayName, java.util.List<String> roles, String sessionId, String clientId) {}
 
     private CurrentHumanSession currentHumanSession() {

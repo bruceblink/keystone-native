@@ -34,6 +34,7 @@ class MfaStepUpInterceptorTest {
         assertStepUp(AuthResource.class, "beginMfaEnrollment");
         assertStepUp(AuthResource.class, "verifyMfaEnrollment", AuthResource.MfaCodeRequest.class);
         assertStepUp(AuthResource.class, "setMfaPolicy", long.class, AuthResource.MfaPolicyRequest.class);
+        assertStepUp(AuthResource.class, "rotateRecoveryCodes", AuthResource.CurrentPasswordRequest.class);
     }
 
     @Test

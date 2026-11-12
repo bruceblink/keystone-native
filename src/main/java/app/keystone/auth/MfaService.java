@@ -123,6 +123,15 @@ public class MfaService {
         return mfa.setRequired(userId, required);
     }
 
+    /** 生成新恢复码批次并原子替换旧批次；调用方只应返回本次明文结果。 */
+    public java.util.List<String> rotateRecoveryCodes(long userId) {
+        var status = status(userId);
+        if (!status.enabled()) throw new IllegalStateException("MFA is not enabled");
+        var batch = recoveryCodes.generateBatch();
+        mfa.replaceRecoveryCodes(userId, batch.batchId(), batch.codes().stream().map(recoveryCodes::hash).toList());
+        return batch.codes();
+    }
+
     private MfaRepository.MfaStatus status(long userId) {
         return mfa.findStatus(userId).orElseThrow(() -> new IllegalArgumentException("user not found"));
     }
