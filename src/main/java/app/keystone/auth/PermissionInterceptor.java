@@ -8,6 +8,8 @@ import jakarta.interceptor.Interceptor;
 import jakarta.interceptor.InvocationContext;
 import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.NotAuthorizedException;
+import jakarta.ws.rs.ServiceUnavailableException;
+import jakarta.ws.rs.core.Response;
 
 @RequiresPermission("")
 @Interceptor
@@ -21,7 +23,12 @@ public class PermissionInterceptor {
         RequiresPermission requirement = context.getMethod().getAnnotation(RequiresPermission.class);
         if (requirement == null) requirement = context.getTarget().getClass().getAnnotation(RequiresPermission.class);
         if (identity == null || identity.isAnonymous()) throw new NotAuthorizedException("authentication is required");
-        if (requirement == null || !authorization.allowed(identity, requirement.value())) throw new ForbiddenException("permission denied");
+        if (requirement == null) throw new ForbiddenException("permission denied");
+        try {
+            if (!authorization.allowed(identity, requirement.value())) throw new ForbiddenException("permission denied");
+        } catch (IllegalStateException e) {
+            throw new ServiceUnavailableException(Response.status(Response.Status.SERVICE_UNAVAILABLE).entity("authorization state is unavailable").build(), e);
+        }
         return context.proceed();
     }
 }
