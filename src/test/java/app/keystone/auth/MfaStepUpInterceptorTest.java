@@ -30,6 +30,13 @@ class MfaStepUpInterceptorTest {
     }
 
     @Test
+    void mfaManagementRoutesRequireStepUpBoundary() throws Exception {
+        assertStepUp(AuthResource.class, "beginMfaEnrollment");
+        assertStepUp(AuthResource.class, "verifyMfaEnrollment", AuthResource.MfaCodeRequest.class);
+        assertStepUp(AuthResource.class, "setMfaPolicy", long.class, AuthResource.MfaPolicyRequest.class);
+    }
+
+    @Test
     void claimsRecordKeepsRequiredSessionFields() {
         var claims = new MfaStepUpInterceptor.Claims(7L, "session-1", "web");
         assertEquals(7L, claims.userId());
@@ -50,7 +57,11 @@ class MfaStepUpInterceptorTest {
     }
 
     private static void assertStepUp(String name, Class<?> parameter) throws Exception {
-        Method method = ApiKeyResource.class.getDeclaredMethod(name, parameter);
+        assertStepUp(ApiKeyResource.class, name, parameter);
+    }
+
+    private static void assertStepUp(Class<?> type, String name, Class<?>... parameters) throws Exception {
+        Method method = type.getDeclaredMethod(name, parameters);
         assertNotNull(method.getAnnotation(RequiresMfaStepUp.class));
     }
 

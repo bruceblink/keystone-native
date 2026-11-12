@@ -117,7 +117,7 @@ public class AuthResource {
     }
 
     /** 为当前已登录的人类用户创建待验证 TOTP enrollment。 */
-    @POST @Path("/mfa/enroll") @RequiresPermission("mfa:manage") @RejectApiKey
+    @POST @Path("/mfa/enroll") @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
     public Response beginMfaEnrollment() {
         var current = currentHumanSession();
         try {
@@ -131,7 +131,7 @@ public class AuthResource {
     }
 
     /** 只接受当前会话绑定的 enrollment 挑战，并在成功后返回一次性恢复码。 */
-    @POST @Path("/mfa/enroll/verify") @RequiresPermission("mfa:manage") @RejectApiKey
+    @POST @Path("/mfa/enroll/verify") @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
     public Response verifyMfaEnrollment(MfaCodeRequest request) {
         if (request == null || request.challengeId() == null || request.code() == null) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("challengeId and code are required")).build();
         var current = currentHumanSession();
@@ -144,7 +144,7 @@ public class AuthResource {
     }
 
     /** 管理员只可为已经完成 enrollment 的用户启用或关闭强制 MFA。 */
-    @PUT @Path("/mfa/policy/{userId}") @RequiresPermission("mfa:manage") @RejectApiKey
+    @PUT @Path("/mfa/policy/{userId}") @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
     public Response setMfaPolicy(@PathParam("userId") long userId, MfaPolicyRequest request) {
         if (request == null || request.required() == null || userId <= 0) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("userId and required are required")).build();
         try {
