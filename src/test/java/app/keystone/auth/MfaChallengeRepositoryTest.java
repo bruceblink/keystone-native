@@ -6,6 +6,7 @@ import java.time.Instant;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class MfaChallengeRepositoryTest {
     @Test
@@ -23,5 +24,13 @@ class MfaChallengeRepositoryTest {
         assertNull(challenge.sessionId());
         assertEquals(0, challenge.attemptCount());
         assertNull(challenge.consumedAt());
+    }
+
+    @Test
+    void transactionalHelpersValidateBeforeUsingConnection() {
+        var repository = new MfaChallengeRepository();
+        assertThrows(IllegalArgumentException.class,
+                () -> repository.lockActiveForUpdate(null, "not-a-uuid", 0, "web", MfaChallengeRepository.Purpose.LOGIN, null));
+        assertThrows(IllegalArgumentException.class, () -> repository.consumeLocked(null, null));
     }
 }

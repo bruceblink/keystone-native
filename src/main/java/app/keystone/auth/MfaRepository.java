@@ -22,6 +22,7 @@ public class MfaRepository {
     public static final int LOCK_SECONDS = 300;
 
     @Inject DataSource dataSource;
+    @Inject MfaChallengeRepository challenges;
 
     /** 读取用户是否要求 MFA 以及当前是否存在已启用的 TOTP。 */
     public Optional<MfaStatus> findStatus(long userId) {
@@ -123,6 +124,110 @@ public class MfaRepository {
         }
     }
 
+    /**
+     * 在一个事务内完成 enrollment。事务同时锁定用户、挑战和 MFA 记录，
+     * 并在提交前替换恢复码、接受 TOTP、启用 MFA 和消费挑战。
+     */
+    public boolean completeEnrollment(long userId, String challengeId, String clientId, String sessionId,
+                                      String mfaId, long candidateStep, String batchId, List<String> hashes) {
+        requireUser(userId);
+        String boundMfaId = normalizeMfaId(mfaId);
+        String boundBatchId = normalizeMfaId(batchId);
+        if (candidateStep < 0) throw new IllegalArgumentException("candidateStep must be non-negative");
+        validateRecoveryHashes(hashes);
+        try (var c = dataSource.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                if (!userExistsForUpdate(c, userId)) { c.rollback(); return false; }
+                var challenge = challenges.lockActiveForUpdate(c, challengeId, userId, clientId,
+                        MfaChallengeRepository.Purpose.ENROLL, sessionId);
+                if (challenge.isEmpty()) { c.rollback(); return false; }
+                var stored = userMfaForUpdate(c, userId, boundMfaId);
+                if (stored == null || stored.enabled() || !canAcceptTotp(stored, candidateStep)) {
+                    c.rollback();
+                    return false;
+                }
+                if (!acceptTotpLocked(c, userId, boundMfaId, candidateStep, true)) {
+                    c.rollback();
+                    return false;
+                }
+                replaceRecoveryCodes(c, userId, boundBatchId, hashes);
+                if (!enableEnrollmentLocked(c, userId, boundMfaId)
+                        || !challenges.consumeLocked(c, challenge.get())) {
+                    c.rollback();
+                    return false;
+                }
+                c.commit();
+                return true;
+            } catch (Exception e) {
+                c.rollback();
+                throw e;
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not complete MFA enrollment", e);
+        }
+    }
+
+    /** 在一个事务内接受登录 TOTP 并消费对应挑战。 */
+    public boolean consumeLoginTotp(long userId, String challengeId, String clientId, String codeSessionId,
+                                    String mfaId, long candidateStep) {
+        requireUser(userId);
+        String boundMfaId = normalizeMfaId(mfaId);
+        if (candidateStep < 0) throw new IllegalArgumentException("candidateStep must be non-negative");
+        return consumeLoginFactor(userId, challengeId, clientId, codeSessionId, boundMfaId, candidateStep, null);
+    }
+
+    /** 在一个事务内消费登录恢复码并消费对应挑战。 */
+    public boolean consumeLoginRecovery(long userId, String challengeId, String clientId, String codeSessionId,
+                                        String mfaId, String hash) {
+        requireUser(userId);
+        String boundMfaId = normalizeMfaId(mfaId);
+        if (hash == null || !hash.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("invalid recovery code hash");
+        return consumeLoginFactor(userId, challengeId, clientId, codeSessionId, boundMfaId, null, hash);
+    }
+
+    /**
+     * 统一执行登录因子事务。固定锁顺序为用户、挑战、MFA 记录，
+     * 防止 TOTP 和恢复码并发请求分别提交部分状态。
+     */
+    private boolean consumeLoginFactor(long userId, String challengeId, String clientId, String sessionId,
+                                       String mfaId, Long candidateStep, String recoveryHash) {
+        try (var c = dataSource.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                if (!userExistsForUpdate(c, userId)) { c.rollback(); return false; }
+                var challenge = challenges.lockActiveForUpdate(c, challengeId, userId, clientId,
+                        MfaChallengeRepository.Purpose.LOGIN, sessionId);
+                if (challenge.isEmpty()) { c.rollback(); return false; }
+                var stored = userMfaForUpdate(c, userId, mfaId);
+                if (stored == null || !stored.enabled()) { c.rollback(); return false; }
+                if (candidateStep != null) {
+                    if (!canAcceptTotp(stored, candidateStep)
+                            || !acceptTotpLocked(c, userId, mfaId, candidateStep, false)) {
+                        c.rollback();
+                        return false;
+                    }
+                } else {
+                    if (!consumeRecoveryCodeLocked(c, userId, recoveryHash)) {
+                        c.rollback();
+                        return false;
+                    }
+                }
+                if (!challenges.consumeLocked(c, challenge.get())) {
+                    c.rollback();
+                    return false;
+                }
+                c.commit();
+                return true;
+            } catch (Exception e) {
+                c.rollback();
+                throw e;
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not consume MFA login factor", e);
+        }
+    }
+
     /** 记录一次失败验证；达到阈值时在数据库内设置短时锁定。 */
     public boolean recordFailure(long userId, String mfaId) {
         requireUser(userId);
@@ -176,26 +281,15 @@ public class MfaRepository {
     public void replaceRecoveryCodes(long userId, String batchId, List<String> hashes) {
         requireUser(userId);
         String boundBatchId = normalizeMfaId(batchId);
-        if (hashes == null || hashes.isEmpty() || hashes.stream().anyMatch(value -> value == null || !value.matches("[0-9a-f]{64}"))) {
-            throw new IllegalArgumentException("invalid recovery code hashes");
-        }
+        validateRecoveryHashes(hashes);
         try (var c = dataSource.getConnection()) {
             c.setAutoCommit(false);
             try {
-                try (var delete = c.prepareStatement("DELETE FROM sys_mfa_recovery_code WHERE user_id = ?")) {
-                    delete.setLong(1, userId);
-                    delete.executeUpdate();
+                if (!userExistsForUpdate(c, userId)) {
+                    c.rollback();
+                    throw new IllegalStateException("user not found");
                 }
-                try (var insert = c.prepareStatement("INSERT INTO sys_mfa_recovery_code(id, user_id, batch_id, code_hash) VALUES (?, ?, ?, ?)")) {
-                    for (String hash : hashes) {
-                        insert.setString(1, UUID.randomUUID().toString());
-                        insert.setLong(2, userId);
-                        insert.setString(3, boundBatchId);
-                        insert.setString(4, hash);
-                        insert.addBatch();
-                    }
-                    insert.executeBatch();
-                }
+                replaceRecoveryCodes(c, userId, boundBatchId, hashes);
                 c.commit();
             } catch (Exception e) {
                 c.rollback();
@@ -236,6 +330,12 @@ public class MfaRepository {
         if (encrypted == null) throw new IllegalArgumentException("encrypted MFA secret is required");
     }
 
+    private static void validateRecoveryHashes(List<String> hashes) {
+        if (hashes == null || hashes.isEmpty() || hashes.stream().anyMatch(value -> value == null || !value.matches("[0-9a-f]{64}"))) {
+            throw new IllegalArgumentException("invalid recovery code hashes");
+        }
+    }
+
     private static boolean userExistsForUpdate(java.sql.Connection c, long userId) throws Exception {
         try (var p = c.prepareStatement("SELECT id FROM sys_user WHERE id = ? FOR UPDATE")) {
             p.setLong(1, userId);
@@ -255,6 +355,80 @@ public class MfaRepository {
         try (var p = c.prepareStatement("SELECT id, enabled FROM sys_user_mfa WHERE user_id = ? FOR UPDATE")) {
             p.setLong(1, userId);
             try (var rs = p.executeQuery()) { return rs.next() ? new MfaRow(rs.getString("id"), rs.getBoolean("enabled")) : null; }
+        }
+    }
+
+    private static LockedMfa userMfaForUpdate(java.sql.Connection c, long userId, String mfaId) throws Exception {
+        try (var p = c.prepareStatement("SELECT id, enabled, last_accepted_step, locked_until FROM sys_user_mfa WHERE user_id = ? AND id = ? FOR UPDATE")) {
+            p.setLong(1, userId);
+            p.setString(2, mfaId);
+            try (var rs = p.executeQuery()) {
+                if (!rs.next()) return null;
+                long step = rs.getLong("last_accepted_step");
+                boolean stepWasNull = rs.wasNull();
+                Timestamp locked = rs.getTimestamp("locked_until");
+                return new LockedMfa(rs.getString("id"), rs.getBoolean("enabled"),
+                        stepWasNull ? null : step, locked == null ? null : locked.toInstant());
+            }
+        }
+    }
+
+    private static boolean canAcceptTotp(LockedMfa stored, long candidateStep) {
+        return (stored.lockedUntil() == null || !stored.lockedUntil().isAfter(Instant.now()))
+                && (stored.lastAcceptedStep() == null || stored.lastAcceptedStep() < candidateStep);
+    }
+
+    private static boolean acceptTotpLocked(java.sql.Connection c, long userId, String mfaId,
+                                            long candidateStep, boolean enrollmentVerification) throws Exception {
+        String sql = "UPDATE sys_user_mfa SET last_accepted_step = ?, last_used_at = CURRENT_TIMESTAMP, "
+                + "failed_attempt_count = 0, locked_until = NULL WHERE user_id = ? AND id = ? "
+                + "AND (enabled = 1 OR (? = 1 AND enabled = 0)) "
+                + "AND (locked_until IS NULL OR locked_until <= CURRENT_TIMESTAMP) "
+                + "AND (last_accepted_step IS NULL OR last_accepted_step < ?)";
+        try (var p = c.prepareStatement(sql)) {
+            p.setLong(1, candidateStep);
+            p.setLong(2, userId);
+            p.setString(3, mfaId);
+            p.setInt(4, enrollmentVerification ? 1 : 0);
+            p.setLong(5, candidateStep);
+            return p.executeUpdate() == 1;
+        }
+    }
+
+    private static boolean enableEnrollmentLocked(java.sql.Connection c, long userId, String mfaId) throws Exception {
+        try (var p = c.prepareStatement("UPDATE sys_user_mfa SET enabled = 1, enrolled_at = CURRENT_TIMESTAMP, "
+                + "failed_attempt_count = 0, locked_until = NULL WHERE user_id = ? AND id = ? "
+                + "AND enabled = 0 AND last_accepted_step IS NOT NULL")) {
+            p.setLong(1, userId);
+            p.setString(2, mfaId);
+            return p.executeUpdate() == 1;
+        }
+    }
+
+    private static void replaceRecoveryCodes(java.sql.Connection c, long userId, String batchId,
+                                              List<String> hashes) throws Exception {
+        try (var delete = c.prepareStatement("DELETE FROM sys_mfa_recovery_code WHERE user_id = ?")) {
+            delete.setLong(1, userId);
+            delete.executeUpdate();
+        }
+        try (var insert = c.prepareStatement("INSERT INTO sys_mfa_recovery_code(id, user_id, batch_id, code_hash) VALUES (?, ?, ?, ?)")) {
+            for (String hash : hashes) {
+                insert.setString(1, UUID.randomUUID().toString());
+                insert.setLong(2, userId);
+                insert.setString(3, batchId);
+                insert.setString(4, hash);
+                insert.addBatch();
+            }
+            insert.executeBatch();
+        }
+    }
+
+    private static boolean consumeRecoveryCodeLocked(java.sql.Connection c, long userId, String hash) throws Exception {
+        try (var p = c.prepareStatement("UPDATE sys_mfa_recovery_code SET used_at = CURRENT_TIMESTAMP "
+                + "WHERE user_id = ? AND code_hash = ? AND used_at IS NULL")) {
+            p.setLong(1, userId);
+            p.setString(2, hash);
+            return p.executeUpdate() == 1;
         }
     }
 
@@ -294,6 +468,8 @@ public class MfaRepository {
     }
 
     private record MfaRow(String id, boolean enabled) {}
+
+    private record LockedMfa(String id, boolean enabled, Long lastAcceptedStep, Instant lockedUntil) {}
 
     public record MfaStatus(long userId, boolean required, String mfaId, boolean enabled) {}
 

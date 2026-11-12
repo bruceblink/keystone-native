@@ -89,10 +89,9 @@ public class MfaService {
             return Optional.empty();
         }
         var batch = recoveryCodes.generateBatch();
-        mfa.replaceRecoveryCodes(userId, batch.batchId(), batch.codes().stream().map(recoveryCodes::hash).toList());
-        if (!mfa.acceptTotp(userId, stored.id(), step.getAsLong(), true)
-                || !mfa.enableEnrollment(userId, stored.id())
-                || !challenges.consume(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.ENROLL, boundSessionId)) {
+        var hashes = batch.codes().stream().map(recoveryCodes::hash).toList();
+        if (!mfa.completeEnrollment(userId, challengeId, boundClientId, boundSessionId, stored.id(),
+                step.getAsLong(), batch.batchId(), hashes)) {
             return Optional.empty();
         }
         clearRateLimitAfterSuccess(userId, ipAddress);
@@ -123,17 +122,14 @@ public class MfaService {
         }
         String secret = secrets.decrypt(userId, stored.id(), stored.encrypted());
         var step = matchingStep(secret, code);
-        if (step.isPresent() && mfa.acceptTotp(userId, stored.id(), step.getAsLong(), false)) {
-            if (challenges.consume(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.LOGIN, null)) {
-                clearRateLimitAfterSuccess(userId, ipAddress);
-                return Optional.of(new LoginVerification(ASSURANCE, TOTP_AMR));
-            }
-            return Optional.empty();
+        if (step.isPresent() && mfa.consumeLoginTotp(userId, challengeId, boundClientId, null,
+                stored.id(), step.getAsLong())) {
+            clearRateLimitAfterSuccess(userId, ipAddress);
+            return Optional.of(new LoginVerification(ASSURANCE, TOTP_AMR));
         }
         try {
             String hash = recoveryCodes.hash(code);
-            if (mfa.consumeRecoveryCode(userId, hash)
-                    && challenges.consume(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.LOGIN, null)) {
+            if (mfa.consumeLoginRecovery(userId, challengeId, boundClientId, null, stored.id(), hash)) {
                 clearRateLimitAfterSuccess(userId, ipAddress);
                 return Optional.of(new LoginVerification(ASSURANCE, RECOVERY_AMR));
             }

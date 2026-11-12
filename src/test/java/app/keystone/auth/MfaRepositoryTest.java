@@ -17,6 +17,7 @@ class MfaRepositoryTest {
     void validatesIdentifiersAndVerificationStateBeforeDatabaseAccess() {
         var encrypted = new MfaSecretCipher(Base64.getEncoder().encodeToString(new byte[32]))
                 .encrypt(7L, mfaId, 1, "JBSWY3DPEHPK3PXP");
+        String challengeId = UUID.randomUUID().toString();
         assertThrows(IllegalArgumentException.class, () -> repository.findStatus(0));
         assertThrows(IllegalArgumentException.class, () -> repository.find(7L, "mfa-1"));
         assertThrows(IllegalArgumentException.class, () -> repository.replacePendingEnrollment(7L, mfaId, null));
@@ -25,6 +26,10 @@ class MfaRepositoryTest {
         assertTrue(encrypted.ciphertext().length > 0);
         assertThrows(IllegalArgumentException.class, () -> repository.replaceRecoveryCodes(7L, "batch", List.of("bad")));
         assertThrows(IllegalArgumentException.class, () -> repository.consumeRecoveryCode(7L, "bad"));
+        assertThrows(IllegalArgumentException.class, () -> repository.completeEnrollment(0, challengeId, "web", null,
+                mfaId, 1, UUID.randomUUID().toString(), List.of("a".repeat(64))));
+        assertThrows(IllegalArgumentException.class, () -> repository.consumeLoginTotp(7L, challengeId, "web", null, mfaId, -1));
+        assertThrows(IllegalArgumentException.class, () -> repository.consumeLoginRecovery(7L, challengeId, "web", null, mfaId, "bad"));
     }
 
     @Test

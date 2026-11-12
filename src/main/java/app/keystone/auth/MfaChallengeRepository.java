@@ -93,6 +93,51 @@ public class MfaChallengeRepository {
                 "consumed_at = CURRENT_TIMESTAMP", "attempt_count < ?", DEFAULT_MAX_ATTEMPTS);
     }
 
+    /**
+     * 在调用方事务内锁定仍可消费的挑战。
+     * 用户、挑战和 MFA 记录必须按相同顺序加锁，避免并发验证形成反向锁等待。
+     */
+    Optional<Challenge> lockActiveForUpdate(java.sql.Connection c, String challengeId, long userId,
+                                            String clientId, Purpose purpose, String sessionId) throws Exception {
+        requireUser(userId);
+        String checkedId = normalizeChallengeId(challengeId);
+        String checkedClientId = normalizeClientId(clientId);
+        Purpose checkedPurpose = requirePurpose(purpose);
+        String checkedSessionId = normalizeSessionId(sessionId);
+        String sql = "SELECT id, user_id, purpose, client_id, session_id, expires_at, attempt_count, consumed_at "
+                + "FROM sys_auth_challenge WHERE id = ? AND " + ACTIVE_FILTER
+                + " AND attempt_count < ? FOR UPDATE";
+        try (var p = c.prepareStatement(sql)) {
+            int index = 1;
+            p.setString(index++, checkedId);
+            p.setLong(index++, userId);
+            p.setString(index++, checkedClientId);
+            p.setString(index++, checkedPurpose.value());
+            setNullableString(p, index++, checkedSessionId);
+            setNullableString(p, index++, checkedSessionId);
+            p.setInt(index, DEFAULT_MAX_ATTEMPTS);
+            try (var rs = p.executeQuery()) {
+                return rs.next() ? Optional.of(read(rs)) : Optional.empty();
+            }
+        }
+    }
+
+    /**
+     * 消费已经在同一事务中锁定并重新核验过的挑战。
+     * 更新条件再次检查状态，防止调用方在锁边界外误用此方法。
+     */
+    boolean consumeLocked(java.sql.Connection c, Challenge challenge) throws Exception {
+        if (challenge == null) throw new IllegalArgumentException("challenge is required");
+        try (var p = c.prepareStatement("UPDATE sys_auth_challenge SET consumed_at = CURRENT_TIMESTAMP "
+                + "WHERE id = ? AND user_id = ? AND consumed_at IS NULL "
+                + "AND expires_at > CURRENT_TIMESTAMP AND attempt_count < ?")) {
+            p.setString(1, challenge.id());
+            p.setLong(2, challenge.userId());
+            p.setInt(3, DEFAULT_MAX_ATTEMPTS);
+            return p.executeUpdate() == 1;
+        }
+    }
+
     /** 原子增加失败次数；达到上限后后续请求不会再修改挑战状态。 */
     public boolean recordFailure(String challengeId, long userId, String clientId, Purpose purpose, String sessionId) {
         return updateState(challengeId, userId, clientId, purpose, sessionId,
