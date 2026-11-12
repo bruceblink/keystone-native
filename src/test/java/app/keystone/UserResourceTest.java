@@ -36,6 +36,21 @@ class UserResourceTest {
         given().auth().oauth2(admin).when().delete("/v1/users/" + peerId).then().statusCode(200);
     }
 
+    @Test
+    void changingUserRolesInvalidatesExistingAccessToken() {
+        String admin = login("admin", "password");
+        String username = "permission_version_" + System.nanoTime();
+        int id = given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Version User\",\"roleCodes\":[\"USER\"]}")
+                .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
+        String user = login(username, "password");
+        given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"roleCodes\":[\"USER\"]}")
+                .when().put("/v1/users/" + id).then().statusCode(200);
+        given().auth().oauth2(user).when().get("/v1/profile").then().statusCode(401);
+        given().auth().oauth2(admin).when().delete("/v1/users/" + id).then().statusCode(200);
+    }
+
     private static String login(String username, String password) {
         return given().contentType(JSON).body("{\"username\":\"" + username + "\",\"password\":\"" + password + "\",\"forceLogin\":true}")
                 .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");

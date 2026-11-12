@@ -26,10 +26,20 @@ public class AccessSessionFilter implements ContainerRequestFilter {
             context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access token session identifier is required").build());
             return;
         }
+        long userId = claimLong(jwt.getClaim("userId"));
+        long permissionVersion = claimLong(jwt.getClaim("permission_version"));
+        if (userId <= 0 || permissionVersion < 0) {
+            context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access token permission version is required").build());
+            return;
+        }
         try {
-            if (!sessions.isAccessTokenActive(accessTokenId)) context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access session is no longer active").build());
+            if (!sessions.isAccessTokenActive(accessTokenId, userId, permissionVersion)) context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access session is no longer active").build());
         } catch (IllegalStateException e) {
             context.abortWith(Response.status(Response.Status.SERVICE_UNAVAILABLE).entity("authentication state is unavailable").build());
         }
     }
+
+    /** JWT 库可能把整数声明还原为不同 Number 类型，统一转换后再查询数据库。 */
+    private static long claimLong(Object value) { return value instanceof Number number ? number.longValue() : value instanceof String text ? parse(text) : -1; }
+    private static long parse(String value) { try { return Long.parseLong(value); } catch (NumberFormatException e) { return -1; } }
 }

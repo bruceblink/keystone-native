@@ -24,6 +24,7 @@ public class AccessTokenService {
     public AuthResource.TokenResponse issue(UserRepository.AuthUser user, String refreshToken, String accessTokenId, String sessionId, String clientId, Instant refreshExpiresAt) {
         Instant expiresAt = Instant.now().plus(ACCESS_LIFETIME);
         var permissions = users.permissions(user.id());
+        long permissionVersion = users.permissionVersion(user.id());
         String accessToken = Jwt.issuer(issuer)
                 .subject(String.valueOf(user.id()))
                 .audience(audience)
@@ -31,6 +32,7 @@ public class AccessTokenService {
                 .claim("jti", accessTokenId)
                 .claim("sid", sessionId)
                 .claim("client_id", clientId)
+                .claim("permission_version", permissionVersion)
                 .claim("userId", user.id())
                 .claim("scope", String.join(" ", permissions))
                 .groups(new HashSet<>(user.roles()))

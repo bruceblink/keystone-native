@@ -188,8 +188,18 @@ public class UserRepository {
         try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql)) { p.setLong(1, userId); try (var rs = p.executeQuery()) { var result = new ArrayList<String>(); while (rs.next()) result.add(rs.getString(1)); return result; } }
         catch (Exception e) { throw new IllegalStateException("Could not list user permissions", e); }
     }
+    /** 读取当前权限版本，访问令牌校验使用该值判断角色变化。 */
+    public long permissionVersion(long userId) {
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("SELECT permission_version FROM sys_user WHERE id = ? AND enabled = true")) {
+            p.setLong(1, userId);
+            try (var rs = p.executeQuery()) { if (!rs.next()) return -1; return rs.getLong(1); }
+        } catch (Exception e) { throw new IllegalStateException("Could not read user permission version", e); }
+    }
     private static List<String> splitRoles(String value) { return value == null || value.isBlank() ? List.of("USER") : List.of(value.split(",")); }
-    private static void replaceRoles(Connection c, long userId, List<String> roleCodes) throws Exception { var codes = roleCodes == null || roleCodes.isEmpty() ? List.of("USER") : roleCodes.stream().filter(java.util.Objects::nonNull).map(String::trim).filter(s -> !s.isBlank()).distinct().toList(); try (var d = c.prepareStatement("DELETE FROM sys_user_role WHERE user_id = ?")) { d.setLong(1, userId); d.executeUpdate(); } try (var p = c.prepareStatement("INSERT INTO sys_user_role(user_id, role_id) SELECT ?, id FROM sys_role WHERE code = ? AND enabled = true")) { for (String code : codes) { p.setLong(1, userId); p.setString(2, code); if (p.executeUpdate() == 0) throw new IllegalArgumentException("unknown role: " + code); } } }
+    private static void replaceRoles(Connection c, long userId, List<String> roleCodes) throws Exception { var codes = roleCodes == null || roleCodes.isEmpty() ? List.of("USER") : roleCodes.stream().filter(java.util.Objects::nonNull).map(String::trim).filter(s -> !s.isBlank()).distinct().toList(); try (var d = c.prepareStatement("DELETE FROM sys_user_role WHERE user_id = ?")) { d.setLong(1, userId); d.executeUpdate(); } try (var p = c.prepareStatement("INSERT INTO sys_user_role(user_id, role_id) SELECT ?, id FROM sys_role WHERE code = ? AND enabled = true")) { for (String code : codes) { p.setLong(1, userId); p.setString(2, code); if (p.executeUpdate() == 0) throw new IllegalArgumentException("unknown role: " + code); } } bumpPermissionVersion(c, userId); }
+
+    /** 角色集合变化后递增版本，旧 JWT 会在下一个请求被拒绝。 */
+    private static void bumpPermissionVersion(Connection c, long userId) throws Exception { try (var p = c.prepareStatement("UPDATE sys_user SET permission_version = permission_version + 1 WHERE id = ?")) { p.setLong(1, userId); p.executeUpdate(); } }
 
     private static String filters(String username, String displayName, Long deptId, Boolean enabled) { var parts = new ArrayList<String>(); if (username != null && !username.isBlank()) parts.add("u.username LIKE ?"); if (displayName != null && !displayName.isBlank()) parts.add("u.display_name LIKE ?"); if (deptId != null) parts.add("u.dept_id = ?"); if (enabled != null) parts.add("u.enabled = ?"); return parts.isEmpty() ? "" : " WHERE " + String.join(" AND ", parts); }
     /** 把范围条件追加到查询和删除语句，空范围使用恒假条件。 */

@@ -123,6 +123,15 @@ public class SessionRepository {
         catch (Exception e) { throw new IllegalStateException("Could not validate access session", e); }
     }
 
+    /** 同时核验主体权限版本，角色变更后立即撤销旧访问令牌。 */
+    public boolean isAccessTokenActive(String accessTokenId, long userId, long permissionVersion) {
+        if (accessTokenId == null || accessTokenId.isBlank() || userId <= 0 || permissionVersion < 0) return false;
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("SELECT 1 FROM sys_refresh_token t JOIN sys_user u ON u.id = t.user_id WHERE t.access_token_id = ? AND t.user_id = ? AND u.permission_version = ? AND t.revoked_at IS NULL AND t.expires_at > CURRENT_TIMESTAMP AND t.access_expires_at > CURRENT_TIMESTAMP AND t.idle_expires_at > CURRENT_TIMESTAMP")) {
+            p.setString(1, accessTokenId); p.setLong(2, userId); p.setLong(3, permissionVersion);
+            try (var rs = p.executeQuery()) { return rs.next(); }
+        } catch (Exception e) { throw new IllegalStateException("Could not validate access permission version", e); }
+    }
+
     public java.util.List<OnlineSession> activeSessions(String username, String ipAddress) {
         StringBuilder sql = new StringBuilder("SELECT s.id, s.user_id, u.username, u.display_name, u.login_ip, s.created_at, s.expires_at, s.access_expires_at FROM sys_refresh_token s JOIN sys_user u ON u.id = s.user_id WHERE s.revoked_at IS NULL AND s.expires_at > CURRENT_TIMESTAMP AND s.access_expires_at > CURRENT_TIMESTAMP AND s.idle_expires_at > CURRENT_TIMESTAMP");
         if (username != null && !username.isBlank()) sql.append(" AND u.username LIKE ?");
