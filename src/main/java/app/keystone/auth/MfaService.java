@@ -28,6 +28,7 @@ public class MfaService {
     @Inject MfaSecretCipher secrets;
     @Inject TotpService totp;
     @Inject MfaRecoveryCodeService recoveryCodes;
+    @Inject MfaRateLimiter rateLimiter;
     @ConfigProperty(name = "keystone.security.mfa.challenge-lifetime-seconds", defaultValue = "300")
     long challengeLifetimeSeconds;
     @ConfigProperty(name = "keystone.security.mfa.issuer", defaultValue = "Keystone")
@@ -64,8 +65,15 @@ public class MfaService {
     /** 校验 enrollment TOTP，启用 MFA，并返回只展示一次的恢复码。 */
     public Optional<EnrollmentResult> verifyEnrollment(long userId, String challengeId, String clientId,
                                                         String sessionId, String code) {
+        return verifyEnrollment(userId, challengeId, clientId, sessionId, code, null);
+    }
+
+    /** 带来源地址的 enrollment 校验；主体和地址失败次数同时受限。 */
+    public Optional<EnrollmentResult> verifyEnrollment(long userId, String challengeId, String clientId,
+                                                        String sessionId, String code, String ipAddress) {
         String boundClientId = normalizeClientId(clientId);
         String boundSessionId = requiredSessionId(sessionId);
+        if (rateLimiter.isBlocked(userId, ipAddress)) return Optional.empty();
         var challenge = challenges.findActive(challengeId, userId, boundClientId,
                 MfaChallengeRepository.Purpose.ENROLL, boundSessionId);
         var status = status(userId);
@@ -75,7 +83,7 @@ public class MfaService {
         String secret = secrets.decrypt(userId, stored.id(), stored.encrypted());
         var step = matchingStep(secret, code);
         if (step.isEmpty()) {
-            recordFailure(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.ENROLL, boundSessionId, stored.id());
+            recordFailure(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.ENROLL, boundSessionId, stored.id(), ipAddress);
             return Optional.empty();
         }
         var batch = recoveryCodes.generateBatch();
@@ -85,22 +93,37 @@ public class MfaService {
                 || !challenges.consume(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.ENROLL, boundSessionId)) {
             return Optional.empty();
         }
+        rateLimiter.clear(userId, ipAddress);
         return Optional.of(new EnrollmentResult(batch.codes()));
     }
 
     /** 校验登录挑战；成功后调用方才可以创建刷新会话和访问令牌。 */
     public Optional<LoginVerification> verifyLogin(long userId, String challengeId, String clientId, String code) {
+        return verifyLogin(userId, challengeId, clientId, code, null);
+    }
+
+    /** 带来源地址的登录挑战校验；主体和地址失败次数同时受限。 */
+    public Optional<LoginVerification> verifyLogin(long userId, String challengeId, String clientId, String code, String ipAddress) {
         String boundClientId = normalizeClientId(clientId);
+        if (rateLimiter.isBlocked(userId, ipAddress)) return Optional.empty();
         var challenge = challenges.findActive(challengeId, userId, boundClientId,
                 MfaChallengeRepository.Purpose.LOGIN, null);
         var status = status(userId);
-        if (challenge.isEmpty() || !status.required() || !status.enabled() || status.mfaId() == null) return Optional.empty();
+        if (challenge.isEmpty()) {
+            rateLimiter.recordFailure(userId, ipAddress);
+            return Optional.empty();
+        }
+        if (!status.required() || !status.enabled() || status.mfaId() == null) return Optional.empty();
         var stored = mfa.find(userId, status.mfaId()).orElse(null);
-        if (stored == null) return Optional.empty();
+        if (stored == null) {
+            rateLimiter.recordFailure(userId, ipAddress);
+            return Optional.empty();
+        }
         String secret = secrets.decrypt(userId, stored.id(), stored.encrypted());
         var step = matchingStep(secret, code);
         if (step.isPresent() && mfa.acceptTotp(userId, stored.id(), step.getAsLong(), false)) {
             if (challenges.consume(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.LOGIN, null)) {
+                rateLimiter.clear(userId, ipAddress);
                 return Optional.of(new LoginVerification(ASSURANCE, TOTP_AMR));
             }
             return Optional.empty();
@@ -109,12 +132,13 @@ public class MfaService {
             String hash = recoveryCodes.hash(code);
             if (mfa.consumeRecoveryCode(userId, hash)
                     && challenges.consume(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.LOGIN, null)) {
+                rateLimiter.clear(userId, ipAddress);
                 return Optional.of(new LoginVerification(ASSURANCE, RECOVERY_AMR));
             }
         } catch (IllegalArgumentException ignored) {
             // 格式错误与错误验证码统一走失败路径，不向客户端暴露验证分支。
         }
-        recordFailure(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.LOGIN, null, stored.id());
+        recordFailure(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.LOGIN, null, stored.id(), ipAddress);
         return Optional.empty();
     }
 
@@ -137,9 +161,10 @@ public class MfaService {
     }
 
     private void recordFailure(String challengeId, long userId, String clientId, MfaChallengeRepository.Purpose purpose,
-                               String sessionId, String mfaId) {
+                               String sessionId, String mfaId, String ipAddress) {
         mfa.recordFailure(userId, mfaId);
         challenges.recordFailure(challengeId, userId, clientId, purpose, sessionId);
+        rateLimiter.recordFailure(userId, ipAddress);
     }
 
     private java.util.OptionalLong matchingStep(String secret, String code) {

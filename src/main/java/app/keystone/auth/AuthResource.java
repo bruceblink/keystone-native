@@ -92,7 +92,7 @@ public class AuthResource {
         if (user.isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build();
         MfaService.LoginVerification verification;
         try {
-            verification = mfa.verifyLogin(user.get().id(), request.challengeId(), request.clientId(), request.code()).orElse(null);
+            verification = mfa.verifyLogin(user.get().id(), request.challengeId(), request.clientId(), request.code(), ipAddress).orElse(null);
         } catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (verification == null) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build();
@@ -131,12 +131,17 @@ public class AuthResource {
     }
 
     /** 只接受当前会话绑定的 enrollment 挑战，并在成功后返回一次性恢复码。 */
-    @POST @Path("/mfa/enroll/verify") @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
+    @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
     public Response verifyMfaEnrollment(MfaCodeRequest request) {
+        return verifyMfaEnrollment(request, null);
+    }
+
+    @POST @Path("/mfa/enroll/verify") @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
+    public Response verifyMfaEnrollment(MfaCodeRequest request, @HeaderParam("X-Forwarded-For") String ipAddress) {
         if (request == null || request.challengeId() == null || request.code() == null) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("challengeId and code are required")).build();
         var current = currentHumanSession();
         try {
-            var result = mfa.verifyEnrollment(current.userId(), request.challengeId(), current.clientId(), current.sessionId(), request.code());
+            var result = mfa.verifyEnrollment(current.userId(), request.challengeId(), current.clientId(), current.sessionId(), request.code(), ipAddress);
             return result.<Response>map(value -> Response.ok(ApiResponse.ok(value)).build())
                     .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build());
         } catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
