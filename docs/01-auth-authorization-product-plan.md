@@ -18,9 +18,11 @@
 
 ## 当前实现证据
 
-截至 `048b467`，受保护资源已经使用 `@RequiresPermission` 和集中授权服务。用户接口已接入 `ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` 范围策略。API Key 已接入 Quarkus `HttpAuthenticationMechanism`，支持服务主体、范围交集、轮换、撤销、过期和最后使用时间节流。
+截至 `67a1468`，受保护资源已经使用 `@RequiresPermission` 和集中授权服务。用户接口已接入 `ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` 范围策略。API Key 已接入 Quarkus `HttpAuthenticationMechanism`，支持服务主体、范围交集、轮换、撤销、过期和最后使用时间节流。
 
 当前会话状态保存在 `sys_auth_session`，刷新令牌保留在 `sys_refresh_token` 作为轮换明细。访问令牌有效期为五分钟，并校验 `iss`、`sub`、`aud`、`jti`、`sid`、`iat`、`exp` 和 `permission_version`。权限版本变化、密码变更、用户禁用和会话撤销都会使受影响的访问令牌失效。
+
+令牌签发失败时，登录和 MFA 登录会撤销刚创建的会话；刷新失败时会撤销刚轮换的会话，避免数据库中保留客户端无法使用的刷新状态。签名密钥配置错误仍应在启动或就绪检查阶段被发现。
 
 当前新增了 MFA 第一版运行链路：`V39__mfa_foundation.sql` 建立 TOTP、恢复码和认证挑战数据表，`V40__mfa_permissions.sql` 建立 `mfa:manage` 权限；`TotpService` 实现 RFC 6238 六位验证码、三步时钟窗口和时间步返回，`MfaSecretCipher` 使用 AES-256-GCM 保护 TOTP 密钥，`MfaRecoveryCodeService` 使用部署级 pepper 计算恢复码 HMAC，`MfaChallengeRepository`、`MfaSessionRepository` 和 `MfaRepository` 分别处理挑战、会话认证强度、密文状态和一次性消费条件，`MfaService` 编排 enrollment、登录挑战、恢复码和强制 MFA 策略。
 
@@ -28,7 +30,7 @@
 
 上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `kid`。`GET /api/.well-known/jwks.json` 已发布当前 RSA 公钥，旧的 `GET /login/rsa-public-key` 兼容路由也改为读取相同的外部公钥配置；当前 JWK Set 只发布一个 key，尚未支持密钥重叠轮换。
 
-当前验证边界仍然明确：静态主源码和测试源码编译、JWK 字段 smoke 和差异检查已通过；Quarkus HTTP、MySQL 8.4 迁移、并发 TOTP/恢复码消费、真实浏览器验收仍未完成。`X-Forwarded-For` 只有在受信反向代理覆盖并清理时才可作为 MFA 来源地址；否则缺失或非法地址会进入共享 `unknown` 限流桶。账户锁定的初始读取与失败更新之间仍需 MySQL 8.4 并发验收，不能把静态事务代码当作并发证明。enrollment 校验、恢复码替换和挑战消费目前分属多个数据库事务，失败回滚边界仍需收紧。OIDC、WebAuthn、密钥重叠轮换、跨租户边界和全资源数据范围仍未完成。
+当前验证边界仍然明确：静态主源码和测试源码编译、JWK 字段与缓存 smoke 和差异检查已通过；Quarkus HTTP、MySQL 8.4 迁移、并发 TOTP/恢复码消费、真实浏览器验收仍未完成。MFA 因子成功后的限流清理现在采用提交后尽力处理，清理失败只记录不改变成功响应。`X-Forwarded-For` 只有在受信反向代理覆盖并清理时才可作为 MFA 来源地址；否则缺失或非法地址会进入共享 `unknown` 限流桶。账户锁定的初始读取与失败更新之间仍需 MySQL 8.4 并发验收，不能把静态事务代码当作并发证明。enrollment 校验、恢复码替换和挑战消费目前分属多个数据库事务，失败回滚边界仍需收紧。OIDC、WebAuthn、密钥重叠轮换、跨租户边界和全资源数据范围仍未完成。
 
 ## 目标架构
 
@@ -87,7 +89,7 @@ API Key 使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存 SHA-256 �
 ### JWT 公钥发现
 
 - `GET /api/.well-known/jwks.json`：公开返回当前外部 RSA 公钥的 RFC 7517 JWK Set。响应只包含 `kty`、`kid`、`alg`、`use`、`n` 和 `e`，公钥读取失败返回 `503`。缺少或非法的 `JWT_KEY_ID` 属于启动配置错误，应用应在就绪检查中失败。
-- 当前实现只发布一个配置 key，并设置短缓存。发布双 key、验证旧 key 的存留时间和旧 key 清理必须由后续 key registry 统一管理。
+- 当前实现只发布一个配置 key，并使用 `JWT_JWK_CACHE_SECONDS` 控制 1 至 3600 秒的已校验快照缓存。缓存过期后的读取、解析和 JWK 组装全部成功时才替换快照；失败时继续提供上一个有效快照，直到缓存过期后请求失败。发布双 key、验证旧 key 的存留时间和旧 key 清理必须由后续 key registry 统一管理。
 - 兼容客户端仍可调用 `GET /login/rsa-public-key`，但该接口读取同一个外部公钥位置，不再读取仓库内资源。
 
 ## 数据模型变更
@@ -193,6 +195,9 @@ API Key、角色、用户、在线会话、MFA enrollment/策略变更和恢复�
 
 - [ ] 增加安全事件指标、异常登录告警和 API Key 轮换报告。
 - [ ] 进行 MySQL 8.4 并发刷新、故障恢复、备份还原和密钥轮换演练。
+- [ ] 完成 MFA 因子消费的单事务实现，覆盖 enrollment、TOTP、恢复码和挑战状态。
+- [ ] 完成可信代理地址解析，默认使用连接远端地址，拒绝未验证的 `X-Forwarded-For` 链。
+- [ ] 增加 `JWT_KEY_ID`、签名私钥和公钥集合的启动及就绪检查。
 - [ ] 删除旧根路由、旧 token 字段、旧兼容资源和无效测试。
 
 ## 迁移与回滚边界
@@ -222,6 +227,7 @@ API Key、角色、用户、在线会话、MFA enrollment/策略变更和恢复�
 6. 必须继续补齐 API Key 的过期、审计和并发运行测试；列出、轮换、范围上限和一次性明文已经有实现与静态接口测试。
 7. 必须在受信反向代理配置明确后才启用 `X-Forwarded-For` 的 MFA 来源限流；部署直接暴露应用端口时，应使用连接远端地址，并对无法解析的地址采用独立、可观测的处理策略。
 8. 必须把 enrollment、恢复码批次替换、TOTP 接受和挑战消费放入同一事务，或实现失败后的补偿状态，避免验证成功后部分写入。
+9. 必须把 `JWT_KEY_ID` 和签名私钥的启动检查接入就绪状态，并验证配置错误不会创建不可用会话或轮换出客户端无法使用的新刷新令牌。
 
 ## 必须先确定的架构决策
 
