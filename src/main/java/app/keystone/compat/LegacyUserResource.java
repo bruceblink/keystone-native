@@ -4,6 +4,7 @@ import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.DataScopeService;
 import app.keystone.auth.RequiresPermission;
+import app.keystone.auth.SessionRepository;
 import app.keystone.role.RoleRepository;
 import app.keystone.user.User;
 import app.keystone.user.UserRepository;
@@ -26,6 +27,7 @@ public class LegacyUserResource {
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
     @Inject DataScopeService dataScopes;
+    @Inject SessionRepository sessions;
 
     @GET @RequiresPermission("user:read")
     public ApiResponse<UserRepository.Page> list(@QueryParam("pageNum") Integer pageNum, @QueryParam("pageSize") Integer pageSize, @QueryParam("username") String username, @QueryParam("nickname") String nickname, @QueryParam("deptId") Long deptId, @QueryParam("status") Integer status) {
@@ -62,10 +64,10 @@ public class LegacyUserResource {
     public Response delete(@PathParam("ids") String ids) { try { long subjectId = subjectId(); var values = parseIds(ids); int deleted = users.deleteAll(values, dataScopes.forUser(subjectId), subjectId); logs.record(actor(), "DELETE", "users", ids, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", deleted))).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
 
     @PUT @Path("/{id}/password") @RequiresPermission("user:write") @Consumes(MediaType.APPLICATION_JSON)
-    public Response password(@PathParam("id") long id, PasswordCommand request) { if (request == null || request.passwordValue() == null || request.passwordValue().isBlank()) return bad("password is required"); try { long subjectId = subjectId(); users.findPublic(id, dataScopes.forUser(subjectId), subjectId); return Response.ok(ApiResponse.ok(users.update(id, request.passwordValue(), null, null, null, null))).build(); } catch (java.util.NoSuchElementException e) { return notFound("user not found"); } }
+    public Response password(@PathParam("id") long id, PasswordCommand request) { if (request == null || request.passwordValue() == null || request.passwordValue().isBlank()) return bad("password is required"); try { long subjectId = subjectId(); users.findPublic(id, dataScopes.forUser(subjectId), subjectId); var updated = users.update(id, request.passwordValue(), null, null, null, null); sessions.revokeAll(id); return Response.ok(ApiResponse.ok(updated)).build(); } catch (java.util.NoSuchElementException e) { return notFound("user not found"); } }
 
     @PUT @Path("/{id}/status") @RequiresPermission("user:write") @Consumes(MediaType.APPLICATION_JSON)
-    public Response status(@PathParam("id") long id, StatusCommand request) { if (request == null || request.enabledValue() == null) return bad("status is required"); try { long subjectId = subjectId(); users.findPublic(id, dataScopes.forUser(subjectId), subjectId); return Response.ok(ApiResponse.ok(users.update(id, null, null, null, request.enabledValue(), null))).build(); } catch (java.util.NoSuchElementException e) { return notFound("user not found"); } }
+    public Response status(@PathParam("id") long id, StatusCommand request) { if (request == null || request.enabledValue() == null) return bad("status is required"); try { long subjectId = subjectId(); users.findPublic(id, dataScopes.forUser(subjectId), subjectId); var updated = users.update(id, null, null, null, request.enabledValue(), null); if (!request.enabledValue()) sessions.revokeAll(id); return Response.ok(ApiResponse.ok(updated)).build(); } catch (java.util.NoSuchElementException e) { return notFound("user not found"); } }
 
     private List<String> roleCodes(UserCommand request) { List<String> codes = roleCodesOrNull(request); return codes == null || codes.isEmpty() ? List.of("USER") : codes; }
     private List<String> roleCodesOrNull(UserCommand request) { if (request.roleCodes != null && !request.roleCodes.isEmpty()) return request.roleCodes; if (request.roleCode != null && !request.roleCode.isBlank()) return List.of(request.roleCode); if (request.roleId != null) return List.of(roles.findById(request.roleId).code()); return null; }
