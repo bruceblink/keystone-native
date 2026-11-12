@@ -145,6 +145,32 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 - [ ] 增加 OIDC 授权码 + PKCE；校验 `state`、`nonce`、issuer、audience 和时间窗口。
 - [ ] 发布 JWK Set，支持双 key 重叠轮换和 `kid`。
 
+#### 管理员 TOTP 最小切片设计（未实现）
+
+第一版只实现管理员 TOTP、一次性恢复码、登录挑战和敏感操作二次验证。API Key 不参与人类用户 MFA。WebAuthn 作为后续更强的抗钓鱼方案。
+
+建议新增 `V38`，不修改已执行迁移：
+
+- `sys_user_mfa` 保存 `user_id`、TOTP 密文、随机 nonce、`key_version`、启用时间、失败计数、锁定时间和最近成功的时间步。TOTP 密钥使用 AES-256-GCM 加密；首版若不能接入 KMS，必须配置 32 字节 `MFA_MASTER_KEY`，并记录密钥版本和重新加密流程。
+- `sys_mfa_recovery_code` 保存恢复码哈希、批次和消费时间。生成至少十个高熵恢复码，只在生成响应中显示一次。消费使用行锁和条件更新，保证并发请求只能成功一次。
+- `sys_auth_challenge` 保存不透明挑战 ID、主体、用途、客户端、过期时间、尝试次数和消费时间。挑战有效期建议五分钟，只绑定密码已验证的主体和客户端，不保存密码、TOTP 明文或完整恢复码。
+- `sys_auth_session` 增加 `mfa_verified_at` 和认证强度字段。现有用户默认不启用 MFA；迁移不能直接把 `admin` 设置为必须 MFA。
+
+接口顺序如下：
+
+1. `POST /v1/auth/mfa/enroll` 创建短期 enrollment 挑战。
+2. `POST /v1/auth/mfa/enroll/verify` 校验 TOTP 后才启用 MFA。
+3. 密码正确且管理员需要 MFA 时，`POST /v1/auth/login` 只返回 `MFA_REQUIRED` 和不透明挑战 ID，不签发会话或令牌。
+4. `POST /v1/auth/mfa/verify` 校验 TOTP 或恢复码后，才创建 `sys_auth_session`、刷新令牌和访问令牌。
+5. `POST /v1/auth/mfa/step-up` 为当前 `sid/sub/client` 写入短期二次验证状态。
+6. `POST /v1/auth/mfa/recovery-codes/rotate` 需要最近一次二次验证和当前密码；旧批次立即失效。
+
+TOTP 使用 RFC 6238 的 30 秒时间步、六位数字和允许前后一个时间步的时钟偏差。相同时间步的重复使用必须失败。错误次数按主体和 IP 分开计数并短时锁定。密码变更、用户禁用、会话撤销和重新 enrollment 必须撤销相关挑战。
+
+以下操作必须通过最近十分钟内的 step-up：API Key 签发、轮换和撤销，角色权限变更，用户密码、状态和删除，全部会话撤销，以及 MFA enrollment 和恢复码轮换。API Key 不能执行这些人类用户 MFA 管理路径。
+
+验收必须证明：未完成 enrollment 的管理员不获得令牌；正确 TOTP 才能创建会话；错误、过期、错误客户端和重复挑战统一失败；恢复码只能消费一次；同一时间步并发请求只有一次成功；密钥、恢复码和完整 `otpauth` 数据不出现在日志、错误响应或数据库明文。完成这些条件前，MFA 维持未完成状态。
+
 ### P4：运营与发布
 
 - [ ] 增加安全事件指标、异常登录告警和 API Key 轮换报告。
