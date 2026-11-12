@@ -15,6 +15,7 @@ import java.util.Optional;
 
 @ApplicationScoped
 public class SessionRepository {
+    public static final String DEFAULT_CLIENT_ID = "web";
     private static final Duration REFRESH_LIFETIME = Duration.ofDays(14);
     private static final Duration ACCESS_LIFETIME = Duration.ofMinutes(5);
     private static final Duration IDLE_LIFETIME = Duration.ofHours(24);
@@ -25,6 +26,12 @@ public class SessionRepository {
     }
 
     public Optional<CreatedSession> create(long userId, boolean forceLogin) {
+        return create(userId, forceLogin, DEFAULT_CLIENT_ID);
+    }
+
+    /** 创建绑定客户端的刷新会话；客户端标识会贯穿令牌族的每次轮换。 */
+    public Optional<CreatedSession> create(long userId, boolean forceLogin, String clientId) {
+        String boundClientId = normalizeClientId(clientId);
         String token = randomToken();
         String accessTokenId = java.util.UUID.randomUUID().toString();
         String sessionId = java.util.UUID.randomUUID().toString();
@@ -40,41 +47,52 @@ public class SessionRepository {
                 if (active && !forceLogin) { c.rollback(); return Optional.empty(); }
                 if (active) try (var revoke = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL")) { revoke.setLong(1, userId); revoke.executeUpdate(); }
                 try (var p = c.prepareStatement("INSERT INTO sys_refresh_token(user_id, session_id, refresh_family_id, client_id, token_hash, expires_at, idle_expires_at, access_expires_at, access_token_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
-                    p.setLong(1, userId); p.setString(2, sessionId); p.setString(3, familyId); p.setString(4, "web"); p.setString(5, hash(token)); p.setTimestamp(6, Timestamp.from(refreshExpiry)); p.setTimestamp(7, Timestamp.from(now.plus(IDLE_LIFETIME))); p.setTimestamp(8, Timestamp.from(now.plus(ACCESS_LIFETIME))); p.setString(9, accessTokenId); p.executeUpdate();
+                    p.setLong(1, userId); p.setString(2, sessionId); p.setString(3, familyId); p.setString(4, boundClientId); p.setString(5, hash(token)); p.setTimestamp(6, Timestamp.from(refreshExpiry)); p.setTimestamp(7, Timestamp.from(now.plus(IDLE_LIFETIME))); p.setTimestamp(8, Timestamp.from(now.plus(ACCESS_LIFETIME))); p.setString(9, accessTokenId); p.executeUpdate();
                 }
-                recordEvent(c, null, userId, familyId, "ISSUED", "web", null);
-                c.commit(); return Optional.of(new CreatedSession(token, accessTokenId, sessionId, refreshExpiry));
+                recordEvent(c, null, userId, familyId, "ISSUED", boundClientId, null);
+                c.commit(); return Optional.of(new CreatedSession(token, accessTokenId, sessionId, refreshExpiry, boundClientId));
             } catch (Exception e) { c.rollback(); throw e; }
         } catch (Exception e) { throw new IllegalStateException("Could not create refresh session", e); }
     }
 
     public Optional<RotatedSession> rotate(String token, UserRepository users) {
+        return rotate(token, users, DEFAULT_CLIENT_ID);
+    }
+
+    /** 只允许原客户端刷新；客户端不匹配时撤销整个令牌族并记录安全事件。 */
+    public Optional<RotatedSession> rotate(String token, UserRepository users, String clientId) {
         if (token == null || token.isBlank()) return Optional.empty();
+        String requestedClientId = normalizeClientId(clientId);
         try (var c = dataSource.getConnection()) {
             c.setAutoCommit(false);
-            try (var find = c.prepareStatement("SELECT id, user_id, session_id, refresh_family_id, expires_at, idle_expires_at, revoked_at FROM sys_refresh_token WHERE token_hash = ? FOR UPDATE")) {
+            try (var find = c.prepareStatement("SELECT id, user_id, session_id, refresh_family_id, client_id, expires_at, idle_expires_at, revoked_at FROM sys_refresh_token WHERE token_hash = ? FOR UPDATE")) {
                 find.setString(1, hash(token));
                 try (var rs = find.executeQuery()) {
                     if (!rs.next()) { c.rollback(); return Optional.empty(); }
                     long tokenId = rs.getLong("id"), userId = rs.getLong("user_id");
-                    String sessionId = rs.getString("session_id"), familyId = rs.getString("refresh_family_id");
+                    String sessionId = rs.getString("session_id"), familyId = rs.getString("refresh_family_id"), boundClientId = rs.getString("client_id");
                     Timestamp refreshExpiry = rs.getTimestamp("expires_at"), idleExpiry = rs.getTimestamp("idle_expires_at");
+                    if (boundClientId == null || !boundClientId.equals(requestedClientId)) {
+                        if (familyId != null) try (var revoke = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP) WHERE refresh_family_id = ?")) { revoke.setString(1, familyId); revoke.executeUpdate(); }
+                        recordEvent(c, tokenId, userId, familyId, "CLIENT_MISMATCH", requestedClientId, "refresh client does not match session client");
+                        c.commit(); return Optional.empty();
+                    }
                     boolean invalid = rs.getTimestamp("revoked_at") != null || refreshExpiry == null || !refreshExpiry.toInstant().isAfter(Instant.now()) || (idleExpiry != null && !idleExpiry.toInstant().isAfter(Instant.now()));
                     if (invalid) {
                         if (familyId != null) try (var reuse = c.prepareStatement("UPDATE sys_refresh_token SET reused_at = COALESCE(reused_at, CURRENT_TIMESTAMP), revoked_at = COALESCE(revoked_at, CURRENT_TIMESTAMP) WHERE refresh_family_id = ?")) { reuse.setString(1, familyId); reuse.executeUpdate(); }
-                        recordEvent(c, tokenId, userId, familyId, "REUSE_DETECTED", "web", "refresh token was already revoked or expired");
+                        recordEvent(c, tokenId, userId, familyId, "REUSE_DETECTED", requestedClientId, "refresh token was already revoked or expired");
                         c.commit(); return Optional.empty();
                     }
                     try (var revoke = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE id = ? AND revoked_at IS NULL")) { revoke.setLong(1, tokenId); revoke.executeUpdate(); }
                     String replacement = randomToken(), accessTokenId = java.util.UUID.randomUUID().toString();
                     Instant nextIdle = Instant.now().plus(IDLE_LIFETIME); if (nextIdle.isAfter(refreshExpiry.toInstant())) nextIdle = refreshExpiry.toInstant();
                     try (var insert = c.prepareStatement("INSERT INTO sys_refresh_token(user_id, session_id, refresh_family_id, client_id, token_hash, expires_at, idle_expires_at, access_expires_at, access_token_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
-                        insert.setLong(1, userId); insert.setString(2, sessionId); insert.setString(3, familyId); insert.setString(4, "web"); insert.setString(5, hash(replacement)); insert.setTimestamp(6, refreshExpiry); insert.setTimestamp(7, Timestamp.from(nextIdle)); insert.setTimestamp(8, Timestamp.from(Instant.now().plus(ACCESS_LIFETIME))); insert.setString(9, accessTokenId); insert.executeUpdate();
+                        insert.setLong(1, userId); insert.setString(2, sessionId); insert.setString(3, familyId); insert.setString(4, boundClientId); insert.setString(5, hash(replacement)); insert.setTimestamp(6, refreshExpiry); insert.setTimestamp(7, Timestamp.from(nextIdle)); insert.setTimestamp(8, Timestamp.from(Instant.now().plus(ACCESS_LIFETIME))); insert.setString(9, accessTokenId); insert.executeUpdate();
                     }
-                    recordEvent(c, tokenId, userId, familyId, "ROTATED", "web", null);
+                    recordEvent(c, tokenId, userId, familyId, "ROTATED", boundClientId, null);
                     var user = users.findAuthUser(c, userId);
                     if (user.isEmpty()) { c.rollback(); return Optional.empty(); }
-                    c.commit(); return Optional.of(new RotatedSession(user.get(), replacement, accessTokenId, sessionId, refreshExpiry.toInstant()));
+                    c.commit(); return Optional.of(new RotatedSession(user.get(), replacement, accessTokenId, sessionId, refreshExpiry.toInstant(), boundClientId));
                 }
             } catch (Exception e) { c.rollback(); throw e; }
         } catch (Exception e) { throw new IllegalStateException("Could not rotate refresh session", e); }
@@ -128,6 +146,13 @@ public class SessionRepository {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
+    /** 只接受稳定的短标识，避免把未校验的请求字段写入会话和审计记录。 */
+    private static String normalizeClientId(String value) {
+        String normalized = value == null || value.isBlank() ? DEFAULT_CLIENT_ID : value.trim().toLowerCase(java.util.Locale.ROOT);
+        if (!normalized.matches("[a-z0-9][a-z0-9._-]{0,63}")) throw new IllegalArgumentException("invalid clientId");
+        return normalized;
+    }
+
     private static String hash(String value) {
         try {
             byte[] digest = MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8));
@@ -139,7 +164,7 @@ public class SessionRepository {
         try (var p = c.prepareStatement("INSERT INTO sys_refresh_token_event(token_id, user_id, refresh_family_id, event_type, client_id, detail) VALUES (?, ?, ?, ?, ?, ?)")) { if (tokenId == null) p.setNull(1, java.sql.Types.BIGINT); else p.setLong(1, tokenId); p.setLong(2, userId); p.setString(3, familyId); p.setString(4, eventType); p.setString(5, clientId); p.setString(6, detail); p.executeUpdate(); }
     }
 
-    public record CreatedSession(String refreshToken, String accessTokenId, String sessionId, Instant refreshExpiresAt) {}
-    public record RotatedSession(UserRepository.AuthUser user, String refreshToken, String accessTokenId, String sessionId, Instant refreshExpiresAt) {}
+    public record CreatedSession(String refreshToken, String accessTokenId, String sessionId, Instant refreshExpiresAt, String clientId) {}
+    public record RotatedSession(UserRepository.AuthUser user, String refreshToken, String accessTokenId, String sessionId, Instant refreshExpiresAt, String clientId) {}
     public record OnlineSession(long sessionId, long userId, String username, String displayName, String ipAddress, java.time.Instant createdAt, java.time.Instant expiresAt, java.time.Instant accessExpiresAt) {}
 }

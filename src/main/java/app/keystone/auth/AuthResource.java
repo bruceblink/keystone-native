@@ -34,20 +34,24 @@ public class AuthResource {
         if (user.isEmpty()) { loginLogs.record(request.username(), "FAILURE", ipAddress, "invalid credentials", userAgent); return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid credentials")).build(); }
         var u = user.get();
         if (u.mustChangePassword()) { loginLogs.record(u.username(), "BLOCKED", ipAddress, "password change required", userAgent); return Response.status(428).entity(ApiResponse.error("password change required")).build(); }
-        var refresh = sessions.create(u.id(), Boolean.TRUE.equals(request.forceLogin()));
+        java.util.Optional<SessionRepository.CreatedSession> refresh;
+        try { refresh = sessions.create(u.id(), Boolean.TRUE.equals(request.forceLogin()), request.clientId()); }
+        catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
         if (refresh.isEmpty()) { loginLogs.record(u.username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
         users.markLogin(u.id(), ipAddress);
         loginLogs.record(u.username(), "SUCCESS", ipAddress, "login successful", userAgent);
-        return Response.ok(ApiResponse.ok(tokens.issue(u, refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().refreshExpiresAt()))).build();
+        return Response.ok(ApiResponse.ok(tokens.issue(u, refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().clientId(), refresh.get().refreshExpiresAt()))).build();
     }
 
     @POST @Path("/refresh") @PermitAll
     public Response refresh(RefreshRequest request) {
         if (request == null || request.refreshToken() == null || request.refreshToken().isBlank()) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("refreshToken is required")).build();
-        var rotated = sessions.rotate(request.refreshToken(), users);
+        java.util.Optional<SessionRepository.RotatedSession> rotated;
+        try { rotated = sessions.rotate(request.refreshToken(), users, request.clientId()); }
+        catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
         if (rotated.isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid or expired refresh token")).build();
         var session = rotated.get();
-        return Response.ok(ApiResponse.ok(tokens.issue(session.user(), session.refreshToken(), session.accessTokenId(), session.sessionId(), session.refreshExpiresAt()))).build();
+        return Response.ok(ApiResponse.ok(tokens.issue(session.user(), session.refreshToken(), session.accessTokenId(), session.sessionId(), session.clientId(), session.refreshExpiresAt()))).build();
     }
 
     @POST @Path("/logout") @jakarta.annotation.security.RolesAllowed({"USER", "ADMIN"})
@@ -68,8 +72,8 @@ public class AuthResource {
         return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build();
     }
 
-    public record LoginRequest(String username, String password, Boolean forceLogin) {}
-    public record RefreshRequest(String refreshToken) {}
+    public record LoginRequest(String username, String password, Boolean forceLogin, String clientId) {}
+    public record RefreshRequest(String refreshToken, String clientId) {}
     public record InitialPasswordRequest(String username, String currentPassword, String newPassword) {}
-    public record TokenResponse(String accessToken, String token, String refreshToken, String tokenType, long expiresIn, long refreshExpiresIn, String username, String displayName, java.util.List<String> roles) {}
+    public record TokenResponse(String accessToken, String token, String refreshToken, String tokenType, long expiresIn, long refreshExpiresIn, String username, String displayName, java.util.List<String> roles, String sessionId, String clientId) {}
 }

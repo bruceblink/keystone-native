@@ -29,6 +29,8 @@ class AuthResourceTest {
                 .then().statusCode(200).body("success", is(true))
                 .body("data.accessToken", not(emptyOrNullString()))
                 .body("data.refreshToken", not(emptyOrNullString()))
+                .body("data.sessionId", not(emptyOrNullString()))
+                .body("data.clientId", is("web"))
                 .body("data.roles[0]", is("ADMIN"));
     }
 
@@ -60,6 +62,16 @@ class AuthResourceTest {
         given().contentType(JSON).body("{\"refreshToken\":\"" + replacement + "\"}")
                 .when().post("/v1/auth/logout").then().statusCode(200);
         given().contentType(JSON).body("{\"refreshToken\":\"" + replacement + "\"}")
+                .when().post("/v1/auth/refresh").then().statusCode(401);
+    }
+
+    @Test
+    void refreshClientMismatchRevokesTheWholeTokenFamily() {
+        String refresh = given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"clientId\":\"desktop\"}")
+                .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.refreshToken");
+        given().contentType(JSON).body("{\"refreshToken\":\"" + refresh + "\",\"clientId\":\"mobile\"}")
+                .when().post("/v1/auth/refresh").then().statusCode(401);
+        given().contentType(JSON).body("{\"refreshToken\":\"" + refresh + "\",\"clientId\":\"desktop\"}")
                 .when().post("/v1/auth/refresh").then().statusCode(401);
     }
 
