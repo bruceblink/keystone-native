@@ -4,9 +4,12 @@ import app.keystone.auth.DataScopeService;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.ResultSet;
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -14,6 +17,11 @@ import java.util.Optional;
 @ApplicationScoped
 public class UserRepository {
     @Inject DataSource dataSource;
+    @Inject PasswordPolicy passwordPolicy;
+    @ConfigProperty(name = "keystone.security.login.account-lock-base-seconds", defaultValue = "60")
+    long accountLockBaseSeconds;
+    @ConfigProperty(name = "keystone.security.login.account-lock-max-seconds", defaultValue = "900")
+    long accountLockMaxSeconds;
 
     public Optional<AuthUser> authenticate(String username, String password) {
         String sql = "SELECT id, password_hash, locked_until FROM sys_user WHERE username = ? AND enabled = true";
@@ -91,6 +99,7 @@ public class UserRepository {
 
     public User create(String username, String password, String displayName, Long deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar, String remark, List<String> roleCodes) {
         if (username == null || username.isBlank() || password == null || password.isBlank() || displayName == null || displayName.isBlank()) throw new IllegalArgumentException("username, password and displayName are required");
+        passwordPolicy.validate(username, password);
         try (var c = dataSource.getConnection()) {
             c.setAutoCommit(false);
             try (var p = c.prepareStatement("INSERT INTO sys_user(username, password_hash, display_name, dept_id, post_id, email, phone_number, sex, avatar, remark) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", java.sql.Statement.RETURN_GENERATED_KEYS)) {
@@ -110,7 +119,11 @@ public class UserRepository {
             c.setAutoCommit(false);
             try {
                 var fields = new ArrayList<String>(); var values = new ArrayList<Object>();
-                if (password != null && !password.isBlank()) { fields.add("password_hash = ?"); values.add(BcryptUtil.bcryptHash(password)); fields.add("must_change_password = false"); fields.add("failed_login_count = 0"); fields.add("locked_until = NULL"); fields.add("credential_version = credential_version + 1"); fields.add("last_password_changed_at = CURRENT_TIMESTAMP"); }
+                if (password != null && !password.isBlank()) {
+                    String username = username(c, id);
+                    passwordPolicy.validate(username, password);
+                    fields.add("password_hash = ?"); values.add(BcryptUtil.bcryptHash(password)); fields.add("must_change_password = false"); fields.add("failed_login_count = 0"); fields.add("locked_until = NULL"); fields.add("credential_version = credential_version + 1"); fields.add("last_password_changed_at = CURRENT_TIMESTAMP");
+                }
                 if (displayName != null && !displayName.isBlank()) { fields.add("display_name = ?"); values.add(displayName.trim()); }
                 if (updateDept) { fields.add("dept_id = ?"); values.add(deptId); }
                 if (postId != null) { fields.add("post_id = ?"); values.add(postId); }
@@ -181,7 +194,60 @@ public class UserRepository {
     }
 
     private static List<String> roles(Connection c, long userId) throws Exception { try (var p = c.prepareStatement("SELECT r.code FROM sys_role r JOIN sys_user_role ur ON ur.role_id = r.id WHERE ur.user_id = ? AND r.enabled = true ORDER BY r.code")) { p.setLong(1, userId); try (var rs = p.executeQuery()) { var result = new ArrayList<String>(); while (rs.next()) result.add(rs.getString(1)); return result; } } }
-    private static void recordFailedLogin(Connection c, long userId) throws Exception { try (var p = c.prepareStatement("UPDATE sys_user SET failed_login_count = failed_login_count + 1, locked_until = CASE WHEN failed_login_count + 1 >= 5 THEN TIMESTAMPADD(MINUTE, 15, CURRENT_TIMESTAMP) ELSE locked_until END WHERE id = ?")) { p.setLong(1, userId); p.executeUpdate(); } }
+
+    /** 在同一数据库连接内锁定失败计数行，并按失败次数计算有上限的指数锁定时间。 */
+    private void recordFailedLogin(Connection c, long userId) throws Exception {
+        validateLockConfiguration();
+        int attempts;
+        try (var find = c.prepareStatement("SELECT failed_login_count FROM sys_user WHERE id = ? FOR UPDATE")) {
+            find.setLong(1, userId);
+            try (var rs = find.executeQuery()) {
+                if (!rs.next()) return;
+                attempts = rs.getInt(1) + 1;
+            }
+        }
+        Timestamp lockedUntil = null;
+        if (attempts >= 5) lockedUntil = Timestamp.from(Instant.now().plusSeconds(lockDelaySeconds(attempts)));
+        try (var update = c.prepareStatement("UPDATE sys_user SET failed_login_count = ?, locked_until = ? WHERE id = ?")) {
+            update.setInt(1, attempts);
+            if (lockedUntil == null) update.setNull(2, java.sql.Types.TIMESTAMP); else update.setTimestamp(2, lockedUntil);
+            update.setLong(3, userId);
+            update.executeUpdate();
+        }
+    }
+
+    private long lockDelaySeconds(int attempts) {
+        return calculateLockDelaySeconds(accountLockBaseSeconds, accountLockMaxSeconds, attempts);
+    }
+
+    /** 计算第 N 次失败的锁定秒数；结果不会超过部署配置的上限。 */
+    static long calculateLockDelaySeconds(long baseSeconds, long maxSeconds, int attempts) {
+        if (baseSeconds <= 0 || maxSeconds < baseSeconds || maxSeconds > 86_400 || attempts < 5) {
+            throw new IllegalArgumentException("account lock backoff parameters are invalid");
+        }
+        long delay = baseSeconds;
+        int exponent = Math.max(0, attempts - 5);
+        for (int i = 0; i < exponent && delay < maxSeconds; i++) {
+            delay = Math.min(maxSeconds, delay > maxSeconds / 2 ? maxSeconds : delay * 2);
+        }
+        return Math.min(delay, maxSeconds);
+    }
+
+    private void validateLockConfiguration() {
+        if (accountLockBaseSeconds <= 0 || accountLockMaxSeconds < accountLockBaseSeconds || accountLockMaxSeconds > 86_400) {
+            throw new IllegalStateException("account lock backoff configuration is invalid");
+        }
+    }
+
+    private static String username(Connection c, long userId) throws Exception {
+        try (var p = c.prepareStatement("SELECT username FROM sys_user WHERE id = ?")) {
+            p.setLong(1, userId);
+            try (var rs = p.executeQuery()) {
+                if (!rs.next()) throw new java.util.NoSuchElementException("user not found");
+                return rs.getString(1);
+            }
+        }
+    }
     private static void clearFailedLogins(Connection c, long userId) throws Exception { try (var p = c.prepareStatement("UPDATE sys_user SET failed_login_count = 0, locked_until = NULL WHERE id = ?")) { p.setLong(1, userId); p.executeUpdate(); } }
     public List<String> permissions(long userId) {
         String sql = "SELECT DISTINCT p.code FROM sys_permission p JOIN sys_role_permission rp ON rp.permission_id = p.id JOIN sys_user_role ur ON ur.role_id = rp.role_id JOIN sys_role r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.enabled = true ORDER BY p.code";
