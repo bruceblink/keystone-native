@@ -54,7 +54,7 @@ public class AuthResource {
         return Response.ok(ApiResponse.ok(tokens.issue(session.user(), session.refreshToken(), session.accessTokenId(), session.sessionId(), session.clientId(), session.refreshExpiresAt()))).build();
     }
 
-    @POST @Path("/logout") @jakarta.annotation.security.RolesAllowed({"USER", "ADMIN"})
+    @POST @Path("/logout") @RequiresPermission("session:logout")
     public Response logout() {
         if (identity.isAnonymous() || !(identity.getPrincipal() instanceof JsonWebToken jwt)) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("authentication is required")).build();
         sessions.revokeSession(jwt.getClaim("sid"));

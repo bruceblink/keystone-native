@@ -8,7 +8,6 @@ import app.keystone.user.UserRepository;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.smallrye.jwt.build.Jwt;
 import jakarta.annotation.security.PermitAll;
-import jakarta.annotation.security.RolesAllowed;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
@@ -70,10 +69,10 @@ public class LegacyAuthResource {
         return Response.ok(ApiResponse.ok(Map.of("updated", true))).build();
     }
 
-    @GET @Path("getLoginUserInfo") @RolesAllowed({"USER", "ADMIN"})
+    @GET @Path("getLoginUserInfo") @RequiresPermission("profile:read")
     public ApiResponse<UserRepository.AuthUser> loginUserInfo() { return ApiResponse.ok(users.findAuthUserByUsername(identity.getPrincipal().getName()).orElseThrow(NotFoundException::new)); }
 
-    @GET @Path("getRouters") @RolesAllowed({"USER", "ADMIN"})
+    @GET @Path("getRouters") @RequiresPermission("menu:read")
     public ApiResponse<List<Router>> routers() { return ApiResponse.ok(toRouters(menus.listForRoles(identity.getRoles().stream().toList()))); }
 
     @GET @Path("getConfig") @PermitAll
