@@ -5,6 +5,9 @@ import app.keystone.audit.LoginLogRepository;
 import app.keystone.audit.OperationLog;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.AuthResource;
+import app.keystone.auth.ApiKeyRepository;
+import app.keystone.auth.ApiKeyResource;
+import app.keystone.auth.ApiKeyAuthenticationRequest;
 import app.keystone.auth.LegacyAuthResource;
 import app.keystone.auth.SessionRepository;
 import app.keystone.config.SystemConfig;
@@ -37,6 +40,8 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
 @RegisterForReflection(targets = {
         ApiResponse.class, HealthResource.Health.class,
         AuthResource.LoginRequest.class, AuthResource.RefreshRequest.class, AuthResource.InitialPasswordRequest.class, AuthResource.TokenResponse.class,
+        ApiKeyRepository.IssuedApiKey.class, ApiKeyResource.Request.class,
+        ApiKeyRepository.ApiKeyMetadata.class, ApiKeyAuthenticationRequest.class,
         LegacyAuthResource.Router.class, User.class, UserRepository.AuthUser.class, UserRepository.Page.class,
         UserResource.UserRequest.class, UserResource.PasswordRequest.class, UserResource.StatusRequest.class,
         Role.class, RoleResource.RoleRequest.class, RoleResource.PermissionRequest.class,
