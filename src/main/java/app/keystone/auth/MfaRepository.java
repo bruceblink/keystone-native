@@ -6,6 +6,7 @@ import jakarta.inject.Inject;
 import javax.sql.DataSource;
 import java.sql.Timestamp;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -54,7 +55,7 @@ public class MfaRepository {
                     c.rollback();
                     return false;
                 }
-                Long owner = mfaOwnerForUpdate(c, boundMfaId);
+                Long owner = mfaOwner(c, boundMfaId);
                 if (owner != null && owner != userId) {
                     c.rollback();
                     return false;
@@ -157,6 +158,67 @@ public class MfaRepository {
         }
     }
 
+    /** 只允许已经完成 enrollment 的用户进入强制 MFA 策略。 */
+    public boolean setRequired(long userId, boolean required) {
+        requireUser(userId);
+        String sql = "UPDATE sys_user SET mfa_required = ? WHERE id = ? AND (? = 0 OR EXISTS (SELECT 1 FROM sys_user_mfa WHERE user_id = sys_user.id AND enabled = 1))";
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql)) {
+            p.setInt(1, required ? 1 : 0);
+            p.setLong(2, userId);
+            p.setInt(3, required ? 1 : 0);
+            return p.executeUpdate() == 1;
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not update MFA policy", e);
+        }
+    }
+
+    /** 轮换恢复码时在一个事务内替换旧批次；数据库只接收哈希。 */
+    public void replaceRecoveryCodes(long userId, String batchId, List<String> hashes) {
+        requireUser(userId);
+        String boundBatchId = normalizeMfaId(batchId);
+        if (hashes == null || hashes.isEmpty() || hashes.stream().anyMatch(value -> value == null || !value.matches("[0-9a-f]{64}"))) {
+            throw new IllegalArgumentException("invalid recovery code hashes");
+        }
+        try (var c = dataSource.getConnection()) {
+            c.setAutoCommit(false);
+            try {
+                try (var delete = c.prepareStatement("DELETE FROM sys_mfa_recovery_code WHERE user_id = ?")) {
+                    delete.setLong(1, userId);
+                    delete.executeUpdate();
+                }
+                try (var insert = c.prepareStatement("INSERT INTO sys_mfa_recovery_code(id, user_id, batch_id, code_hash) VALUES (?, ?, ?, ?)")) {
+                    for (String hash : hashes) {
+                        insert.setString(1, UUID.randomUUID().toString());
+                        insert.setLong(2, userId);
+                        insert.setString(3, boundBatchId);
+                        insert.setString(4, hash);
+                        insert.addBatch();
+                    }
+                    insert.executeBatch();
+                }
+                c.commit();
+            } catch (Exception e) {
+                c.rollback();
+                throw e;
+            }
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not replace MFA recovery codes", e);
+        }
+    }
+
+    /** 使用条件更新原子消费恢复码；同一恢复码并发请求只有一次成功。 */
+    public boolean consumeRecoveryCode(long userId, String hash) {
+        requireUser(userId);
+        if (hash == null || !hash.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("invalid recovery code hash");
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("UPDATE sys_mfa_recovery_code SET used_at = CURRENT_TIMESTAMP WHERE user_id = ? AND code_hash = ? AND used_at IS NULL")) {
+            p.setLong(1, userId);
+            p.setString(2, hash);
+            return p.executeUpdate() == 1;
+        } catch (Exception e) {
+            throw new IllegalStateException("Could not consume MFA recovery code", e);
+        }
+    }
+
     private static void requireUser(long userId) {
         if (userId <= 0) throw new IllegalArgumentException("userId must be positive");
     }
@@ -181,8 +243,9 @@ public class MfaRepository {
         }
     }
 
-    private static Long mfaOwnerForUpdate(java.sql.Connection c, String mfaId) throws Exception {
-        try (var p = c.prepareStatement("SELECT user_id FROM sys_user_mfa WHERE id = ? FOR UPDATE")) {
+    private static Long mfaOwner(java.sql.Connection c, String mfaId) throws Exception {
+        // 用户行已经提供同一用户的并发互斥；这里仅检查 ID 冲突，避免跨用户锁顺序造成死锁。
+        try (var p = c.prepareStatement("SELECT user_id FROM sys_user_mfa WHERE id = ?")) {
             p.setString(1, mfaId);
             try (var rs = p.executeQuery()) { return rs.next() ? rs.getLong(1) : null; }
         }

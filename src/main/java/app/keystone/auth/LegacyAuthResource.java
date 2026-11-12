@@ -34,6 +34,7 @@ public class LegacyAuthResource {
     @Inject SecurityIdentity identity;
     @Inject AccessTokenService tokens;
     @Inject LoginRateLimiter loginRateLimiter;
+    @Inject MfaService mfa;
 
     @POST @Path("login") @PermitAll @RejectApiKey
     public Response login(AuthResource.LoginRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
@@ -44,7 +45,22 @@ public class LegacyAuthResource {
         if (user.isEmpty()) { try { loginRateLimiter.recordFailure(request.username(), ipAddress); } catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); } loginLogs.record(request.username(), "FAILURE", ipAddress, "invalid credentials", userAgent); return Response.status(401).entity(ApiResponse.error("invalid credentials")).build(); }
         try { loginRateLimiter.clear(user.get().username(), ipAddress); } catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (user.get().mustChangePassword()) { loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "password change required", userAgent); return Response.status(428).entity(ApiResponse.error("password change required")).build(); }
-        var refresh = sessions.create(user.get().id(), Boolean.TRUE.equals(request.forceLogin()));
+        AuthResource.MfaRequired challenge;
+        try {
+            var preparation = mfa.prepareLogin(user.get().id(), request.clientId());
+            if (preparation.required() && preparation.challenge() == null) {
+                loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "MFA enrollment required", userAgent);
+                return Response.status(428).entity(ApiResponse.error("MFA enrollment required")).build();
+            }
+            if (preparation.challenge() != null) {
+                loginLogs.record(user.get().username(), "MFA_REQUIRED", ipAddress, "MFA challenge issued", userAgent);
+                var value = preparation.challenge();
+                challenge = new AuthResource.MfaRequired(value.challengeId(), value.clientId(), value.expiresAt());
+                return Response.status(Response.Status.UNAUTHORIZED).entity(new ApiResponse<>(false, challenge, "MFA_REQUIRED")).build();
+            }
+        } catch (IllegalArgumentException e) { return Response.status(400).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
+        var refresh = sessions.create(user.get().id(), Boolean.TRUE.equals(request.forceLogin()), request.clientId());
         if (refresh.isEmpty()) { loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
         users.markLogin(user.get().id(), ipAddress);
         loginLogs.record(user.get().username(), "SUCCESS", ipAddress, "login successful", userAgent);

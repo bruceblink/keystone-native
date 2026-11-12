@@ -36,6 +36,9 @@ public class MfaSecretCipher {
 
     MfaSecretCipher(String encodedMasterKey) { this(encodedMasterKey, 1); }
 
+    /** 返回当前部署配置的密钥版本，写入 MFA 记录以支持后续轮换。 */
+    public int currentKeyVersion() { return masterKeyVersion; }
+
     /** 加密 TOTP 密钥，并把主体、记录和密钥版本绑定到认证标签。 */
     public EncryptedSecret encrypt(long userId, String mfaId, int keyVersion, String secret) {
         if (userId <= 0 || mfaId == null || mfaId.isBlank() || keyVersion <= 0 || secret == null || secret.isBlank()) throw new IllegalArgumentException("invalid MFA secret input");

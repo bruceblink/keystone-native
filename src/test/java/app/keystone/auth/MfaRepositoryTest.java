@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Base64;
 import java.util.UUID;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -22,6 +23,8 @@ class MfaRepositoryTest {
         assertThrows(IllegalArgumentException.class, () -> repository.acceptTotp(7L, mfaId, -1, false));
         assertThrows(IllegalArgumentException.class, () -> repository.enableEnrollment(7L, ""));
         assertTrue(encrypted.ciphertext().length > 0);
+        assertThrows(IllegalArgumentException.class, () -> repository.replaceRecoveryCodes(7L, "batch", List.of("bad")));
+        assertThrows(IllegalArgumentException.class, () -> repository.consumeRecoveryCode(7L, "bad"));
     }
 
     @Test

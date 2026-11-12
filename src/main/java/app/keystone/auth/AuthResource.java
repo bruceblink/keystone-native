@@ -6,7 +6,9 @@ import app.keystone.user.UserRepository;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.POST;
+import jakarta.ws.rs.PUT;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.HeaderParam;
@@ -25,6 +27,8 @@ public class AuthResource {
     @Inject AccessTokenService tokens;
     @Inject SecurityIdentity identity;
     @Inject LoginRateLimiter loginRateLimiter;
+    @Inject MfaService mfa;
+    @Inject MfaSessionRepository mfaSessions;
 
     @POST @Path("/login") @PermitAll @RejectApiKey
     public Response login(LoginRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
@@ -43,9 +47,24 @@ public class AuthResource {
         try { loginRateLimiter.clear(u.username(), ipAddress); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (u.mustChangePassword()) { loginLogs.record(u.username(), "BLOCKED", ipAddress, "password change required", userAgent); return Response.status(428).entity(ApiResponse.error("password change required")).build(); }
+        MfaService.LoginPreparation preparation;
+        try { preparation = mfa.prepareLogin(u.id(), request.clientId()); }
+        catch (IllegalArgumentException e) { return Response.status(400).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
+        if (preparation.required() && preparation.challenge() == null) {
+            loginLogs.record(u.username(), "BLOCKED", ipAddress, "MFA enrollment required", userAgent);
+            return Response.status(428).entity(ApiResponse.error("MFA enrollment required")).build();
+        }
+        if (preparation.challenge() != null) {
+            loginLogs.record(u.username(), "MFA_REQUIRED", ipAddress, "MFA challenge issued", userAgent);
+            return Response.status(Response.Status.UNAUTHORIZED)
+                    .entity(new ApiResponse<>(false, new MfaRequired(preparation.challenge().challengeId(), preparation.challenge().clientId(), preparation.challenge().expiresAt()), "MFA_REQUIRED"))
+                    .build();
+        }
         java.util.Optional<SessionRepository.CreatedSession> refresh;
         try { refresh = sessions.create(u.id(), Boolean.TRUE.equals(request.forceLogin()), request.clientId()); }
         catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (refresh.isEmpty()) { loginLogs.record(u.username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
         users.markLogin(u.id(), ipAddress);
         loginLogs.record(u.username(), "SUCCESS", ipAddress, "login successful", userAgent);
@@ -61,6 +80,79 @@ public class AuthResource {
         if (rotated.isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid or expired refresh token")).build();
         var session = rotated.get();
         return Response.ok(ApiResponse.ok(tokens.issue(session.user(), session.refreshToken(), session.accessTokenId(), session.sessionId(), session.clientId(), session.approvedScope(), session.refreshExpiresAt()))).build();
+    }
+
+    /** 用登录挑战完成第二因素后才创建刷新会话。 */
+    @POST @Path("/mfa/verify") @PermitAll @RejectApiKey
+    public Response verifyMfa(LoginMfaRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
+        if (request == null || request.username() == null || request.challengeId() == null || request.code() == null) {
+            return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("username, challengeId and code are required")).build();
+        }
+        var user = users.findAuthUserByUsername(request.username().trim());
+        if (user.isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build();
+        MfaService.LoginVerification verification;
+        try {
+            verification = mfa.verifyLogin(user.get().id(), request.challengeId(), request.clientId(), request.code()).orElse(null);
+        } catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
+        if (verification == null) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build();
+        java.util.Optional<SessionRepository.CreatedSession> refresh;
+        try { refresh = sessions.create(user.get().id(), Boolean.TRUE.equals(request.forceLogin()), request.clientId()); }
+        catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
+        if (refresh.isEmpty()) return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build();
+        var created = refresh.get();
+        try {
+            if (!mfaSessions.markVerified(created.sessionId(), user.get().id(), created.clientId(), verification.assurance(), verification.amr())) {
+                sessions.revokeSession(created.sessionId());
+                return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build();
+            }
+        } catch (IllegalStateException e) {
+            sessions.revokeSession(created.sessionId());
+            return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build();
+        }
+        users.markLogin(user.get().id(), ipAddress);
+        loginLogs.record(user.get().username(), "SUCCESS", ipAddress, "MFA login successful", userAgent);
+        return Response.ok(ApiResponse.ok(tokens.issue(user.get(), created.refreshToken(), created.accessTokenId(), created.sessionId(), created.clientId(), created.approvedScope(), created.refreshExpiresAt()))).build();
+    }
+
+    /** 为当前已登录的人类用户创建待验证 TOTP enrollment。 */
+    @POST @Path("/mfa/enroll") @RequiresPermission("mfa:manage") @RejectApiKey
+    public Response beginMfaEnrollment() {
+        var current = currentHumanSession();
+        try {
+            var result = mfa.beginEnrollment(current.userId(), identity.getPrincipal().getName(), current.clientId(), current.sessionId());
+            return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(result)).build();
+        } catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalStateException e) {
+            if ("MFA is already enabled".equals(e.getMessage())) return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error(e.getMessage())).build();
+            return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("MFA state is unavailable")).build();
+        }
+    }
+
+    /** 只接受当前会话绑定的 enrollment 挑战，并在成功后返回一次性恢复码。 */
+    @POST @Path("/mfa/enroll/verify") @RequiresPermission("mfa:manage") @RejectApiKey
+    public Response verifyMfaEnrollment(MfaCodeRequest request) {
+        if (request == null || request.challengeId() == null || request.code() == null) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("challengeId and code are required")).build();
+        var current = currentHumanSession();
+        try {
+            var result = mfa.verifyEnrollment(current.userId(), request.challengeId(), current.clientId(), current.sessionId(), request.code());
+            return result.<Response>map(value -> Response.ok(ApiResponse.ok(value)).build())
+                    .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build());
+        } catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("MFA state is unavailable")).build(); }
+    }
+
+    /** 管理员只可为已经完成 enrollment 的用户启用或关闭强制 MFA。 */
+    @PUT @Path("/mfa/policy/{userId}") @RequiresPermission("mfa:manage") @RejectApiKey
+    public Response setMfaPolicy(@PathParam("userId") long userId, MfaPolicyRequest request) {
+        if (request == null || request.required() == null || userId <= 0) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("userId and required are required")).build();
+        try {
+            if (!mfa.setRequired(userId, request.required())) return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("MFA enrollment is required before enabling policy")).build();
+            sessions.revokeAll(userId);
+            return Response.ok(ApiResponse.ok(java.util.Map.of("userId", userId, "required", request.required()))).build();
+        } catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("MFA state is unavailable")).build(); }
     }
 
     @POST @Path("/logout") @RequiresPermission("session:logout")
@@ -84,5 +176,22 @@ public class AuthResource {
     public record LoginRequest(String username, String password, Boolean forceLogin, String clientId) {}
     public record RefreshRequest(String refreshToken, String clientId) {}
     public record InitialPasswordRequest(String username, String currentPassword, String newPassword) {}
+    public record MfaRequired(String challengeId, String clientId, java.time.Instant expiresAt) {}
+    public record LoginMfaRequest(String username, String challengeId, String code, String clientId, Boolean forceLogin) {}
+    public record MfaCodeRequest(String challengeId, String code) {}
+    public record MfaPolicyRequest(Boolean required) {}
     public record TokenResponse(String accessToken, String token, String refreshToken, String tokenType, long expiresIn, long refreshExpiresIn, String username, String displayName, java.util.List<String> roles, String sessionId, String clientId) {}
+
+    private CurrentHumanSession currentHumanSession() {
+        if (identity == null || identity.isAnonymous() || !(identity.getPrincipal() instanceof JsonWebToken jwt)) throw new jakarta.ws.rs.NotAuthorizedException("authentication is required");
+        String sessionId = claimText(jwt, "sid");
+        String clientId = claimText(jwt, "client_id");
+        long userId = claimLong(jwt, "userId");
+        if (userId <= 0 || sessionId == null || clientId == null) throw new jakarta.ws.rs.NotAuthorizedException("authentication session is incomplete");
+        return new CurrentHumanSession(userId, sessionId, clientId);
+    }
+
+    private static String claimText(JsonWebToken jwt, String name) { Object value = jwt.getClaim(name); return value == null ? null : value.toString(); }
+    private static long claimLong(JsonWebToken jwt, String name) { Object value = jwt.getClaim(name); if (value instanceof Number number) return number.longValue(); try { return Long.parseLong(String.valueOf(value)); } catch (Exception e) { return -1; } }
+    private record CurrentHumanSession(long userId, String sessionId, String clientId) {}
 }
