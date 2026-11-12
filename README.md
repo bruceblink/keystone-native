@@ -37,6 +37,7 @@ docker compose up -d mysql
 # 本地开发使用测试密钥；不要用于生产环境
 export JWT_PRIVATE_KEY_LOCATION="file://${PWD}/src/test/resources/keys/privateKey.pem"
 export JWT_PUBLIC_KEY_LOCATION="file://${PWD}/src/test/resources/keys/publicKey.pem"
+export JWT_KEY_ID="test-rs256-1"
 
 ./gradlew quarkusDev
 ```

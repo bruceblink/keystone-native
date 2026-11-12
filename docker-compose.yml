@@ -22,6 +22,7 @@ services:
       DB_PASSWORD: keystone
       JWT_PRIVATE_KEY_LOCATION: /run/keys/privateKey.pem
       JWT_PUBLIC_KEY_LOCATION: /run/keys/publicKey.pem
+      JWT_KEY_ID: ${JWT_KEY_ID:?JWT_KEY_ID is required}
     volumes:
       - ./docker/keys:/run/keys:ro
     ports: ["8080:8080"]

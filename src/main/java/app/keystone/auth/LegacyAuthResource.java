@@ -13,8 +13,6 @@ import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-import java.io.InputStream;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -35,6 +33,7 @@ public class LegacyAuthResource {
     @Inject AccessTokenService tokens;
     @Inject LoginRateLimiter loginRateLimiter;
     @Inject MfaService mfa;
+    @Inject JwkSetService jwkSet;
 
     @POST @Path("login") @PermitAll @RejectApiKey
     public Response login(AuthResource.LoginRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
@@ -111,10 +110,11 @@ public class LegacyAuthResource {
 
     @GET @Path("login/rsa-public-key") @PermitAll
     public Response rsaPublicKey() {
-        try (InputStream in = Thread.currentThread().getContextClassLoader().getResourceAsStream("keys/publicKey.pem")) {
-            if (in == null) return Response.status(404).entity(ApiResponse.error("public key not found")).build();
-            return Response.ok(ApiResponse.ok(Map.of("publicKey", new String(in.readAllBytes(), StandardCharsets.UTF_8)))).build();
-        } catch (Exception e) { return Response.serverError().entity(ApiResponse.error("could not load public key")).build(); }
+        try {
+            return Response.ok(ApiResponse.ok(Map.of("publicKey", jwkSet.currentPem()))).build();
+        } catch (IllegalStateException e) {
+            return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("public key is unavailable")).build();
+        }
     }
 
     @POST @Path("register") @PermitAll
