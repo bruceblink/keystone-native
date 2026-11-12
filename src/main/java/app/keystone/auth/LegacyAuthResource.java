@@ -10,6 +10,7 @@ import io.smallrye.jwt.build.Jwt;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -19,6 +20,7 @@ import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import io.vertx.ext.web.RoutingContext;
 
 /** Compatibility endpoints matching the original Keystone login contract. */
 @Path("/")
@@ -34,25 +36,27 @@ public class LegacyAuthResource {
     @Inject LoginRateLimiter loginRateLimiter;
     @Inject MfaService mfa;
     @Inject JwkSetService jwkSet;
+    @Inject ClientAddressResolver clientAddresses;
+    @Context RoutingContext routingContext;
 
     @POST @Path("login") @PermitAll @RejectApiKey
     public Response login(AuthResource.LoginRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
         if (request == null || request.username() == null || request.password() == null) return Response.status(400).entity(ApiResponse.error("username and password are required")).build();
-        try { if (loginRateLimiter.isBlocked(request.username(), ipAddress)) return Response.status(429).entity(ApiResponse.error("too many login attempts")).build(); }
+        String clientAddress = clientAddresses.resolve(routingContext, ipAddress);
+        try { if (loginRateLimiter.isBlocked(request.username(), clientAddress)) return Response.status(429).entity(ApiResponse.error("too many login attempts")).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         var user = users.authenticate(request.username(), request.password());
-        if (user.isEmpty()) { try { loginRateLimiter.recordFailure(request.username(), ipAddress); } catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); } loginLogs.record(request.username(), "FAILURE", ipAddress, "invalid credentials", userAgent); return Response.status(401).entity(ApiResponse.error("invalid credentials")).build(); }
-        try { loginRateLimiter.clear(user.get().username(), ipAddress); } catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
-        if (user.get().mustChangePassword()) { loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "password change required", userAgent); return Response.status(428).entity(ApiResponse.error("password change required")).build(); }
+        if (user.isEmpty()) { try { loginRateLimiter.recordFailure(request.username(), clientAddress); } catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); } loginLogs.record(request.username(), "FAILURE", clientAddress, "invalid credentials", userAgent); return Response.status(401).entity(ApiResponse.error("invalid credentials")).build(); }
+        try { loginRateLimiter.clear(user.get().username(), clientAddress); } catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         AuthResource.MfaRequired challenge;
         try {
             var preparation = mfa.prepareLogin(user.get().id(), request.clientId());
             if (preparation.required() && preparation.challenge() == null) {
-                loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "MFA enrollment required", userAgent);
+                loginLogs.record(user.get().username(), "BLOCKED", clientAddress, "MFA enrollment required", userAgent);
                 return Response.status(428).entity(ApiResponse.error("MFA enrollment required")).build();
             }
             if (preparation.challenge() != null) {
-                loginLogs.record(user.get().username(), "MFA_REQUIRED", ipAddress, "MFA challenge issued", userAgent);
+                loginLogs.record(user.get().username(), "MFA_REQUIRED", clientAddress, "MFA challenge issued", userAgent);
                 var value = preparation.challenge();
                 challenge = new AuthResource.MfaRequired(value.challengeId(), value.clientId(), value.expiresAt());
                 return Response.status(Response.Status.UNAUTHORIZED).entity(new ApiResponse<>(false, challenge, "MFA_REQUIRED")).build();
@@ -60,12 +64,14 @@ public class LegacyAuthResource {
         } catch (IllegalArgumentException e) { return Response.status(400).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         var refresh = sessions.create(user.get().id(), Boolean.TRUE.equals(request.forceLogin()), request.clientId());
-        if (refresh.isEmpty()) { loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
-        users.markLogin(user.get().id(), ipAddress);
-        loginLogs.record(user.get().username(), "SUCCESS", ipAddress, "login successful", userAgent);
+        if (refresh.isEmpty()) { loginLogs.record(user.get().username(), "BLOCKED", clientAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
+        Response tokenResponse;
         try {
-            return Response.ok(ApiResponse.ok(tokens.issue(user.get(), refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().clientId(), refresh.get().approvedScope(), refresh.get().refreshExpiresAt()))).build();
+            tokenResponse = Response.ok(ApiResponse.ok(tokens.issue(user.get(), refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().clientId(), refresh.get().approvedScope(), refresh.get().refreshExpiresAt()))).build();
         } catch (IllegalStateException e) { return tokenUnavailable(refresh.get().sessionId()); }
+        users.markLogin(user.get().id(), clientAddress);
+        loginLogs.record(user.get().username(), "SUCCESS", clientAddress, "login successful", userAgent);
+        return tokenResponse;
     }
 
     @POST @Path("refresh-token") @PermitAll @RejectApiKey

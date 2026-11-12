@@ -11,11 +11,13 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.Consumes;
+import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import io.quarkus.security.identity.SecurityIdentity;
 import org.eclipse.microprofile.jwt.JsonWebToken;
+import io.vertx.ext.web.RoutingContext;
 
 @Path("/v1/auth")
 @Produces(MediaType.APPLICATION_JSON)
@@ -29,34 +31,37 @@ public class AuthResource {
     @Inject LoginRateLimiter loginRateLimiter;
     @Inject MfaService mfa;
     @Inject MfaSessionRepository mfaSessions;
+    @Inject ClientAddressResolver clientAddresses;
+    @Context RoutingContext routingContext;
 
     @POST @Path("/login") @PermitAll @RejectApiKey
     public Response login(LoginRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
         if (request == null || request.username() == null || request.password() == null) {
             return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("username and password are required")).build();
         }
-        try { if (loginRateLimiter.isBlocked(request.username(), ipAddress)) return Response.status(429).entity(ApiResponse.error("too many login attempts")).build(); }
+        String clientAddress = clientAddresses.resolve(routingContext, ipAddress);
+        try { if (loginRateLimiter.isBlocked(request.username(), clientAddress)) return Response.status(429).entity(ApiResponse.error("too many login attempts")).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         var user = users.authenticate(request.username(), request.password());
         if (user.isEmpty()) {
-            try { loginRateLimiter.recordFailure(request.username(), ipAddress); }
+            try { loginRateLimiter.recordFailure(request.username(), clientAddress); }
             catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
-            loginLogs.record(request.username(), "FAILURE", ipAddress, "invalid credentials", userAgent); return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid credentials")).build();
+            loginLogs.record(request.username(), "FAILURE", clientAddress, "invalid credentials", userAgent); return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid credentials")).build();
         }
         var u = user.get();
-        try { loginRateLimiter.clear(u.username(), ipAddress); }
+        try { loginRateLimiter.clear(u.username(), clientAddress); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
-        if (u.mustChangePassword()) { loginLogs.record(u.username(), "BLOCKED", ipAddress, "password change required", userAgent); return Response.status(428).entity(ApiResponse.error("password change required")).build(); }
+        if (u.mustChangePassword()) { loginLogs.record(u.username(), "BLOCKED", clientAddress, "password change required", userAgent); return Response.status(428).entity(ApiResponse.error("password change required")).build(); }
         MfaService.LoginPreparation preparation;
         try { preparation = mfa.prepareLogin(u.id(), request.clientId()); }
         catch (IllegalArgumentException e) { return Response.status(400).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (preparation.required() && preparation.challenge() == null) {
-            loginLogs.record(u.username(), "BLOCKED", ipAddress, "MFA enrollment required", userAgent);
+            loginLogs.record(u.username(), "BLOCKED", clientAddress, "MFA enrollment required", userAgent);
             return Response.status(428).entity(ApiResponse.error("MFA enrollment required")).build();
         }
         if (preparation.challenge() != null) {
-            loginLogs.record(u.username(), "MFA_REQUIRED", ipAddress, "MFA challenge issued", userAgent);
+            loginLogs.record(u.username(), "MFA_REQUIRED", clientAddress, "MFA challenge issued", userAgent);
             return Response.status(Response.Status.UNAUTHORIZED)
                     .entity(new ApiResponse<>(false, new MfaRequired(preparation.challenge().challengeId(), preparation.challenge().clientId(), preparation.challenge().expiresAt()), "MFA_REQUIRED"))
                     .build();
@@ -65,12 +70,14 @@ public class AuthResource {
         try { refresh = sessions.create(u.id(), Boolean.TRUE.equals(request.forceLogin()), request.clientId()); }
         catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
-        if (refresh.isEmpty()) { loginLogs.record(u.username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
-        users.markLogin(u.id(), ipAddress);
-        loginLogs.record(u.username(), "SUCCESS", ipAddress, "login successful", userAgent);
+        if (refresh.isEmpty()) { loginLogs.record(u.username(), "BLOCKED", clientAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
+        Response tokenResponse;
         try {
-            return Response.ok(ApiResponse.ok(tokens.issue(u, refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().clientId(), refresh.get().approvedScope(), refresh.get().refreshExpiresAt()))).build();
+            tokenResponse = Response.ok(ApiResponse.ok(tokens.issue(u, refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().clientId(), refresh.get().approvedScope(), refresh.get().refreshExpiresAt()))).build();
         } catch (IllegalStateException e) { return tokenUnavailable(refresh.get().sessionId()); }
+        users.markLogin(u.id(), clientAddress);
+        loginLogs.record(u.username(), "SUCCESS", clientAddress, "login successful", userAgent);
+        return tokenResponse;
     }
 
     @POST @Path("/refresh") @PermitAll @RejectApiKey
@@ -92,11 +99,12 @@ public class AuthResource {
         if (request == null || request.username() == null || request.challengeId() == null || request.code() == null) {
             return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("username, challengeId and code are required")).build();
         }
+        String clientAddress = clientAddresses.resolve(routingContext, ipAddress);
         var user = users.findAuthUserByUsername(request.username().trim());
         if (user.isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build();
         MfaService.LoginVerification verification;
         try {
-            verification = mfa.verifyLogin(user.get().id(), request.challengeId(), request.clientId(), request.code(), ipAddress).orElse(null);
+            verification = mfa.verifyLogin(user.get().id(), request.challengeId(), request.clientId(), request.code(), clientAddress).orElse(null);
         } catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (verification == null) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build();
@@ -115,11 +123,13 @@ public class AuthResource {
             sessions.revokeSession(created.sessionId());
             return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build();
         }
-        users.markLogin(user.get().id(), ipAddress);
-        loginLogs.record(user.get().username(), "SUCCESS", ipAddress, "MFA login successful", userAgent);
+        Response tokenResponse;
         try {
-            return Response.ok(ApiResponse.ok(tokens.issue(user.get(), created.refreshToken(), created.accessTokenId(), created.sessionId(), created.clientId(), created.approvedScope(), created.refreshExpiresAt()))).build();
+            tokenResponse = Response.ok(ApiResponse.ok(tokens.issue(user.get(), created.refreshToken(), created.accessTokenId(), created.sessionId(), created.clientId(), created.approvedScope(), created.refreshExpiresAt()))).build();
         } catch (IllegalStateException e) { return tokenUnavailable(created.sessionId()); }
+        users.markLogin(user.get().id(), clientAddress);
+        loginLogs.record(user.get().username(), "SUCCESS", clientAddress, "MFA login successful", userAgent);
+        return tokenResponse;
     }
 
     /** 为当前已登录的人类用户创建待验证 TOTP enrollment。 */
@@ -146,8 +156,9 @@ public class AuthResource {
     public Response verifyMfaEnrollment(MfaCodeRequest request, @HeaderParam("X-Forwarded-For") String ipAddress) {
         if (request == null || request.challengeId() == null || request.code() == null) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("challengeId and code are required")).build();
         var current = currentHumanSession();
+        String clientAddress = clientAddresses.resolve(routingContext, ipAddress);
         try {
-            var result = mfa.verifyEnrollment(current.userId(), request.challengeId(), current.clientId(), current.sessionId(), request.code(), ipAddress);
+            var result = mfa.verifyEnrollment(current.userId(), request.challengeId(), current.clientId(), current.sessionId(), request.code(), clientAddress);
             return result.<Response>map(value -> Response.ok(ApiResponse.ok(value)).build())
                     .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build());
         } catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
