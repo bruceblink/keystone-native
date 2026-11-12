@@ -61,14 +61,13 @@ public class MfaRateLimiter {
         }
     }
 
-    /** MFA 验证成功后清除主体和地址两个维度的失败记录。 */
+    /** MFA 验证成功后只清除主体维度；地址维度保留到窗口结束，避免一个用户成功清空其他用户的来源限流。 */
     public void clear(long userId, String ipAddress) {
         validateConfig(userId);
         try (var c = dataSource.getConnection();
-             var p = c.prepareStatement("DELETE FROM sys_mfa_rate_limit WHERE scope_key IN (?, ?)")) {
+             var p = c.prepareStatement("DELETE FROM sys_mfa_rate_limit WHERE scope_key = ?")) {
             var dimensions = keys(userId, ipAddress);
             p.setString(1, dimensions.get(0));
-            p.setString(2, dimensions.get(1));
             p.executeUpdate();
         } catch (Exception e) {
             throw new IllegalStateException("Could not clear MFA rate limit", e);
