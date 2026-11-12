@@ -15,14 +15,18 @@ public class UserRepository {
     @Inject DataSource dataSource;
 
     public Optional<AuthUser> authenticate(String username, String password) {
-        String sql = "SELECT id, password_hash FROM sys_user WHERE username = ? AND enabled = true";
+        String sql = "SELECT id, password_hash, locked_until FROM sys_user WHERE username = ? AND enabled = true";
         try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql)) {
             p.setString(1, username);
             long userId;
             try (ResultSet rs = p.executeQuery()) {
-                if (!rs.next() || password == null || !BcryptUtil.matches(password, rs.getString("password_hash"))) return Optional.empty();
+                if (!rs.next()) return Optional.empty();
+                var lockedUntil = rs.getTimestamp("locked_until");
+                if (lockedUntil != null && lockedUntil.toInstant().isAfter(java.time.Instant.now())) return Optional.empty();
+                if (password == null || !BcryptUtil.matches(password, rs.getString("password_hash"))) { recordFailedLogin(c, rs.getLong("id")); return Optional.empty(); }
                 userId = rs.getLong("id");
             }
+            clearFailedLogins(c, userId);
             return findAuthUser(c, userId);
         } catch (Exception e) { throw new IllegalStateException("Could not authenticate user", e); }
     }
@@ -104,7 +108,7 @@ public class UserRepository {
             c.setAutoCommit(false);
             try {
                 var fields = new ArrayList<String>(); var values = new ArrayList<Object>();
-                if (password != null && !password.isBlank()) { fields.add("password_hash = ?"); values.add(BcryptUtil.bcryptHash(password)); fields.add("must_change_password = false"); }
+                if (password != null && !password.isBlank()) { fields.add("password_hash = ?"); values.add(BcryptUtil.bcryptHash(password)); fields.add("must_change_password = false"); fields.add("failed_login_count = 0"); fields.add("locked_until = NULL"); fields.add("credential_version = credential_version + 1"); fields.add("last_password_changed_at = CURRENT_TIMESTAMP"); }
                 if (displayName != null && !displayName.isBlank()) { fields.add("display_name = ?"); values.add(displayName.trim()); }
                 if (updateDept) { fields.add("dept_id = ?"); values.add(deptId); }
                 if (postId != null) { fields.add("post_id = ?"); values.add(postId); }
@@ -154,6 +158,8 @@ public class UserRepository {
     }
 
     private static List<String> roles(Connection c, long userId) throws Exception { try (var p = c.prepareStatement("SELECT r.code FROM sys_role r JOIN sys_user_role ur ON ur.role_id = r.id WHERE ur.user_id = ? AND r.enabled = true ORDER BY r.code")) { p.setLong(1, userId); try (var rs = p.executeQuery()) { var result = new ArrayList<String>(); while (rs.next()) result.add(rs.getString(1)); return result; } } }
+    private static void recordFailedLogin(Connection c, long userId) throws Exception { try (var p = c.prepareStatement("UPDATE sys_user SET failed_login_count = failed_login_count + 1, locked_until = CASE WHEN failed_login_count + 1 >= 5 THEN TIMESTAMPADD(MINUTE, 15, CURRENT_TIMESTAMP) ELSE locked_until END WHERE id = ?")) { p.setLong(1, userId); p.executeUpdate(); } }
+    private static void clearFailedLogins(Connection c, long userId) throws Exception { try (var p = c.prepareStatement("UPDATE sys_user SET failed_login_count = 0, locked_until = NULL WHERE id = ?")) { p.setLong(1, userId); p.executeUpdate(); } }
     public List<String> permissions(long userId) {
         String sql = "SELECT DISTINCT p.code FROM sys_permission p JOIN sys_role_permission rp ON rp.permission_id = p.id JOIN sys_user_role ur ON ur.role_id = rp.role_id JOIN sys_role r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.enabled = true ORDER BY p.code";
         try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql)) { p.setLong(1, userId); try (var rs = p.executeQuery()) { var result = new ArrayList<String>(); while (rs.next()) result.add(rs.getString(1)); return result; } }
