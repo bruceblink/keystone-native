@@ -18,7 +18,7 @@
 
 ## 当前实现证据
 
-截至 `53b8647`，受保护资源已经使用 `@RequiresPermission` 和集中授权服务。用户接口已接入 `ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` 范围策略。API Key 已接入 Quarkus `HttpAuthenticationMechanism`，支持服务主体、范围交集、轮换、撤销、过期和最后使用时间节流。
+截至 `bebf687`，受保护资源已经使用 `@RequiresPermission` 和集中授权服务。用户接口已接入 `ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` 范围策略。API Key 已接入 Quarkus `HttpAuthenticationMechanism`，支持服务主体、范围交集、轮换、撤销、过期和最后使用时间节流。
 
 当前会话状态保存在 `sys_auth_session`，刷新令牌保留在 `sys_refresh_token` 作为轮换明细。访问令牌有效期为五分钟，并校验 `iss`、`sub`、`aud`、`jti`、`sid`、`iat`、`exp` 和 `permission_version`。权限版本变化、密码变更、用户禁用和会话撤销都会使受影响的访问令牌失效。
 
@@ -26,7 +26,7 @@
 
 现代和兼容登录入口在密码正确且用户要求 MFA 时返回 `MFA_REQUIRED` 和不透明挑战 ID，不创建会话或令牌；`POST /api/v1/auth/mfa/verify` 校验 TOTP 或恢复码后才创建会话和令牌。`POST /api/v1/auth/mfa/enroll`、`POST /api/v1/auth/mfa/enroll/verify` 提供管理员 enrollment，`PUT /api/v1/auth/mfa/policy/{userId}` 只允许对已完成 enrollment 的用户启用策略。API Key 被拒绝进入这些人类 MFA 路径。恢复码只在 enrollment 成功响应中返回一次，数据库保存 HMAC，不保存恢复码明文。
 
-上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。Quarkus HTTP 运行、MySQL 8.4 迁移、并发 TOTP/恢复码消费、真实浏览器验收仍未完成。敏感操作 step-up 强制接入、恢复码独立轮换接口、OIDC、WebAuthn、JWK 轮换、跨租户边界和全资源数据范围仍未完成。
+上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。API Key 签发、轮换和撤销已接入最近十分钟 AAL2 step-up 检查；角色、用户、会话和 MFA 管理操作仍未接入。Quarkus HTTP 运行、MySQL 8.4 迁移、并发 TOTP/恢复码消费、真实浏览器验收仍未完成。恢复码独立轮换接口、OIDC、WebAuthn、JWK 轮换、跨租户边界和全资源数据范围仍未完成。
 
 ## 目标架构
 
@@ -58,7 +58,7 @@ API Key 使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存 SHA-256 �
 | P0 | 凭据边界、API Key 生命周期、失败限流和管理员 MFA 基线 | 无越权签发；明文只返回一次；撤销、过期和锁定立即生效 |
 | P1 | 会话表与刷新令牌族、短时 JWT、登出和密码变更失效 | 轮换并发只能成功一次；旧令牌重用会撤销令牌族 |
 | P2 | `resource:action` 权限拦截器和权限缓存失效 | 未授权返回 403；权限变更在一个请求周期内生效 |
-| P3 | OIDC、WebAuthn、密钥轮换和 JWK 发布 | step-up 接入敏感操作；OIDC 使用 PKCE；公钥可轮换 |
+| P3 | OIDC、WebAuthn、密钥轮换和 JWK 发布 | step-up 覆盖全部敏感操作；OIDC 使用 PKCE；公钥可轮换 |
 | P4 | 安全运营与下线旧接口 | 事件、告警、恢复演练完成；旧接口和旧 token 字段已删除 |
 
 ## 产品接口草案
@@ -146,13 +146,14 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 ### P3：多因素和外部身份
 
 - [x] 完成管理员 TOTP 第一版：enrollment、登录挑战、恢复码一次性消费、会话认证强度和强制策略开关。
-- [ ] 将 step-up 接入 API Key、角色、用户、会话和 MFA 管理等敏感操作，并提供恢复码独立轮换接口。
+- [x] 将 step-up 接入 API Key 签发、轮换和撤销。
+- [ ] 将 step-up 接入角色、用户、会话和 MFA 管理等敏感操作，并提供恢复码独立轮换接口。
 - [ ] 增加 OIDC 授权码 + PKCE；校验 `state`、`nonce`、issuer、audience 和时间窗口。
 - [ ] 发布 JWK Set，支持双 key 重叠轮换和 `kid`。
 
 #### 管理员 TOTP 第一版实现和限制
 
-当前第一版实现管理员 TOTP、一次性恢复码和登录挑战。API Key 不参与人类用户 MFA。WebAuthn 作为后续更强的抗钓鱼方案。第一版只把 MFA 接入登录和 enrollment，敏感操作的 step-up 还没有接入资源方法。
+当前第一版实现管理员 TOTP、一次性恢复码和登录挑战。API Key 不参与人类用户 MFA。WebAuthn 作为后续更强的抗钓鱼方案。API Key 签发、轮换和撤销已经接入 step-up；其他敏感操作仍未接入资源方法。
 
 已追加 `V39__mfa_foundation.sql` 和 `V40__mfa_permissions.sql`，没有修改已执行迁移：
 
@@ -173,7 +174,7 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 
 TOTP 使用 RFC 6238 的 30 秒时间步、六位数字和允许前后一个时间步的时钟偏差。相同时间步的重复使用必须失败。当前失败次数按主体的 MFA 记录计数并短时锁定；按 IP 单独计数仍未实现。密码变更、用户禁用、会话撤销和重新 enrollment 必须撤销相关挑战。
 
-以下操作仍计划通过最近十分钟内的 step-up：API Key 签发、轮换和撤销，角色权限变更，用户密码、状态和删除，全部会话撤销，以及 MFA enrollment 和恢复码轮换。当前版本还没有把这些检查接入对应资源方法，也没有独立的恢复码轮换接口。API Key 不能执行这些人类用户 MFA 管理路径。
+以下操作仍计划通过最近十分钟内的 step-up：角色权限变更，用户密码、状态和删除，全部会话撤销，以及 MFA enrollment 和恢复码轮换。API Key 签发、轮换和撤销已经接入；当前版本还没有把其余检查接入对应资源方法，也没有独立的恢复码轮换接口。API Key 不能执行这些人类用户 MFA 管理路径。
 
 实现验收必须证明：未完成 enrollment 的用户不获得强制 MFA 令牌；正确 TOTP 才能创建会话；错误、过期、错误客户端和重复挑战统一失败；恢复码只能消费一次；同一时间步并发请求只有一次成功；密钥、恢复码和完整 `otpauth` 数据不出现在日志、错误响应或数据库明文。当前只完成静态编译、固定向量和输入边界 smoke，MySQL 8.4 迁移、并发消费、失败回滚和真实 HTTP 运行验收仍未完成，因此 MFA 不能标记为生产完成。
 
