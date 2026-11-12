@@ -116,7 +116,7 @@ P1 当前实现已完成会话 ID、令牌族、空闲期限、绝对刷新期�
 
 ### P2：权限和数据范围
 
-- [ ] 新增 `@RequiresPermission` 拦截器和集中式 `AuthorizationService`。
+- [x] 新增 `@RequiresPermission` 拦截器和集中式 `AuthorizationService`，并迁移 API Key 管理接口。
 - [ ] 把现有 `@RolesAllowed` 替换为权限码；角色只作为权限集合管理。
 - [ ] 把 `data_scope` 转为明确策略：`ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`。
 - [ ] 每个列表、详情、更新和删除接口补充跨部门越权测试。
