@@ -4,6 +4,7 @@ import app.keystone.user.UserRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import javax.sql.DataSource;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.SecureRandom;
@@ -21,6 +22,9 @@ import java.util.Set;
 public class ApiKeyRepository {
     private static final SecureRandom RANDOM = new SecureRandom();
     @Inject DataSource dataSource;
+    /** 多节点部署使用数据库条件更新，避免本地缓存造成各节点重复写入。 */
+    @ConfigProperty(name = "keystone.security.api-key.last-used-update-interval-seconds", defaultValue = "60")
+    long lastUsedUpdateIntervalSeconds;
 
     public IssuedApiKey issue(long userId, String name, List<String> scopes, Instant expiresAt) {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
@@ -47,13 +51,33 @@ public class ApiKeyRepository {
         String sql = "SELECT k.id, k.subject_id, k.user_id, k.scopes, u.username FROM sys_api_key k JOIN sys_user u ON u.id = k.user_id JOIN sys_service_subject s ON s.id = k.subject_id WHERE k.key_hash = ? AND u.enabled = true AND s.enabled = true AND k.revoked_at IS NULL AND (k.expires_at IS NULL OR k.expires_at > CURRENT_TIMESTAMP)";
         try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql)) {
             p.setString(1, hash(value));
+            Principal principal;
             try (var rs = p.executeQuery()) {
                 if (!rs.next()) return null;
                 String id = rs.getString("id"); String scopes = rs.getString("scopes");
-                try (var touch = c.prepareStatement("UPDATE sys_api_key SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?")) { touch.setString(1, id); touch.executeUpdate(); }
-                return new Principal(id, rs.getString("subject_id"), rs.getLong("user_id"), rs.getString("username"), scopes == null || scopes.isBlank() ? List.of() : List.of(scopes.split(" ")));
+                principal = new Principal(id, rs.getString("subject_id"), rs.getLong("user_id"), rs.getString("username"), scopes == null || scopes.isBlank() ? List.of() : List.of(scopes.split(" ")));
             }
+            touchLastUsed(c, principal.keyId());
+            return principal;
         } catch (Exception e) { throw new IllegalStateException("Could not authenticate API key", e); }
+    }
+
+    /**
+     * 只在达到最小间隔后更新使用时间。条件更新由数据库原子执行，可安全处理并发请求和多节点部署。
+     */
+    private void touchLastUsed(java.sql.Connection c, String keyId) throws Exception {
+        long interval = lastUsedUpdateIntervalSeconds();
+        String sql = "UPDATE sys_api_key SET last_used_at = CURRENT_TIMESTAMP WHERE id = ? AND (last_used_at IS NULL OR last_used_at <= TIMESTAMPADD(SECOND, -?, CURRENT_TIMESTAMP))";
+        try (var touch = c.prepareStatement(sql)) {
+            touch.setString(1, keyId);
+            touch.setLong(2, interval);
+            touch.executeUpdate();
+        }
+    }
+
+    private long lastUsedUpdateIntervalSeconds() {
+        if (lastUsedUpdateIntervalSeconds < 0) throw new IllegalStateException("API key last-used update interval must be non-negative");
+        return lastUsedUpdateIntervalSeconds;
     }
 
     public void revoke(long userId, String id) {
