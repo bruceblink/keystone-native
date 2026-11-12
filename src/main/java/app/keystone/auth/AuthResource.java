@@ -24,15 +24,24 @@ public class AuthResource {
     @Inject LoginLogRepository loginLogs;
     @Inject AccessTokenService tokens;
     @Inject SecurityIdentity identity;
+    @Inject LoginRateLimiter loginRateLimiter;
 
     @POST @Path("/login") @PermitAll
     public Response login(LoginRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
         if (request == null || request.username() == null || request.password() == null) {
             return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("username and password are required")).build();
         }
+        try { if (loginRateLimiter.isBlocked(request.username(), ipAddress)) return Response.status(429).entity(ApiResponse.error("too many login attempts")).build(); }
+        catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         var user = users.authenticate(request.username(), request.password());
-        if (user.isEmpty()) { loginLogs.record(request.username(), "FAILURE", ipAddress, "invalid credentials", userAgent); return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid credentials")).build(); }
+        if (user.isEmpty()) {
+            try { loginRateLimiter.recordFailure(request.username(), ipAddress); }
+            catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
+            loginLogs.record(request.username(), "FAILURE", ipAddress, "invalid credentials", userAgent); return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid credentials")).build();
+        }
         var u = user.get();
+        try { loginRateLimiter.clear(u.username(), ipAddress); }
+        catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (u.mustChangePassword()) { loginLogs.record(u.username(), "BLOCKED", ipAddress, "password change required", userAgent); return Response.status(428).entity(ApiResponse.error("password change required")).build(); }
         java.util.Optional<SessionRepository.CreatedSession> refresh;
         try { refresh = sessions.create(u.id(), Boolean.TRUE.equals(request.forceLogin()), request.clientId()); }

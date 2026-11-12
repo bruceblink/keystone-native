@@ -11,6 +11,7 @@ import static io.restassured.http.ContentType.JSON;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.emptyOrNullString;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 @QuarkusTest
 class AuthResourceTest {
@@ -39,6 +40,24 @@ class AuthResourceTest {
         given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"wrong\"}")
                 .when().post("/v1/auth/login")
                 .then().statusCode(401).body("success", is(false));
+    }
+
+    @Test
+    void repeatedFailuresAreRateLimited() {
+        String admin = given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
+                .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");
+        String username = "rate_limit_" + System.nanoTime();
+        int id = given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Rate Limit User\",\"roleCodes\":[\"USER\"]}")
+                .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
+        for (int i = 0; i < 10; i++) {
+            int status = given().contentType(JSON).body("{\"username\":\"" + username + "\",\"password\":\"wrong\"}")
+                    .when().post("/v1/auth/login").then().extract().statusCode();
+            assertEquals(401, status);
+        }
+        given().contentType(JSON).body("{\"username\":\"" + username + "\",\"password\":\"wrong\"}")
+                .when().post("/v1/auth/login").then().statusCode(429);
+        given().auth().oauth2(admin).when().delete("/v1/users/" + id).then().statusCode(200);
     }
 
     @Test

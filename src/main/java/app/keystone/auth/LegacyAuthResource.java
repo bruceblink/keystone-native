@@ -33,12 +33,16 @@ public class LegacyAuthResource {
     @Inject MenuRepository menus;
     @Inject SecurityIdentity identity;
     @Inject AccessTokenService tokens;
+    @Inject LoginRateLimiter loginRateLimiter;
 
     @POST @Path("login") @PermitAll
     public Response login(AuthResource.LoginRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
         if (request == null || request.username() == null || request.password() == null) return Response.status(400).entity(ApiResponse.error("username and password are required")).build();
+        try { if (loginRateLimiter.isBlocked(request.username(), ipAddress)) return Response.status(429).entity(ApiResponse.error("too many login attempts")).build(); }
+        catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         var user = users.authenticate(request.username(), request.password());
-        if (user.isEmpty()) { loginLogs.record(request.username(), "FAILURE", ipAddress, "invalid credentials", userAgent); return Response.status(401).entity(ApiResponse.error("invalid credentials")).build(); }
+        if (user.isEmpty()) { try { loginRateLimiter.recordFailure(request.username(), ipAddress); } catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); } loginLogs.record(request.username(), "FAILURE", ipAddress, "invalid credentials", userAgent); return Response.status(401).entity(ApiResponse.error("invalid credentials")).build(); }
+        try { loginRateLimiter.clear(user.get().username(), ipAddress); } catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (user.get().mustChangePassword()) { loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "password change required", userAgent); return Response.status(428).entity(ApiResponse.error("password change required")).build(); }
         var refresh = sessions.create(user.get().id(), Boolean.TRUE.equals(request.forceLogin()));
         if (refresh.isEmpty()) { loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
