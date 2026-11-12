@@ -63,7 +63,9 @@ public class LegacyAuthResource {
         if (refresh.isEmpty()) { loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
         users.markLogin(user.get().id(), ipAddress);
         loginLogs.record(user.get().username(), "SUCCESS", ipAddress, "login successful", userAgent);
-        return Response.ok(ApiResponse.ok(tokens.issue(user.get(), refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().clientId(), refresh.get().approvedScope(), refresh.get().refreshExpiresAt()))).build();
+        try {
+            return Response.ok(ApiResponse.ok(tokens.issue(user.get(), refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().clientId(), refresh.get().approvedScope(), refresh.get().refreshExpiresAt()))).build();
+        } catch (IllegalStateException e) { return tokenUnavailable(refresh.get().sessionId()); }
     }
 
     @POST @Path("refresh-token") @PermitAll @RejectApiKey
@@ -72,7 +74,9 @@ public class LegacyAuthResource {
         var rotated = sessions.rotate(request.refreshToken(), users);
         if (rotated.isEmpty()) return Response.status(401).entity(ApiResponse.error("invalid or expired refresh token")).build();
         var session = rotated.get();
-        return Response.ok(ApiResponse.ok(tokens.issue(session.user(), session.refreshToken(), session.accessTokenId(), session.sessionId(), session.clientId(), session.approvedScope(), session.refreshExpiresAt()))).build();
+        try {
+            return Response.ok(ApiResponse.ok(tokens.issue(session.user(), session.refreshToken(), session.accessTokenId(), session.sessionId(), session.clientId(), session.approvedScope(), session.refreshExpiresAt()))).build();
+        } catch (IllegalStateException e) { return tokenUnavailable(session.sessionId()); }
     }
 
     @POST @Path("logout-refresh-token") @PermitAll
@@ -137,6 +141,11 @@ public class LegacyAuthResource {
     }
 
     public record Router(String name, String path, String component, Map<String, Object> meta, List<Router> children) {}
+    /** 签发失败时撤销刚创建或刚轮换的会话，避免令牌不可用但刷新状态仍保持活动。 */
+    private Response tokenUnavailable(String sessionId) {
+        try { sessions.revokeSession(sessionId); } catch (IllegalStateException ignored) { }
+        return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("token service is unavailable")).build();
+    }
     private static final class RouterBuilder {
         private final app.keystone.menu.Menu menu; private final Router router; private final List<RouterBuilder> children = new ArrayList<>();
         private RouterBuilder(app.keystone.menu.Menu menu, Router router) { this.menu = menu; this.router = router; }

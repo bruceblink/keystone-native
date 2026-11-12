@@ -68,7 +68,9 @@ public class AuthResource {
         if (refresh.isEmpty()) { loginLogs.record(u.username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
         users.markLogin(u.id(), ipAddress);
         loginLogs.record(u.username(), "SUCCESS", ipAddress, "login successful", userAgent);
-        return Response.ok(ApiResponse.ok(tokens.issue(u, refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().clientId(), refresh.get().approvedScope(), refresh.get().refreshExpiresAt()))).build();
+        try {
+            return Response.ok(ApiResponse.ok(tokens.issue(u, refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().clientId(), refresh.get().approvedScope(), refresh.get().refreshExpiresAt()))).build();
+        } catch (IllegalStateException e) { return tokenUnavailable(refresh.get().sessionId()); }
     }
 
     @POST @Path("/refresh") @PermitAll @RejectApiKey
@@ -79,7 +81,9 @@ public class AuthResource {
         catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
         if (rotated.isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid or expired refresh token")).build();
         var session = rotated.get();
-        return Response.ok(ApiResponse.ok(tokens.issue(session.user(), session.refreshToken(), session.accessTokenId(), session.sessionId(), session.clientId(), session.approvedScope(), session.refreshExpiresAt()))).build();
+        try {
+            return Response.ok(ApiResponse.ok(tokens.issue(session.user(), session.refreshToken(), session.accessTokenId(), session.sessionId(), session.clientId(), session.approvedScope(), session.refreshExpiresAt()))).build();
+        } catch (IllegalStateException e) { return tokenUnavailable(session.sessionId()); }
     }
 
     /** 用登录挑战完成第二因素后才创建刷新会话。 */
@@ -113,7 +117,9 @@ public class AuthResource {
         }
         users.markLogin(user.get().id(), ipAddress);
         loginLogs.record(user.get().username(), "SUCCESS", ipAddress, "MFA login successful", userAgent);
-        return Response.ok(ApiResponse.ok(tokens.issue(user.get(), created.refreshToken(), created.accessTokenId(), created.sessionId(), created.clientId(), created.approvedScope(), created.refreshExpiresAt()))).build();
+        try {
+            return Response.ok(ApiResponse.ok(tokens.issue(user.get(), created.refreshToken(), created.accessTokenId(), created.sessionId(), created.clientId(), created.approvedScope(), created.refreshExpiresAt()))).build();
+        } catch (IllegalStateException e) { return tokenUnavailable(created.sessionId()); }
     }
 
     /** 为当前已登录的人类用户创建待验证 TOTP enrollment。 */
@@ -216,5 +222,10 @@ public class AuthResource {
 
     private static String claimText(JsonWebToken jwt, String name) { Object value = jwt.getClaim(name); return value == null ? null : value.toString(); }
     private static long claimLong(JsonWebToken jwt, String name) { Object value = jwt.getClaim(name); if (value instanceof Number number) return number.longValue(); try { return Long.parseLong(String.valueOf(value)); } catch (Exception e) { return -1; } }
+    /** 签发失败时撤销刚创建或刚轮换的会话，避免令牌不可用但刷新状态仍保持活动。 */
+    private Response tokenUnavailable(String sessionId) {
+        try { sessions.revokeSession(sessionId); } catch (IllegalStateException ignored) { }
+        return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("token service is unavailable")).build();
+    }
     private record CurrentHumanSession(long userId, String sessionId, String clientId) {}
 }
