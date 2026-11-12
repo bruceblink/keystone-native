@@ -48,7 +48,7 @@ public class LegacyAuthResource {
         if (refresh.isEmpty()) { loginLogs.record(user.get().username(), "BLOCKED", ipAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
         users.markLogin(user.get().id(), ipAddress);
         loginLogs.record(user.get().username(), "SUCCESS", ipAddress, "login successful", userAgent);
-        return Response.ok(ApiResponse.ok(tokens.issue(user.get(), refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().refreshExpiresAt()))).build();
+        return Response.ok(ApiResponse.ok(tokens.issue(user.get(), refresh.get().refreshToken(), refresh.get().accessTokenId(), refresh.get().sessionId(), refresh.get().clientId(), refresh.get().approvedScope(), refresh.get().refreshExpiresAt()))).build();
     }
 
     @POST @Path("refresh-token") @PermitAll @RejectApiKey
@@ -57,7 +57,7 @@ public class LegacyAuthResource {
         var rotated = sessions.rotate(request.refreshToken(), users);
         if (rotated.isEmpty()) return Response.status(401).entity(ApiResponse.error("invalid or expired refresh token")).build();
         var session = rotated.get();
-        return Response.ok(ApiResponse.ok(tokens.issue(session.user(), session.refreshToken(), session.accessTokenId(), session.sessionId(), session.refreshExpiresAt()))).build();
+        return Response.ok(ApiResponse.ok(tokens.issue(session.user(), session.refreshToken(), session.accessTokenId(), session.sessionId(), session.clientId(), session.approvedScope(), session.refreshExpiresAt()))).build();
     }
 
     @POST @Path("logout-refresh-token") @PermitAll

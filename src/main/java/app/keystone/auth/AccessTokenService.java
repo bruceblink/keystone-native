@@ -22,8 +22,17 @@ public class AccessTokenService {
 
     /** 将会话客户端写入访问令牌，供资源服务记录和诊断当前会话边界。 */
     public AuthResource.TokenResponse issue(UserRepository.AuthUser user, String refreshToken, String accessTokenId, String sessionId, String clientId, Instant refreshExpiresAt) {
+        return issue(user, refreshToken, accessTokenId, sessionId, clientId, null, refreshExpiresAt);
+    }
+
+    /** 刷新会话只能在创建时批准的权限范围内发行访问令牌。 */
+    public AuthResource.TokenResponse issue(UserRepository.AuthUser user, String refreshToken, String accessTokenId, String sessionId, String clientId, String approvedScope, Instant refreshExpiresAt) {
         Instant expiresAt = Instant.now().plus(ACCESS_LIFETIME);
         var permissions = users.permissions(user.id());
+        if (approvedScope != null) {
+            var approved = java.util.Set.of(approvedScope.isBlank() ? new String[0] : approvedScope.split(" "));
+            permissions = permissions.stream().filter(approved::contains).toList();
+        }
         long permissionVersion = users.permissionVersion(user.id());
         String accessToken = Jwt.issuer(issuer)
                 .subject(String.valueOf(user.id()))

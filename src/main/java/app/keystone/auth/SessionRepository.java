@@ -49,14 +49,15 @@ public class SessionRepository {
                     try (var revoke = c.prepareStatement("UPDATE sys_auth_session SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL")) { revoke.setLong(1, userId); revoke.executeUpdate(); }
                     try (var revoke = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = ? AND revoked_at IS NULL")) { revoke.setLong(1, userId); revoke.executeUpdate(); }
                 }
-                try (var session = c.prepareStatement("INSERT INTO sys_auth_session(id, user_id, client_id, refresh_family_id, refresh_expires_at, idle_expires_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
-                    session.setString(1, sessionId); session.setLong(2, userId); session.setString(3, boundClientId); session.setString(4, familyId); session.setTimestamp(5, Timestamp.from(refreshExpiry)); session.setTimestamp(6, Timestamp.from(now.plus(IDLE_LIFETIME))); session.setTimestamp(7, Timestamp.from(now)); session.executeUpdate();
+                String approvedScope = permissions(c, userId);
+                try (var session = c.prepareStatement("INSERT INTO sys_auth_session(id, user_id, client_id, approved_scope, refresh_family_id, refresh_expires_at, idle_expires_at, last_seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    session.setString(1, sessionId); session.setLong(2, userId); session.setString(3, boundClientId); session.setString(4, approvedScope); session.setString(5, familyId); session.setTimestamp(6, Timestamp.from(refreshExpiry)); session.setTimestamp(7, Timestamp.from(now.plus(IDLE_LIFETIME))); session.setTimestamp(8, Timestamp.from(now)); session.executeUpdate();
                 }
                 try (var p = c.prepareStatement("INSERT INTO sys_refresh_token(user_id, session_id, refresh_family_id, client_id, token_hash, expires_at, idle_expires_at, access_expires_at, access_token_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                     p.setLong(1, userId); p.setString(2, sessionId); p.setString(3, familyId); p.setString(4, boundClientId); p.setString(5, hash(token)); p.setTimestamp(6, Timestamp.from(refreshExpiry)); p.setTimestamp(7, Timestamp.from(now.plus(IDLE_LIFETIME))); p.setTimestamp(8, Timestamp.from(now.plus(ACCESS_LIFETIME))); p.setString(9, accessTokenId); p.executeUpdate();
                 }
                 recordEvent(c, null, userId, familyId, "ISSUED", boundClientId, null);
-                c.commit(); return Optional.of(new CreatedSession(token, accessTokenId, sessionId, refreshExpiry, boundClientId));
+                c.commit(); return Optional.of(new CreatedSession(token, accessTokenId, sessionId, refreshExpiry, boundClientId, approvedScope));
             } catch (Exception e) { c.rollback(); throw e; }
         } catch (Exception e) { throw new IllegalStateException("Could not create refresh session", e); }
     }
@@ -71,12 +72,13 @@ public class SessionRepository {
         String requestedClientId = normalizeClientId(clientId);
         try (var c = dataSource.getConnection()) {
             c.setAutoCommit(false);
-            try (var find = c.prepareStatement("SELECT t.id, t.user_id, t.session_id, t.refresh_family_id, t.client_id, t.expires_at, t.idle_expires_at, t.revoked_at, s.revoked_at AS session_revoked_at, s.refresh_expires_at, s.idle_expires_at AS session_idle_expires_at FROM sys_refresh_token t JOIN sys_auth_session s ON s.id = t.session_id WHERE t.token_hash = ? FOR UPDATE")) {
+            try (var find = c.prepareStatement("SELECT t.id, t.user_id, t.session_id, t.refresh_family_id, t.client_id, t.expires_at, t.idle_expires_at, t.revoked_at, s.approved_scope, s.revoked_at AS session_revoked_at, s.refresh_expires_at, s.idle_expires_at AS session_idle_expires_at FROM sys_refresh_token t JOIN sys_auth_session s ON s.id = t.session_id WHERE t.token_hash = ? FOR UPDATE")) {
                 find.setString(1, hash(token));
                 try (var rs = find.executeQuery()) {
                     if (!rs.next()) { c.rollback(); return Optional.empty(); }
                     long tokenId = rs.getLong("id"), userId = rs.getLong("user_id");
                     String sessionId = rs.getString("session_id"), familyId = rs.getString("refresh_family_id"), boundClientId = rs.getString("client_id");
+                    String approvedScope = rs.getString("approved_scope");
                     Timestamp refreshExpiry = rs.getTimestamp("expires_at"), idleExpiry = rs.getTimestamp("idle_expires_at");
                     Timestamp sessionRefreshExpiry = rs.getTimestamp("refresh_expires_at"), sessionIdleExpiry = rs.getTimestamp("session_idle_expires_at");
                     if (boundClientId == null || !boundClientId.equals(requestedClientId)) {
@@ -105,7 +107,7 @@ public class SessionRepository {
                     recordEvent(c, tokenId, userId, familyId, "ROTATED", boundClientId, null);
                     var user = users.findAuthUser(c, userId);
                     if (user.isEmpty()) { c.rollback(); return Optional.empty(); }
-                    c.commit(); return Optional.of(new RotatedSession(user.get(), replacement, accessTokenId, sessionId, refreshExpiry.toInstant(), boundClientId));
+                    c.commit(); return Optional.of(new RotatedSession(user.get(), replacement, accessTokenId, sessionId, refreshExpiry.toInstant(), boundClientId, approvedScope));
                 }
             } catch (Exception e) { c.rollback(); throw e; }
         } catch (Exception e) { throw new IllegalStateException("Could not rotate refresh session", e); }
@@ -186,6 +188,14 @@ public class SessionRepository {
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
     }
 
+    /** 在会话事务内读取当前权限，作为该会话允许的最大范围。 */
+    private static String permissions(java.sql.Connection c, long userId) throws Exception {
+        try (var p = c.prepareStatement("SELECT DISTINCT p.code FROM sys_permission p JOIN sys_role_permission rp ON rp.permission_id = p.id JOIN sys_user_role ur ON ur.role_id = rp.role_id JOIN sys_role r ON r.id = ur.role_id WHERE ur.user_id = ? AND r.enabled = true ORDER BY p.code")) {
+            p.setLong(1, userId);
+            try (var rs = p.executeQuery()) { var values = new java.util.ArrayList<String>(); while (rs.next()) values.add(rs.getString(1)); return String.join(" ", values); }
+        }
+    }
+
     /** 只接受稳定的短标识，避免把未校验的请求字段写入会话和审计记录。 */
     private static String normalizeClientId(String value) {
         String normalized = value == null || value.isBlank() ? DEFAULT_CLIENT_ID : value.trim().toLowerCase(java.util.Locale.ROOT);
@@ -204,7 +214,7 @@ public class SessionRepository {
         try (var p = c.prepareStatement("INSERT INTO sys_refresh_token_event(token_id, user_id, refresh_family_id, event_type, client_id, detail) VALUES (?, ?, ?, ?, ?, ?)")) { if (tokenId == null) p.setNull(1, java.sql.Types.BIGINT); else p.setLong(1, tokenId); p.setLong(2, userId); p.setString(3, familyId); p.setString(4, eventType); p.setString(5, clientId); p.setString(6, detail); p.executeUpdate(); }
     }
 
-    public record CreatedSession(String refreshToken, String accessTokenId, String sessionId, Instant refreshExpiresAt, String clientId) {}
-    public record RotatedSession(UserRepository.AuthUser user, String refreshToken, String accessTokenId, String sessionId, Instant refreshExpiresAt, String clientId) {}
+    public record CreatedSession(String refreshToken, String accessTokenId, String sessionId, Instant refreshExpiresAt, String clientId, String approvedScope) {}
+    public record RotatedSession(UserRepository.AuthUser user, String refreshToken, String accessTokenId, String sessionId, Instant refreshExpiresAt, String clientId, String approvedScope) {}
     public record OnlineSession(long sessionId, long userId, String username, String displayName, String ipAddress, java.time.Instant createdAt, java.time.Instant expiresAt, java.time.Instant accessExpiresAt) {}
 }
