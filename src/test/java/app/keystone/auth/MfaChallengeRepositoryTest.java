@@ -27,10 +27,10 @@ class MfaChallengeRepositoryTest {
     }
 
     @Test
-    void transactionalHelpersValidateBeforeUsingConnection() {
+    void transactionalHelpersValidateBeforeUsingOrm() {
         var repository = new MfaChallengeRepository();
         assertThrows(IllegalArgumentException.class,
-                () -> repository.lockActiveForUpdate(null, "not-a-uuid", 0, "web", MfaChallengeRepository.Purpose.LOGIN, null));
-        assertThrows(IllegalArgumentException.class, () -> repository.consumeLocked(null, null));
+                () -> repository.lockActiveForUpdate("not-a-uuid", 0, "web", MfaChallengeRepository.Purpose.LOGIN, null));
+        assertThrows(IllegalArgumentException.class, () -> repository.consumeLocked(null));
     }
 }

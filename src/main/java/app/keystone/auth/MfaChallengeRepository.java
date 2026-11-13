@@ -73,23 +73,12 @@ public class MfaChallengeRepository {
         return entity == null ? Optional.empty() : Optional.of(toChallenge(entity));
     }
 
-    /** 保留旧的参数形状，实际锁定由当前 ORM 事务完成。 */
-    Optional<Challenge> lockActiveForUpdate(java.sql.Connection ignored, String challengeId, long userId,
-                                             String clientId, Purpose purpose, String sessionId) {
-        return lockActiveForUpdate(challengeId, userId, clientId, purpose, sessionId);
-    }
-
     /** 消费已经在同一事务中锁定并重新核验过的认证请求。 */
     boolean consumeLocked(Challenge challenge) {
         if (challenge == null) throw new IllegalArgumentException("challenge is required");
         AuthChallengeEntity entity = repository.findById(challenge.id());
         if (entity == null || entity.userId() != challenge.userId()) return false;
         return entity.consume(Instant.now(), DEFAULT_MAX_ATTEMPTS);
-    }
-
-    /** 保留旧的参数形状，不再从 Connection 读取或写入数据库。 */
-    boolean consumeLocked(java.sql.Connection ignored, Challenge challenge) {
-        return consumeLocked(challenge);
     }
 
     /** 原子消费认证请求；过期、重复消费和失败次数超限都会失败。 */
