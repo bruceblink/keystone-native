@@ -36,14 +36,14 @@ class ApiResponseContractTest {
     @Test
     void explicitUnknownCategoryIsRejected() {
         var response = ApiResponse.error("old_numeric_code", "legacy error");
-        assertEquals("validation_failed", response.error());
+        assertEquals("validation_failed", response.error().get("code"));
         assertEquals("legacy error", response.message());
         assertNull(response.data());
     }
 
     private static void assertError(String message, String category) {
         var response = ApiResponse.error(message);
-        assertEquals(category, response.error());
+        assertEquals(category, response.error().get("code"));
         assertEquals(message, response.message());
         assertNull(response.data());
     }

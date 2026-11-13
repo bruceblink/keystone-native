@@ -4,13 +4,17 @@ package app.keystone;
  * 新 API 的统一响应结构。
  * error 只返回架构定义的错误分类，message 用于面向调用方的可读说明。
  */
-public record ApiResponse<T>(boolean success, T data, String message, String error) {
+public record ApiResponse<T>(boolean success, T data, String message, java.util.Map<String, String> error) {
     public ApiResponse(boolean success, T data, String message) {
         this(success, data, message, success ? null : classify(message));
     }
 
+    public ApiResponse(boolean success, T data, String message, String errorCode) {
+        this(success, data, message, success ? null : java.util.Map.of("code", normalizeError(errorCode)));
+    }
+
     public static <T> ApiResponse<T> ok(T data) {
-        return new ApiResponse<>(true, data, "OK", null);
+        return new ApiResponse<>(true, data, "OK", (java.util.Map<String, String>) null);
     }
 
     /** 统一把现有领域消息映射到新错误分类，避免资源入口重复编写分类逻辑。 */

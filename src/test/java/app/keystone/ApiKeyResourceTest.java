@@ -94,7 +94,7 @@ class ApiKeyResourceTest extends AuthTestFixture {
         assertTrue(metadata.contains(prefix), "API key metadata should retain the public prefix");
 
         String audit = given().auth().oauth2(admin)
-                .when().get("/logs/operationLogs?resource=api-key")
+                .when().get("/v1/operation-logs?resource=api-key")
                 .then().statusCode(200)
                 .extract().asString();
         assertFalse(audit.contains(key), "API key audit logs must not contain the full secret");
@@ -105,7 +105,7 @@ class ApiKeyResourceTest extends AuthTestFixture {
     @Test
     void apiKeyCannotEnterHumanProfileOrPasswordPathsEvenWithMatchingScope() {
         String admin = login();
-        var issued = issue(admin, "human-boundary", "profile:write");
+        var issued = issue(admin, "human-boundary", "user:update");
         String key = issued.path("data.apiKey");
         String id = issued.path("data.id");
 

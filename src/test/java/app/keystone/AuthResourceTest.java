@@ -37,7 +37,7 @@ class AuthResourceTest extends AuthTestFixture {
         String admin = given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
                 .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");
         String username = "rate_limit_" + System.nanoTime();
-        int id = given().auth().oauth2(admin).contentType(JSON)
+        String id = given().auth().oauth2(admin).contentType(JSON)
                 .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Rate Limit User\",\"roleCodes\":[\"USER\"]}")
                 .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
         for (int i = 0; i < 10; i++) {
