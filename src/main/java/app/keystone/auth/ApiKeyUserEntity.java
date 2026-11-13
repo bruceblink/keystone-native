@@ -52,6 +52,12 @@ public class ApiKeyUserEntity {
     @Column(name = "last_password_changed_at")
     private java.time.Instant lastPasswordChangedAt;
 
+    @Column(name = "mfa_required", nullable = false)
+    private boolean mfaRequired;
+
+    @Column(name = "mfa_grace_until")
+    private java.time.Instant mfaGraceUntil;
+
     @Column(name = "dept_id")
     private Long deptId;
 
@@ -147,6 +153,18 @@ public class ApiKeyUserEntity {
 
     Set<ApiKeyRoleEntity> roles() {
         return roles;
+    }
+
+    boolean mfaRequired() {
+        return mfaRequired;
+    }
+
+    java.time.Instant mfaGraceUntil() {
+        return mfaGraceUntil;
+    }
+
+    void setMfaRequired(boolean required) {
+        mfaRequired = required;
     }
 
     String passwordHash() {

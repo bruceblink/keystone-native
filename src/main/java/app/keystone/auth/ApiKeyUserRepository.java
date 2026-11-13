@@ -207,6 +207,11 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         return user != null && user.enabled() ? user : null;
     }
 
+    /** 在 MFA 和其他安全状态事务中锁定用户行，包括已禁用用户。 */
+    ApiKeyUserEntity findAnyForUpdate(long userId) {
+        return find("id = ?1", userId).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    }
+
     java.util.Set<String> permissions(ApiKeyUserEntity user) {
         return user == null ? java.util.Set.of() : user.permissions();
     }

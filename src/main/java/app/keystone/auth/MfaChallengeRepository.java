@@ -2,32 +2,26 @@ package app.keystone.auth;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 
-import javax.sql.DataSource;
-import java.sql.Timestamp;
-import java.sql.Types;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-/**
- * 保存和消费 MFA 挑战。
- *
- * <p>挑战 ID 是唯一的不透明标识。数据库只保存上下文摘要，不把原始上下文返回给调用方。
- * 消费和失败计数使用带状态条件的单条 UPDATE，保证同一个挑战不能被并发请求重复消费。</p>
- */
+/** 保存和消费 MFA 认证请求。 */
 @ApplicationScoped
 public class MfaChallengeRepository {
     private static final Duration MAX_LIFETIME = Duration.ofMinutes(10);
     private static final int DEFAULT_MAX_ATTEMPTS = 5;
-    private static final String ACTIVE_FILTER = "user_id = ? AND client_id = ? AND purpose = ? AND ((session_id = ?) OR (session_id IS NULL AND ? IS NULL)) AND consumed_at IS NULL AND expires_at > CURRENT_TIMESTAMP";
-    @Inject DataSource dataSource;
 
-    /** 创建短期挑战；只返回 ID 和状态元数据，不返回任何认证秘密。 */
-    public Challenge create(long userId, Purpose purpose, String clientId, String sessionId, String contextHash, Instant expiresAt) {
+    @Inject AuthChallengeOrmRepository repository;
+
+    /** 创建短期认证请求；上下文摘要只保存在数据库内部。 */
+    @Transactional
+    public Challenge create(long userId, Purpose purpose, String clientId, String sessionId,
+                            String contextHash, Instant expiresAt) {
         requireUser(userId);
         Purpose checkedPurpose = requirePurpose(purpose);
         String checkedClientId = normalizeClientId(clientId);
@@ -35,160 +29,115 @@ public class MfaChallengeRepository {
         String checkedContextHash = normalizeContextHash(contextHash);
         Instant checkedExpiry = requireExpiry(expiresAt);
         String id = UUID.randomUUID().toString();
-        String sql = "INSERT INTO sys_auth_challenge(id, user_id, purpose, client_id, session_id, context_hash, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?)";
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql)) {
-            p.setString(1, id);
-            p.setLong(2, userId);
-            p.setString(3, checkedPurpose.value());
-            p.setString(4, checkedClientId);
-            setNullableString(p, 5, checkedSessionId);
-            setNullableString(p, 6, checkedContextHash);
-            p.setTimestamp(7, Timestamp.from(checkedExpiry));
-            p.executeUpdate();
-            return new Challenge(id, userId, checkedPurpose, checkedClientId, checkedSessionId, checkedExpiry, 0, null);
-        } catch (Exception e) {
-            throw new IllegalStateException("Could not create MFA challenge", e);
-        }
+        repository.persistAndFlush(new AuthChallengeEntity(id, userId, checkedPurpose.value(), checkedClientId,
+                checkedSessionId, checkedContextHash, checkedExpiry));
+        return new Challenge(id, userId, checkedPurpose, checkedClientId, checkedSessionId, checkedExpiry, 0, null);
     }
 
-    /** 按主体、客户端、用途和会话读取仍可用的挑战；返回值不含上下文摘要。 */
+    /** 按主体、客户端、用途和会话读取仍可用的认证请求。 */
+    @Transactional
     public List<Challenge> findActive(long userId, String clientId, Purpose purpose, String sessionId) {
-        return queryActive(null, userId, clientId, purpose, sessionId);
-    }
-
-    /** 按不透明 ID 和绑定条件读取单个仍可用的挑战。 */
-    public Optional<Challenge> findActive(String challengeId, long userId, String clientId, Purpose purpose, String sessionId) {
-        return queryActive(challengeId, userId, clientId, purpose, sessionId).stream().findFirst();
-    }
-
-    private List<Challenge> queryActive(String challengeId, long userId, String clientId, Purpose purpose, String sessionId) {
         requireUser(userId);
         String checkedClientId = normalizeClientId(clientId);
         Purpose checkedPurpose = requirePurpose(purpose);
         String checkedSessionId = normalizeSessionId(sessionId);
-        StringBuilder sql = new StringBuilder("SELECT id, user_id, purpose, client_id, session_id, expires_at, attempt_count, consumed_at FROM sys_auth_challenge WHERE ");
-        if (challengeId != null) sql.append("id = ? AND ");
-        sql.append(ACTIVE_FILTER).append(" ORDER BY created_at DESC");
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql.toString())) {
-            int index = 1;
-            if (challengeId != null) p.setString(index++, normalizeChallengeId(challengeId));
-            p.setLong(index++, userId);
-            p.setString(index++, checkedClientId);
-            p.setString(index++, checkedPurpose.value());
-            setNullableString(p, index++, checkedSessionId);
-            setNullableString(p, index, checkedSessionId);
-            try (var rs = p.executeQuery()) {
-                var result = new ArrayList<Challenge>();
-                while (rs.next()) result.add(read(rs));
-                return result;
-            }
-        } catch (Exception e) {
-            throw new IllegalStateException("Could not read MFA challenge", e);
-        }
+        Instant now = Instant.now();
+        return repository.listActive(userId, checkedClientId, checkedPurpose.value(), checkedSessionId,
+                        now, DEFAULT_MAX_ATTEMPTS).stream().map(this::toChallenge).toList();
     }
 
-    /** 原子消费挑战；过期、重复消费、绑定不匹配或已达到失败上限都会失败。 */
-    public boolean consume(String challengeId, long userId, String clientId, Purpose purpose, String sessionId) {
-        return updateState(challengeId, userId, clientId, purpose, sessionId,
-                "consumed_at = CURRENT_TIMESTAMP", "attempt_count < ?", DEFAULT_MAX_ATTEMPTS);
-    }
-
-    /**
-     * 在调用方事务内锁定仍可消费的挑战。
-     * 用户、挑战和 MFA 记录必须按相同顺序加锁，避免并发验证形成反向锁等待。
-     */
-    Optional<Challenge> lockActiveForUpdate(java.sql.Connection c, String challengeId, long userId,
-                                            String clientId, Purpose purpose, String sessionId) throws Exception {
+    /** 按不透明 ID 和绑定条件读取单个仍可用的认证请求。 */
+    @Transactional
+    public Optional<Challenge> findActive(String challengeId, long userId, String clientId,
+                                          Purpose purpose, String sessionId) {
         requireUser(userId);
         String checkedId = normalizeChallengeId(challengeId);
         String checkedClientId = normalizeClientId(clientId);
         Purpose checkedPurpose = requirePurpose(purpose);
         String checkedSessionId = normalizeSessionId(sessionId);
-        String sql = "SELECT id, user_id, purpose, client_id, session_id, expires_at, attempt_count, consumed_at "
-                + "FROM sys_auth_challenge WHERE id = ? AND " + ACTIVE_FILTER
-                + " AND attempt_count < ? FOR UPDATE";
-        try (var p = c.prepareStatement(sql)) {
-            int index = 1;
-            p.setString(index++, checkedId);
-            p.setLong(index++, userId);
-            p.setString(index++, checkedClientId);
-            p.setString(index++, checkedPurpose.value());
-            setNullableString(p, index++, checkedSessionId);
-            setNullableString(p, index++, checkedSessionId);
-            p.setInt(index, DEFAULT_MAX_ATTEMPTS);
-            try (var rs = p.executeQuery()) {
-                return rs.next() ? Optional.of(read(rs)) : Optional.empty();
-            }
-        }
+        AuthChallengeEntity entity = repository.findActive(checkedId, userId, checkedClientId,
+                checkedPurpose.value(), checkedSessionId, Instant.now(), DEFAULT_MAX_ATTEMPTS);
+        return entity == null ? Optional.empty() : Optional.of(toChallenge(entity));
     }
 
-    /**
-     * 消费已经在同一事务中锁定并重新核验过的挑战。
-     * 更新条件再次检查状态，防止调用方在锁边界外误用此方法。
-     */
-    boolean consumeLocked(java.sql.Connection c, Challenge challenge) throws Exception {
+    /** 在调用方事务内锁定仍可消费的认证请求。 */
+    Optional<Challenge> lockActiveForUpdate(String challengeId, long userId, String clientId,
+                                             Purpose purpose, String sessionId) {
+        requireUser(userId);
+        String checkedId = normalizeChallengeId(challengeId);
+        String checkedClientId = normalizeClientId(clientId);
+        Purpose checkedPurpose = requirePurpose(purpose);
+        String checkedSessionId = normalizeSessionId(sessionId);
+        AuthChallengeEntity entity = repository.findActiveForUpdate(checkedId, userId, checkedClientId,
+                checkedPurpose.value(), checkedSessionId, Instant.now(), DEFAULT_MAX_ATTEMPTS);
+        return entity == null ? Optional.empty() : Optional.of(toChallenge(entity));
+    }
+
+    /** 保留旧的参数形状，实际锁定由当前 ORM 事务完成。 */
+    Optional<Challenge> lockActiveForUpdate(java.sql.Connection ignored, String challengeId, long userId,
+                                             String clientId, Purpose purpose, String sessionId) {
+        return lockActiveForUpdate(challengeId, userId, clientId, purpose, sessionId);
+    }
+
+    /** 消费已经在同一事务中锁定并重新核验过的认证请求。 */
+    boolean consumeLocked(Challenge challenge) {
         if (challenge == null) throw new IllegalArgumentException("challenge is required");
-        try (var p = c.prepareStatement("UPDATE sys_auth_challenge SET consumed_at = CURRENT_TIMESTAMP "
-                + "WHERE id = ? AND user_id = ? AND consumed_at IS NULL "
-                + "AND expires_at > CURRENT_TIMESTAMP AND attempt_count < ?")) {
-            p.setString(1, challenge.id());
-            p.setLong(2, challenge.userId());
-            p.setInt(3, DEFAULT_MAX_ATTEMPTS);
-            return p.executeUpdate() == 1;
-        }
+        AuthChallengeEntity entity = repository.findById(challenge.id());
+        if (entity == null || entity.userId() != challenge.userId()) return false;
+        return entity.consume(Instant.now(), DEFAULT_MAX_ATTEMPTS);
     }
 
-    /** 原子增加失败次数；达到上限后后续请求不会再修改挑战状态。 */
+    /** 保留旧的参数形状，不再从 Connection 读取或写入数据库。 */
+    boolean consumeLocked(java.sql.Connection ignored, Challenge challenge) {
+        return consumeLocked(challenge);
+    }
+
+    /** 原子消费认证请求；过期、重复消费和失败次数超限都会失败。 */
+    @Transactional
+    public boolean consume(String challengeId, long userId, String clientId, Purpose purpose, String sessionId) {
+        var challenge = lockActiveForUpdate(challengeId, userId, clientId, purpose, sessionId);
+        return challenge.isPresent() && consumeLocked(challenge.get());
+    }
+
+    /** 原子增加失败次数；达到上限后不再修改状态。 */
+    @Transactional
     public boolean recordFailure(String challengeId, long userId, String clientId, Purpose purpose, String sessionId) {
-        return updateState(challengeId, userId, clientId, purpose, sessionId,
-                "attempt_count = attempt_count + 1", "attempt_count < ?", DEFAULT_MAX_ATTEMPTS);
+        var challenge = lockActiveForUpdate(challengeId, userId, clientId, purpose, sessionId);
+        if (challenge.isEmpty()) return false;
+        AuthChallengeEntity entity = repository.findById(challenge.get().id());
+        return entity != null && entity.recordFailure(Instant.now(), DEFAULT_MAX_ATTEMPTS);
     }
 
-    private boolean updateState(String challengeId, long userId, String clientId, Purpose purpose, String sessionId, String assignment, String extraCondition, int extraValue) {
-        requireUser(userId);
-        String checkedId = normalizeChallengeId(challengeId);
-        String checkedClientId = normalizeClientId(clientId);
-        Purpose checkedPurpose = requirePurpose(purpose);
-        String checkedSessionId = normalizeSessionId(sessionId);
-        String sql = "UPDATE sys_auth_challenge SET " + assignment + " WHERE id = ? AND " + ACTIVE_FILTER + " AND " + extraCondition;
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql)) {
-            int index = 1;
-            p.setString(index++, checkedId);
-            p.setLong(index++, userId);
-            p.setString(index++, checkedClientId);
-            p.setString(index++, checkedPurpose.value());
-            setNullableString(p, index++, checkedSessionId);
-            setNullableString(p, index++, checkedSessionId);
-            p.setInt(index, extraValue);
-            return p.executeUpdate() == 1;
-        } catch (Exception e) {
-            throw new IllegalStateException("Could not update MFA challenge", e);
-        }
-    }
-
-    private static Challenge read(java.sql.ResultSet rs) throws Exception {
-        Timestamp expiresAt = rs.getTimestamp("expires_at");
-        Timestamp consumedAt = rs.getTimestamp("consumed_at");
-        return new Challenge(rs.getString("id"), rs.getLong("user_id"), Purpose.from(rs.getString("purpose")),
-                rs.getString("client_id"), rs.getString("session_id"), expiresAt == null ? null : expiresAt.toInstant(),
-                rs.getInt("attempt_count"), consumedAt == null ? null : consumedAt.toInstant());
+    private Challenge toChallenge(AuthChallengeEntity entity) {
+        return new Challenge(entity.id(), entity.userId(), Purpose.from(entity.purpose()), entity.clientId(),
+                entity.sessionId(), entity.expiresAt(), entity.attemptCount(), entity.consumedAt());
     }
 
     private static Instant requireExpiry(Instant value) {
         if (value == null) throw new IllegalArgumentException("expiresAt is required");
         Instant now = Instant.now();
-        if (!value.isAfter(now) || value.isAfter(now.plus(MAX_LIFETIME))) throw new IllegalArgumentException("expiresAt must be within ten minutes");
+        if (!value.isAfter(now) || value.isAfter(now.plus(MAX_LIFETIME))) {
+            throw new IllegalArgumentException("expiresAt must be within ten minutes");
+        }
         return value;
     }
 
-    private static Purpose requirePurpose(Purpose value) { if (value == null) throw new IllegalArgumentException("purpose is required"); return value; }
-    private static void requireUser(long value) { if (value <= 0) throw new IllegalArgumentException("userId must be positive"); }
+    private static Purpose requirePurpose(Purpose value) {
+        if (value == null) throw new IllegalArgumentException("purpose is required");
+        return value;
+    }
+
+    private static void requireUser(long value) {
+        if (value <= 0) throw new IllegalArgumentException("userId must be positive");
+    }
 
     private static String normalizeChallengeId(String value) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("challengeId is required");
-        String normalized = value.trim();
-        try { return UUID.fromString(normalized).toString(); }
-        catch (IllegalArgumentException e) { throw new IllegalArgumentException("challengeId must be a UUID"); }
+        try {
+            return UUID.fromString(value.trim()).toString();
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("challengeId must be a UUID");
+        }
     }
 
     private static String normalizeClientId(String value) {
@@ -212,22 +161,26 @@ public class MfaChallengeRepository {
         return normalized;
     }
 
-    private static void setNullableString(java.sql.PreparedStatement p, int index, String value) throws Exception {
-        if (value == null) p.setNull(index, Types.VARCHAR); else p.setString(index, value);
-    }
-
     public enum Purpose {
         LOGIN("LOGIN"), STEP_UP("STEP_UP"), ENROLL("ENROLL"), RECOVERY("RECOVERY");
 
         private final String value;
-        Purpose(String value) { this.value = value; }
-        public String value() { return value; }
+
+        Purpose(String value) {
+            this.value = value;
+        }
+
+        public String value() {
+            return value;
+        }
+
         private static Purpose from(String value) {
             for (Purpose purpose : values()) if (purpose.value.equals(value)) return purpose;
-            throw new IllegalStateException("Unknown MFA challenge purpose");
+            throw new IllegalStateException("Unknown MFA purpose");
         }
     }
 
     public record Challenge(String id, long userId, Purpose purpose, String clientId, String sessionId,
-                            Instant expiresAt, int attemptCount, Instant consumedAt) {}
+                            Instant expiresAt, int attemptCount, Instant consumedAt) {
+    }
 }
