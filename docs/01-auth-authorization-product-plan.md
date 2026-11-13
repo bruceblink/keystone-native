@@ -18,7 +18,7 @@
 
 ## 当前实现证据
 
-截至当前分支实现，受保护资源已经使用 `@RequiresPermission` 和集中授权服务。用户接口已接入 `ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` 范围策略。API Key 已接入 Quarkus `HttpAuthenticationMechanism`，支持服务主体、范围交集、轮换、撤销、过期和最后使用时间节流。数据访问层已开始迁移到 Hibernate ORM with Panache；安全事件、操作日志、API Key 限流记录和用户登录认证已使用 ORM Repository，其他旧 Repository 仍待迁移。
+截至当前分支实现，受保护资源已经使用 `@RequiresPermission` 和集中授权服务。用户接口已接入 `ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` 范围策略。API Key 已接入 Quarkus `HttpAuthenticationMechanism`，支持服务主体、范围交集、轮换、撤销、过期和最后使用时间节流。数据访问层已开始迁移到 Hibernate ORM with Panache；安全事件、操作日志、登录和 API Key 限流记录以及用户登录认证已使用 ORM Repository，其他旧 Repository 仍待迁移。
 
 当前会话状态保存在 `sys_auth_session`，刷新令牌保留在 `sys_refresh_token` 作为轮换明细。访问令牌有效期为五分钟，并校验 `iss`、`sub`、`aud`、`jti`、`sid`、`iat`、`exp` 和 `permission_version`。权限版本变化、密码变更、用户禁用和会话撤销都会使受影响的访问令牌失效。
 
@@ -30,7 +30,7 @@
 
 上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `kid`。`GET /api/.well-known/jwks.json` 已发布当前 RSA 公钥，旧的 `GET /login/rsa-public-key` 兼容路由也改为读取相同的外部公钥配置；当前实现支持通过 `JWT_JWK_KEYS` 发布多个重叠公钥，并在启用多 key 时要求 `JWT_VERIFY_PUBLIC_KEY_LOCATION` 指向 JWK Set 文件或 HTTPS JWK Set URL。
 
-当前验证边界仍然明确：静态主源码和测试源码编译、JWK 字段与缓存 smoke、MFA 聚合方法边界测试、可信代理解析 smoke 和差异检查已通过；Quarkus HTTP、MySQL 8.4 迁移、并发 TOTP/恢复码消费、真实浏览器验收仍未完成。MFA enrollment、TOTP、恢复码和挑战消费已经使用单数据库事务；成功后的限流清理采用提交后尽力处理，清理失败只记录不改变成功响应。`TRUSTED_PROXY_CIDRS` 为空时忽略 `X-Forwarded-For`，仅在 TCP 远端属于配置网段且转发链合法时使用原始客户端地址。账户锁定的初始读取与失败更新之间仍需 MySQL 8.4 并发验收，不能把静态事务代码当作并发证明。`@Context RoutingContext` 的真实 HTTP 注入、数据库故障回滚和代理链部署验收仍未完成。OIDC、WebAuthn、密钥重叠轮换、跨租户边界和全资源数据范围仍未完成。
+当前验证边界仍然明确：静态主源码和测试源码编译、JWK 字段与缓存 smoke、MFA 聚合方法边界测试、可信代理解析 smoke 和差异检查已通过；Quarkus HTTP、MySQL 8.4 迁移、并发 TOTP/恢复码消费、真实浏览器验收仍未完成。MFA enrollment、TOTP、恢复码和挑战消费已经使用单数据库事务；成功后的限流清理采用提交后尽力处理，清理失败只记录不改变成功响应。`TRUSTED_PROXY_CIDRS` 为空时忽略 `X-Forwarded-For`，仅在 TCP 远端属于配置网段且转发链合法时使用原始客户端地址。账户锁定的行锁更新、登录限流首次创建记录的唯一键竞争仍需 MySQL 8.4 并发验收，不能把静态事务代码当作并发证明。`@Context RoutingContext` 的真实 HTTP 注入、数据库故障回滚和代理链部署验收仍未完成。OIDC、WebAuthn、密钥重叠轮换、跨租户边界和全资源数据范围仍未完成。
 
 ## 目标架构
 
@@ -100,7 +100,7 @@ API Key 使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存 SHA-256 �
 
 Flyway 继续负责数据库结构迁移，Hibernate ORM 设置为不自动创建或修改表结构。新增业务数据访问代码不得直接注入 `DataSource`、拼接 SQL 或使用 `PreparedStatement`。只有 Flyway 迁移文件和经过单独记录的数据库特定并发操作可以保留原生 SQL。
 
-第一阶段已将 `sys_security_event` 迁移到 `SecurityEventEntity` 和 `SecurityEventRepository`；操作日志已使用 `OperationLogEntity` 和 `OperationLogRepository`，API Key 限流已使用 `ApiKeyRateLimitEntity` 和 `ApiKeyRateLimitRepository`，API Key 主记录已使用 `ApiKeyEntity`、`ServiceSubjectEntity` 和对应的 Panache Repository，API Key 认证和签发权限读取已使用独立的用户、角色和权限 ORM 映射，会话已使用 `AuthSessionEntity`、`RefreshTokenEntity`、`RefreshTokenEventEntity` 和对应的 Panache Repository，MFA 会话状态已复用 `AuthSessionEntity`，MFA 失败限流已使用 `MfaRateLimitEntity` 和 `MfaRateLimitRepository`，用户认证、失败登录锁定、权限读取、权限版本和登录元数据已使用 ORM 用户 Repository。用户主资源的密码修改、CRUD、范围查询，MFA 挑战和 MFA 凭据 Repository 以及其他旧 Repository 仍使用 JDBC，后续按安全边界和事务复杂度分批迁移。迁移期间不得在同一业务职责中新增两套持久化实现。
+第一阶段已将 `sys_security_event` 迁移到 `SecurityEventEntity` 和 `SecurityEventRepository`；操作日志已使用 `OperationLogEntity` 和 `OperationLogRepository`，登录、API Key 和 MFA 限流已分别使用 `LoginRateLimitEntity`、`ApiKeyRateLimitEntity`、`MfaRateLimitEntity` 及对应的 Panache Repository，API Key 主记录已使用 `ApiKeyEntity`、`ServiceSubjectEntity` 和对应的 Panache Repository，API Key 认证和签发权限读取已使用独立的用户、角色和权限 ORM 映射，会话已使用 `AuthSessionEntity`、`RefreshTokenEntity`、`RefreshTokenEventEntity` 和对应的 Panache Repository，MFA 会话状态已复用 `AuthSessionEntity`，用户认证、失败登录锁定、权限读取、权限版本和登录元数据已使用 ORM 用户 Repository。用户主资源的密码修改、CRUD、范围查询，MFA 挑战和 MFA 凭据 Repository 以及其他旧 Repository 仍使用 JDBC，后续按安全边界和事务复杂度分批迁移。迁移期间不得在同一业务职责中新增两套持久化实现。
 
 当前已新增 `sys_api_key`、`sys_auth_session`、MFA 基础表和相关用户字段。后续仍需要补充以下表或字段：
 
