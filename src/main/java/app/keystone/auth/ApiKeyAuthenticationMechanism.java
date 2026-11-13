@@ -22,6 +22,7 @@ import java.util.Set;
 public class ApiKeyAuthenticationMechanism implements HttpAuthenticationMechanism {
     private static final String SCHEME = "ApiKey";
     @Inject JWTAuthMechanism jwt;
+    @Inject ClientAddressResolver clientAddresses;
 
     @Override
     public io.smallrye.mutiny.Uni<SecurityIdentity> authenticate(RoutingContext context, IdentityProviderManager manager) {
@@ -33,7 +34,8 @@ public class ApiKeyAuthenticationMechanism implements HttpAuthenticationMechanis
         }
         String value = header.substring(SCHEME.length() + 1).trim();
         if (value.isBlank()) return io.smallrye.mutiny.Uni.createFrom().failure(new io.quarkus.security.AuthenticationFailedException("empty API key"));
-        AuthenticationRequest request = io.quarkus.vertx.http.runtime.security.HttpSecurityUtils.setRoutingContextAttribute(new ApiKeyAuthenticationRequest(value), context);
+        String clientAddress = clientAddresses.resolve(context, context.request().getHeader("X-Forwarded-For"));
+        AuthenticationRequest request = io.quarkus.vertx.http.runtime.security.HttpSecurityUtils.setRoutingContextAttribute(new ApiKeyAuthenticationRequest(value, clientAddress), context);
         return manager.authenticate(request);
     }
 

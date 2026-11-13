@@ -12,6 +12,7 @@ import java.security.Principal;
 @ApplicationScoped
 public class ApiKeyIdentityProvider implements IdentityProvider<ApiKeyAuthenticationRequest> {
     @Inject ApiKeyRepository keys;
+    @Inject ApiKeyRateLimiter rateLimiter;
 
     @Override
     public Class<ApiKeyAuthenticationRequest> getRequestType() {
@@ -21,8 +22,13 @@ public class ApiKeyIdentityProvider implements IdentityProvider<ApiKeyAuthentica
     @Override
     public io.smallrye.mutiny.Uni<SecurityIdentity> authenticate(ApiKeyAuthenticationRequest request, AuthenticationRequestContext context) {
         return context.runBlocking(() -> {
+            if (rateLimiter.isBlocked(request.value(), request.clientAddress())) throw new AuthenticationFailedException("API key rate limit exceeded");
             var principal = keys.authenticate(request.value());
-            if (principal == null) throw new AuthenticationFailedException("invalid API key");
+            if (principal == null) {
+                rateLimiter.recordFailure(request.value(), request.clientAddress());
+                throw new AuthenticationFailedException("invalid API key");
+            }
+            rateLimiter.clear(request.value(), request.clientAddress());
             var builder = QuarkusSecurityIdentity.builder()
                     .setPrincipal(new ApiKeyPrincipal(principal.username(), principal.keyId()))
                     .addAttribute("credentialType", "API_KEY")
