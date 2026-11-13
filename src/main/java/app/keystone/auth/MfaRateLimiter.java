@@ -2,13 +2,12 @@ package app.keystone.auth;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import javax.sql.DataSource;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
@@ -22,7 +21,7 @@ import java.util.Locale;
  */
 @ApplicationScoped
 public class MfaRateLimiter {
-    @Inject DataSource dataSource;
+    @Inject MfaRateLimitRepository repository;
     @ConfigProperty(name = "keystone.security.mfa.rate-limit.max-failures", defaultValue = "5")
     int maxFailures;
     @ConfigProperty(name = "keystone.security.mfa.rate-limit.window-seconds", defaultValue = "60")
@@ -31,47 +30,58 @@ public class MfaRateLimiter {
     long blockSeconds;
 
     /** 在 MFA 验证前检查主体和地址是否处于阻断期。 */
+    @Transactional
     public boolean isBlocked(long userId, String ipAddress) {
         validateConfig(userId);
-        try (var c = dataSource.getConnection()) {
+        try {
+            Instant now = Instant.now();
             for (String key : keys(userId, ipAddress)) {
-                if (blocked(c, key)) return true;
+                MfaRateLimitEntity row = repository.findByScopeKey(key);
+                if (row != null && row.isBlockedAt(now)) return true;
             }
             return false;
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             throw new IllegalStateException("Could not check MFA rate limit", e);
         }
     }
 
     /** 在一个事务中原子增加主体和地址两个维度的失败次数。 */
+    @Transactional
     public void recordFailure(long userId, String ipAddress) {
         validateConfig(userId);
-        try (var c = dataSource.getConnection()) {
-            c.setAutoCommit(false);
-            try {
-                cleanup(c);
-                for (String key : keys(userId, ipAddress)) increment(c, key);
-                c.commit();
-            } catch (Exception e) {
-                c.rollback();
-                throw e;
-            }
-        } catch (Exception e) {
+        try {
+            Instant now = Instant.now();
+            repository.deleteExpired(now.minusSeconds(windowSeconds), now);
+            for (String key : keys(userId, ipAddress)) increment(key, now);
+        } catch (RuntimeException e) {
             throw new IllegalStateException("Could not record MFA failure rate", e);
         }
     }
 
-    /** MFA 验证成功后只清除主体维度；地址维度保留到窗口结束，避免一个用户成功清空其他用户的来源限流。 */
+    /** MFA 验证成功后只清除主体维度；地址维度保留到窗口结束。 */
+    @Transactional
     public void clear(long userId, String ipAddress) {
         validateConfig(userId);
-        try (var c = dataSource.getConnection();
-             var p = c.prepareStatement("DELETE FROM sys_mfa_rate_limit WHERE scope_key = ?")) {
-            var dimensions = keys(userId, ipAddress);
-            p.setString(1, dimensions.get(0));
-            p.executeUpdate();
-        } catch (Exception e) {
+        try {
+            repository.deleteByScopeKey(keys(userId, ipAddress).get(0));
+        } catch (RuntimeException e) {
             throw new IllegalStateException("Could not clear MFA rate limit", e);
         }
+    }
+
+    private void increment(String key, Instant now) {
+        MfaRateLimitEntity row = repository.findForUpdate(key);
+        if (row == null) {
+            Instant blockedUntil = maxFailures <= 1 ? now.plusSeconds(blockSeconds) : null;
+            repository.persistAndFlush(new MfaRateLimitEntity(key, now, 1, blockedUntil));
+            return;
+        }
+        boolean currentWindow = row.windowStartedAt() != null
+                && row.windowStartedAt().plusSeconds(windowSeconds).isAfter(now);
+        int attempts = currentWindow ? row.attemptCount() + 1 : 1;
+        Instant windowStartedAt = currentWindow ? row.windowStartedAt() : now;
+        Instant blockedUntil = attempts >= maxFailures ? now.plusSeconds(blockSeconds) : null;
+        row.update(windowStartedAt, attempts, blockedUntil);
     }
 
     /** 测试和启动检查使用的配置边界；用户 ID 也必须绑定到已解析的主体。 */
@@ -79,51 +89,6 @@ public class MfaRateLimiter {
         if (userId <= 0) throw new IllegalArgumentException("userId must be positive");
         if (maxFailures <= 0 || windowSeconds <= 0 || blockSeconds <= 0) {
             throw new IllegalStateException("MFA rate limit configuration must be positive");
-        }
-    }
-
-    private boolean blocked(java.sql.Connection c, String key) throws Exception {
-        try (var p = c.prepareStatement("SELECT blocked_until FROM sys_mfa_rate_limit WHERE scope_key = ?")) {
-            p.setString(1, key);
-            try (var rs = p.executeQuery()) {
-                if (!rs.next()) return false;
-                Timestamp blockedUntil = rs.getTimestamp(1);
-                return blockedUntil != null && blockedUntil.toInstant().isAfter(Instant.now());
-            }
-        }
-    }
-
-    private void increment(java.sql.Connection c, String key) throws Exception {
-        Instant now = Instant.now();
-        int attempts = 1;
-        Timestamp windowStarted = Timestamp.from(now);
-        try (var find = c.prepareStatement("SELECT window_started_at, attempt_count FROM sys_mfa_rate_limit WHERE scope_key = ? FOR UPDATE")) {
-            find.setString(1, key);
-            try (var rs = find.executeQuery()) {
-                if (rs.next()) {
-                    Timestamp existingWindow = rs.getTimestamp(1);
-                    if (existingWindow != null && existingWindow.toInstant().plusSeconds(windowSeconds).isAfter(now)) {
-                        attempts = rs.getInt(2) + 1;
-                        windowStarted = existingWindow;
-                    }
-                }
-            }
-        }
-        Timestamp blockedUntil = attempts >= maxFailures ? Timestamp.from(now.plusSeconds(blockSeconds)) : null;
-        try (var update = c.prepareStatement("INSERT INTO sys_mfa_rate_limit(scope_key, window_started_at, attempt_count, blocked_until) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE window_started_at = VALUES(window_started_at), attempt_count = VALUES(attempt_count), blocked_until = VALUES(blocked_until)")) {
-            update.setString(1, key);
-            update.setTimestamp(2, windowStarted);
-            update.setInt(3, attempts);
-            if (blockedUntil == null) update.setNull(4, java.sql.Types.TIMESTAMP); else update.setTimestamp(4, blockedUntil);
-            update.executeUpdate();
-        }
-    }
-
-    /** 清理过期记录，避免长期失败来源让限流表无限增长。 */
-    private void cleanup(java.sql.Connection c) throws Exception {
-        try (var p = c.prepareStatement("DELETE FROM sys_mfa_rate_limit WHERE (blocked_until IS NULL AND window_started_at < TIMESTAMPADD(SECOND, -?, CURRENT_TIMESTAMP)) OR (blocked_until IS NOT NULL AND blocked_until < CURRENT_TIMESTAMP)")) {
-            p.setLong(1, windowSeconds);
-            p.executeUpdate();
         }
     }
 
@@ -159,7 +124,8 @@ public class MfaRateLimiter {
 
     private static String hash(String value) {
         try {
-            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));
+            return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256")
+                    .digest(value.getBytes(StandardCharsets.UTF_8)));
         } catch (Exception e) {
             throw new IllegalStateException("SHA-256 is unavailable", e);
         }
