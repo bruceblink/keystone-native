@@ -3,6 +3,7 @@ package app.keystone.compat;
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.RequiresPermission;
+import app.keystone.auth.DataScopeService;
 import app.keystone.config.SystemConfig;
 import app.keystone.config.SystemConfigRepository;
 import app.keystone.dept.Department;
@@ -16,6 +17,7 @@ import app.keystone.notice.Notice;
 import app.keystone.notice.NoticeRepository;
 import app.keystone.post.Post;
 import app.keystone.post.PostRepository;
+import app.keystone.user.UserRepository;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
@@ -37,10 +39,12 @@ public class LegacyManagementResource {
     @Inject PostRepository posts;
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
+    @Inject DataScopeService dataScopes;
+    @Inject UserRepository users;
 
-    @GET @Path("/depts") @RequiresPermission("department:read") public ApiResponse<List<Department>> depts() { return ApiResponse.ok(departments.list()); }
-    @GET @Path("/depts/dropdown") @RequiresPermission("department:read") public ApiResponse<List<Department>> deptDropdown() { return ApiResponse.ok(departments.list()); }
-    @GET @Path("/dept/{id}") @RequiresPermission("department:read") public Response dept(@PathParam("id") long id) { return response(find(departments.list(), id, "department not found")); }
+    @GET @Path("/depts") @RequiresPermission("department:read") public ApiResponse<List<Department>> depts() { return ApiResponse.ok(departments.list(departmentScope())); }
+    @GET @Path("/depts/dropdown") @RequiresPermission("department:read") public ApiResponse<List<Department>> deptDropdown() { return ApiResponse.ok(departments.list(departmentScope())); }
+    @GET @Path("/dept/{id}") @RequiresPermission("department:read") public Response dept(@PathParam("id") long id) { return response(find(departments.list(departmentScope()), id, "department not found")); }
     @POST @Path("/dept") @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("department:write") public Response addDept(DeptCommand request) { if (request == null) return bad("request body is required"); try { var value = departments.create(request.codeValue(), request.nameValue(), request.parentId(), request.sortValue()); logs.record(actor(), "CREATE", "department", String.valueOf(value.id()), value.code()); return created(value); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
     @PUT @Path("/dept/{id}") @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("department:write") public Response editDept(@PathParam("id") long id, DeptCommand request) { if (request == null) return bad("request body is required"); try { var value = departments.update(id, request.nameValue(), request.parentId(), request.sortValue(), request.enabled()); logs.record(actor(), "UPDATE", "department", String.valueOf(id), value.code()); return response(value); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (java.util.NoSuchElementException e) { return notFound("department not found"); } }
     @DELETE @Path("/dept/{id}") @RequiresPermission("department:write") public Response removeDept(@PathParam("id") long id) { try { departments.delete(id); logs.record(actor(), "DELETE", "department", String.valueOf(id), null); return response(Map.of("deleted", true)); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (java.util.NoSuchElementException e) { return notFound("department not found"); } }
@@ -91,6 +95,14 @@ public class LegacyManagementResource {
     private DictionaryItem findItem(long id) { return dictionaries.types().stream().flatMap(type -> dictionaries.items(type.code()).stream()).filter(item -> item.id() == id).findFirst().orElseThrow(() -> new NotFoundException("dictionary item not found")); }
     private Response deleteNotices(String ids) { if (ids == null || ids.isBlank()) return bad("ids is required"); try { int count = 0; for (Long id : parseIds(ids)) { notices.delete(id); count++; } return response(Map.of("deleted", count)); } catch (NumberFormatException e) { return bad("ids must be comma separated numbers"); } }
     private String actor() { return identity.getPrincipal().getName(); }
+    /** 兼容路由必须复用现代部门查询的范围策略，避免绕过数据范围条件。 */
+    private DataScopeService.Scope departmentScope() { return dataScopes.forUser(subjectId()); }
+    private long subjectId() {
+        Object value = identity.getAttribute("userId");
+        if (value instanceof Number number) return number.longValue();
+        return users.findAuthUserByUsername(identity.getPrincipal().getName())
+                .orElseThrow(() -> new NotAuthorizedException("subject not found")).id();
+    }
     private static List<Long> parseIds(String ids) { return Arrays.stream(ids.split(",")).map(String::trim).map(Long::valueOf).toList(); }
     private static <T> Response response(T value) { return Response.ok(ApiResponse.ok(value)).build(); }
     private static <T> Response created(T value) { return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(value)).build(); }
