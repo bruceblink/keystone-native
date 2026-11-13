@@ -101,15 +101,15 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         return user.toUser();
     }
 
-    /** 按数据范围锁定并删除单个用户，管理员账号始终受保护。 */
+    /** 按数据范围锁定并删除单个用户；是否允许操作由权限和数据范围共同决定。 */
     @Transactional
     public void deleteUser(long userId, DataScopeService.Scope scope, long subjectId) {
         ApiKeyUserEntity user = findScopedForUpdate(userId, scope, subjectId);
-        if (user == null) throw new java.util.NoSuchElementException("user not found or protected");
+        if (user == null) throw new java.util.NoSuchElementException("user not found");
         delete(user);
     }
 
-    /** 按数据范围批量删除用户，跳过不存在、管理员和范围外记录。 */
+    /** 按数据范围批量删除用户，跳过不存在和范围外记录。 */
     @Transactional
     public int deleteUsers(List<Long> userIds, DataScopeService.Scope scope, long subjectId) {
         if (userIds == null || userIds.isEmpty()) return 0;
@@ -236,10 +236,10 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
 
     private Set<ApiKeyRoleEntity> resolveRoles(List<String> roleCodes) {
         var normalized = new LinkedHashSet<String>();
-        for (String code : roleCodes == null ? List.<String>of("USER") : roleCodes) {
+        for (String code : roleCodes == null ? List.<String>of() : roleCodes) {
             if (code != null && !code.isBlank()) normalized.add(code.trim());
         }
-        if (normalized.isEmpty()) normalized.add("USER");
+        if (normalized.isEmpty()) return Set.of();
         var found = roles.findEnabledByCodes(List.copyOf(normalized));
         if (found.size() != normalized.size()) {
             var foundCodes = found.stream().map(ApiKeyRoleEntity::code).collect(java.util.stream.Collectors.toSet());
@@ -250,7 +250,7 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
     }
 
     private ApiKeyUserEntity findScopedForUpdate(long userId, DataScopeService.Scope scope, long subjectId) {
-        var query = new StringBuilder("id = ?1 and username <> 'admin'");
+        var query = new StringBuilder("id = ?1");
         var parameters = new java.util.ArrayList<Object>();
         parameters.add(userId);
         appendScope(query, parameters, scope, subjectId);

@@ -33,7 +33,7 @@ public class JobResource {
         return ApiResponse.ok(service.logs(jobId, page == null ? 1 : page, size == null ? 20 : size));
     }
 
-    @POST @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("job:write")
+    @POST @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("job:create")
     public Response create(JobRequest request) {
         if (request == null) return bad("request body is required");
         try {
@@ -43,7 +43,7 @@ public class JobResource {
         } catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
-    @PUT @Path("/{id}") @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("job:write")
+    @PUT @Path("/{id}") @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("job:update")
     public Response update(@PathParam("id") long id, JobRequest request) {
         if (request == null) return bad("request body is required");
         try {
@@ -54,7 +54,7 @@ public class JobResource {
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @PUT @Path("/{id}/status") @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("job:write")
+    @PUT @Path("/{id}/status") @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("job:update-status")
     public Response status(@PathParam("id") long id, StatusRequest request) {
         if (request == null || request.enabled() == null) return bad("enabled is required");
         try {
@@ -64,17 +64,17 @@ public class JobResource {
         } catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @POST @Path("/{id}/trigger") @RequiresPermission("job:write")
+    @POST @Path("/{id}/trigger") @RequiresPermission("job:run")
     public Response trigger(@PathParam("id") long id) { return run(id); }
 
-    @POST @Path("/{id}/run") @RequiresPermission("job:write")
+    @POST @Path("/{id}/run") @RequiresPermission("job:run")
     public Response run(@PathParam("id") long id) {
         try { service.trigger(id); logs.record(actor(), "TRIGGER", "job", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("triggered", true))).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
-    @DELETE @Path("/{id}") @RequiresPermission("job:write")
+    @DELETE @Path("/{id}") @RequiresPermission("job:delete")
     public Response delete(@PathParam("id") long id) {
         try { service.delete(id); logs.record(actor(), "DELETE", "job", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }

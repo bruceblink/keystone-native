@@ -16,6 +16,7 @@ class MenuPersistenceTest {
         assertTrue(source.contains("PanacheRepositoryBase<MenuEntity"));
         assertTrue(source.contains("assignRoles"));
         assertTrue(source.contains("@Transactional"));
+        assertFalse(source.contains("contains(\"ADMIN\")"));
         assertFalse(source.contains("DataSource"));
         assertFalse(source.contains("prepareStatement"));
     }

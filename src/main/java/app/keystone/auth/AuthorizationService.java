@@ -10,7 +10,7 @@ public class AuthorizationService {
     @Inject ApiKeyUserRepository users;
 
     public boolean allowed(SecurityIdentity identity, String permission) {
-        if (identity == null || identity.isAnonymous() || permission == null || permission.isBlank()) return false;
+        if (identity == null || identity.isAnonymous() || !PermissionCatalog.contains(permission)) return false;
         Object credentialType = identity.getAttribute("credentialType");
         if ("API_KEY".equals(credentialType)) {
             Object scopes = identity.getAttribute("scopes");

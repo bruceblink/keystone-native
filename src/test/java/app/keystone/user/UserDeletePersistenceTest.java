@@ -27,7 +27,7 @@ class UserDeletePersistenceTest {
         String source = Files.readString(Path.of("src/main/java/app/keystone/auth/ApiKeyUserRepository.java"));
         assertTrue(source.contains("deleteUser"));
         assertTrue(source.contains("deleteUsers"));
-        assertTrue(source.contains("username <> 'admin'"));
+        assertFalse(source.contains("username <> 'admin'"));
         assertTrue(source.contains("PESSIMISTIC_WRITE"));
         assertTrue(source.contains("DataScopeService.Scope"));
         assertFalse(source.contains("DataSource"));

@@ -27,7 +27,7 @@ public class DepartmentResource {
     @GET @Path("/dropdown") @RequiresPermission("department:read")
     public ApiResponse<List<Department>> dropdown() { return ApiResponse.ok(departments.list(dataScopes.forUser(subjectId()))); }
 
-    @POST @RequiresPermission("department:write")
+    @POST @RequiresPermission("department:create")
     public Response create(DepartmentRequest request) {
         if (request == null) return bad("request body is required");
         var scope = dataScopes.forUser(subjectId());
@@ -36,7 +36,7 @@ public class DepartmentResource {
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
-    @PUT @Path("/{id}") @RequiresPermission("department:write")
+    @PUT @Path("/{id}") @RequiresPermission("department:update")
     public Response update(@PathParam("id") long id, DepartmentRequest request) {
         if (request == null) return bad("request body is required");
         var scope = dataScopes.forUser(subjectId());
@@ -46,7 +46,7 @@ public class DepartmentResource {
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @DELETE @Path("/{id}") @RequiresPermission("department:write")
+    @DELETE @Path("/{id}") @RequiresPermission("department:delete")
     public Response delete(@PathParam("id") long id) {
         if (!dataScopes.forUser(subjectId()).allowsDepartment(id)) return forbidden();
         try { departments.delete(id); logs.record(actor(), "DELETE", "department", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }

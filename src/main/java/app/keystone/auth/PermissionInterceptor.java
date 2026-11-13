@@ -29,7 +29,7 @@ public class PermissionInterceptor {
         RequiresPermission requirement = context.getMethod().getAnnotation(RequiresPermission.class);
         if (requirement == null) requirement = context.getTarget().getClass().getAnnotation(RequiresPermission.class);
         if (identity == null || identity.isAnonymous()) throw new NotAuthorizedException("authentication is required");
-        if (requirement == null) throw new ForbiddenException("permission denied");
+        if (requirement == null || !PermissionCatalog.contains(requirement.value())) throw new ForbiddenException("permission denied");
         try {
             if (!authorization.allowed(identity, requirement.value())) {
                 recordDenied(requirement.value(), "permission denied");

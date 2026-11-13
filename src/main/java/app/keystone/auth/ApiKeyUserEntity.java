@@ -254,7 +254,7 @@ public class ApiKeyUserEntity {
     UserRepository.AuthUser toAuthUser() {
         var roleCodes = roles.stream().filter(ApiKeyRoleEntity::enabled).map(ApiKeyRoleEntity::code).sorted().toList();
         return new UserRepository.AuthUser(id, username, displayName,
-                roleCodes.isEmpty() ? java.util.List.of("USER") : roleCodes,
+                roleCodes,
                 mustChangePassword, deptId, postId, email, phoneNumber, sex, avatar, loginIp, loginAt, remark);
     }
 
@@ -263,6 +263,6 @@ public class ApiKeyUserEntity {
         var roleCodes = roles.stream().filter(ApiKeyRoleEntity::enabled).map(ApiKeyRoleEntity::code).sorted().toList();
         return new User(id, username, displayName, deptId, postId, enabled,
                 email, phoneNumber, sex, avatar, loginIp, loginAt, remark,
-                roleCodes.isEmpty() ? java.util.List.of("USER") : roleCodes);
+                roleCodes);
     }
 }

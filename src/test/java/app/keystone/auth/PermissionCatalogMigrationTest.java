@@ -19,6 +19,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class PermissionCatalogMigrationTest {
     private static final Pattern SEED_ROW = Pattern.compile(
             "UUID_TO_BIN\\('([^']+)', 0\\), '([^']+)',");
+    private static final Pattern ANNOTATION = Pattern.compile("@RequiresPermission\\(\\\"([^\\\"]+)\\\"\\)");
 
     private static final Set<String> EXPECTED_PERMISSIONS = Set.of(("""
             api-key:create api-key:read api-key:revoke api-key:rotate
@@ -65,5 +66,27 @@ class PermissionCatalogMigrationTest {
         assertFalse(migration.contains("session:logout"));
         assertFalse(migration.matches("(?s).*'[a-z0-9-]+:[a-z0-9-]+:[a-z0-9-]+'.*"));
         assertFalse(migration.contains("sys_menu.permission"));
+    }
+
+    @Test
+    void runtimeCatalogAndProductionAnnotationsUseOnlyCanonicalPermissions() throws Exception {
+        assertEquals(EXPECTED_PERMISSIONS, PermissionCatalog.values());
+        try (var files = Files.walk(Path.of("src/main/java"))) {
+            files.filter(path -> path.toString().endsWith(".java"))
+                    .filter(path -> !path.toString().contains("/compat/"))
+                    .filter(path -> !path.getFileName().toString().startsWith("Legacy"))
+                    .filter(path -> !path.getFileName().toString().equals("PermissionInterceptor.java"))
+                    .filter(path -> !path.getFileName().toString().contains("Compatibility"))
+                    .forEach(path -> {
+                        try {
+                            var matcher = ANNOTATION.matcher(Files.readString(path));
+                            while (matcher.find()) assertTrue(PermissionCatalog.contains(matcher.group(1)), path + " has unknown permission");
+                        } catch (java.io.IOException e) {
+                            throw new IllegalStateException("Could not inspect " + path, e);
+                        }
+                    });
+        }
+        assertFalse(PermissionCatalog.contains("user:write"));
+        assertFalse(PermissionCatalog.contains("profile:read"));
     }
 }

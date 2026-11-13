@@ -102,7 +102,11 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
     private Set<ApiKeyPermissionEntity> resolvePermissions(List<String> permissionCodes) {
         var normalized = new LinkedHashSet<String>();
         for (String code : permissionCodes == null ? List.<String>of() : permissionCodes) {
-            if (code != null && !code.isBlank()) normalized.add(code.trim());
+            if (code != null && !code.isBlank()) {
+                String value = code.trim();
+                if (!PermissionCatalog.contains(value)) throw new IllegalArgumentException("unknown permission: " + value);
+                normalized.add(value);
+            }
         }
         var found = permissions.findByCodes(List.copyOf(normalized));
         if (found.size() != normalized.size()) {

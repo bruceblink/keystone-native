@@ -23,14 +23,14 @@ public class DictionaryResource {
     @GET @Path("/{typeCode}/items") @RequiresPermission("dictionary:read")
     public ApiResponse<List<DictionaryItem>> items(@PathParam("typeCode") String typeCode) { return ApiResponse.ok(dictionaries.items(typeCode)); }
 
-    @POST @RequiresPermission("dictionary:write")
+    @POST @RequiresPermission("dictionary:create")
     public Response createType(TypeRequest request) {
         if (request == null) return bad("request body is required");
         try { var created = dictionaries.createType(request.code(), request.name()); logs.record(actor(), "CREATE", "dictionary-type", String.valueOf(created.id()), created.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build(); }
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
-    @POST @Path("/{typeCode}/items") @RequiresPermission("dictionary:write")
+    @POST @Path("/{typeCode}/items") @RequiresPermission("dictionary:create")
     public Response createItem(@PathParam("typeCode") String typeCode, ItemRequest request) {
         if (request == null) return bad("request body is required");
         try { var created = dictionaries.createItem(typeCode, request.value(), request.label(), request.sortOrder()); logs.record(actor(), "CREATE", "dictionary-item", String.valueOf(created.id()), created.typeCode() + ":" + created.value()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build(); }
@@ -38,16 +38,16 @@ public class DictionaryResource {
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    @PUT @Path("/types/{code}") @RequiresPermission("dictionary:write")
+    @PUT @Path("/types/{code}") @RequiresPermission("dictionary:update")
     public Response updateType(@PathParam("code") String code, TypeRequest request) { if (request == null) return bad("request body is required"); try { var type = dictionaries.updateType(code, request.name(), request.enabled()); logs.record(actor(), "UPDATE", "dictionary-type", String.valueOf(type.id()), type.code()); return Response.ok(ApiResponse.ok(type)).build(); } catch (java.util.NoSuchElementException e) { return notFoundType(); } }
 
-    @DELETE @Path("/types/{code}") @RequiresPermission("dictionary:write")
+    @DELETE @Path("/types/{code}") @RequiresPermission("dictionary:delete")
     public Response deleteType(@PathParam("code") String code) { try { dictionaries.deleteType(code); logs.record(actor(), "DELETE", "dictionary-type", code, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (java.util.NoSuchElementException e) { return notFoundType(); } }
 
-    @PUT @Path("/items/{id}") @RequiresPermission("dictionary:write")
+    @PUT @Path("/items/{id}") @RequiresPermission("dictionary:update")
     public Response updateItem(@PathParam("id") long id, ItemRequest request) { if (request == null) return bad("request body is required"); try { var item = dictionaries.updateItem(id, request.label(), request.sortOrder(), request.enabled()); logs.record(actor(), "UPDATE", "dictionary-item", String.valueOf(id), item.value()); return Response.ok(ApiResponse.ok(item)).build(); } catch (java.util.NoSuchElementException e) { return notFound(); } }
 
-    @DELETE @Path("/items/{id}") @RequiresPermission("dictionary:write")
+    @DELETE @Path("/items/{id}") @RequiresPermission("dictionary:delete")
     public Response deleteItem(@PathParam("id") long id) {
         try { dictionaries.deleteItem(id); logs.record(actor(), "DELETE", "dictionary-item", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }

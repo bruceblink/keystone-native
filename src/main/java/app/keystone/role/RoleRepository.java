@@ -41,9 +41,6 @@ public class RoleRepository {
     }
 
     public void delete(String code) {
-        if ("ADMIN".equalsIgnoreCase(code) || "USER".equalsIgnoreCase(code)) {
-            throw new IllegalArgumentException("built-in roles cannot be deleted");
-        }
         try {
             ormRoles.deleteRole(code);
         } catch (java.util.NoSuchElementException | IllegalArgumentException e) {

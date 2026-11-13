@@ -5,9 +5,12 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 @QuarkusTest
 class RoleRepositoryTest {
@@ -26,5 +29,12 @@ class RoleRepositoryTest {
         } finally {
             roles.delete(code);
         }
+    }
+
+    @Test
+    void roleDeletionDoesNotUseRoleNameBypass() throws Exception {
+        String source = Files.readString(Path.of("src/main/java/app/keystone/role/RoleRepository.java"));
+        assertFalse(source.contains("equalsIgnoreCase(\"ADMIN\")"));
+        assertFalse(source.contains("equalsIgnoreCase(\"USER\")"));
     }
 }

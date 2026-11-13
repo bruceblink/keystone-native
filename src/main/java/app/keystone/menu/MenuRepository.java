@@ -18,10 +18,6 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, Long> {
 
     @Transactional
     public List<Menu> listForRoles(List<String> roleCodes) {
-        if (roleCodes != null && roleCodes.contains("ADMIN")) {
-            return find("enabled = true order by coalesce(parentId, 0), sortOrder, id")
-                    .list().stream().map(MenuEntity::toModel).toList();
-        }
         if (roleCodes == null || roleCodes.isEmpty()) return List.of();
         return find("select distinct m from MenuEntity m join m.roles role "
                         + "where m.enabled = true and role.code in ?1 "
