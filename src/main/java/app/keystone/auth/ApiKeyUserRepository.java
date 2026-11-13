@@ -2,6 +2,7 @@ package app.keystone.auth;
 
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.transaction.Transactional;
 import jakarta.persistence.LockModeType;
 
 import java.util.Set;
@@ -15,9 +16,28 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         return user != null && user.enabled() ? user : null;
     }
 
+    @Transactional
     Set<String> permissions(long userId) {
         ApiKeyUserEntity user = findEnabled(userId);
         return user == null ? Set.of() : user.permissions();
+    }
+
+    @Transactional
+    boolean hasPermission(long userId, String permission) {
+        return permissions(userId).contains(permission);
+    }
+
+    @Transactional
+    boolean hasPermissionByUsername(String username, String permission) {
+        if (username == null || username.isBlank()) return false;
+        ApiKeyUserEntity user = find("username = ?1 and enabled = true", username).firstResult();
+        return user != null && user.permissions().contains(permission);
+    }
+
+    @Transactional
+    long permissionVersion(long userId) {
+        ApiKeyUserEntity user = findEnabled(userId);
+        return user == null ? -1 : user.permissionVersion();
     }
 
     ApiKeyUserEntity findEnabledEntity(long userId) {

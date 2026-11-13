@@ -12,7 +12,7 @@ import java.util.HashSet;
 @ApplicationScoped
 public class AccessTokenService {
     private static final Duration ACCESS_LIFETIME = Duration.ofMinutes(5);
-    @Inject UserRepository users;
+    @Inject ApiKeyUserRepository users;
     @ConfigProperty(name = "mp.jwt.verify.issuer") String issuer;
     @ConfigProperty(name = "mp.jwt.verify.audiences", defaultValue = "keystone-api") String audience;
     @ConfigProperty(name = "keystone.security.jwt.key-id", defaultValue = "") String keyId;
@@ -29,7 +29,7 @@ public class AccessTokenService {
     /** 刷新会话只能在创建时批准的权限范围内发行访问令牌。 */
     public AuthResource.TokenResponse issue(UserRepository.AuthUser user, String refreshToken, String accessTokenId, String sessionId, String clientId, String approvedScope, Instant refreshExpiresAt) {
         Instant expiresAt = Instant.now().plus(ACCESS_LIFETIME);
-        var permissions = users.permissions(user.id());
+        java.util.List<String> permissions = new java.util.ArrayList<>(users.permissions(user.id()));
         if (approvedScope != null) {
             var approved = java.util.Set.of(approvedScope.isBlank() ? new String[0] : approvedScope.split(" "));
             permissions = permissions.stream().filter(approved::contains).toList();
