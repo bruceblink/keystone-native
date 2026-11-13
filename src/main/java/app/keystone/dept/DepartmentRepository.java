@@ -1,5 +1,6 @@
 package app.keystone.dept;
 
+import app.keystone.auth.DataScopeService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import javax.sql.DataSource;
@@ -12,8 +13,12 @@ public class DepartmentRepository {
     @Inject DataSource dataSource;
 
     public List<Department> list() {
+        return list(DataScopeService.Scope.unrestricted());
+    }
+
+    public List<Department> list(DataScopeService.Scope scope) {
         try (var c = dataSource.getConnection(); var p = c.prepareStatement("SELECT id, parent_id, code, name, sort_order, enabled FROM sys_dept ORDER BY COALESCE(parent_id, 0), sort_order, id"); var rs = p.executeQuery()) {
-            var result = new ArrayList<Department>(); while (rs.next()) result.add(read(rs)); return result;
+            var result = new ArrayList<Department>(); while (rs.next()) { var department = read(rs); if (scope.allowsDepartment(department.id())) result.add(department); } return result;
         } catch (Exception e) { throw new IllegalStateException("Could not list departments", e); }
     }
 

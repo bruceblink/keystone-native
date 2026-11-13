@@ -56,7 +56,7 @@ public class DataScopeService {
                 }
             }
         }
-        return new Scope(all, self, departments);
+        return new Scope(all, self, departments, ownDepartment);
     }
 
     private static String normalizeScope(String value) {
@@ -101,9 +101,13 @@ public class DataScopeService {
      * 范围只允许并集，不允许因为某个角色范围较小而扩大限制。
      * 没有有效角色时返回空范围，调用方必须拒绝所有目标记录。
      */
-    public record Scope(boolean all, boolean self, Set<Long> departments) {
+    public record Scope(boolean all, boolean self, Set<Long> departments, Long ownDepartment) {
         public Scope {
             departments = Set.copyOf(departments == null ? Set.of() : departments);
+        }
+
+        public Scope(boolean all, boolean self, Set<Long> departments) {
+            this(all, self, departments, null);
         }
 
         public static Scope none() {
@@ -119,7 +123,7 @@ public class DataScopeService {
         }
 
         public boolean allowsDepartment(Long departmentId) {
-            return all || departmentId != null && departments.contains(departmentId);
+            return all || departmentId != null && ((self && departmentId.equals(ownDepartment)) || departments.contains(departmentId));
         }
 
         public boolean isEmpty() {

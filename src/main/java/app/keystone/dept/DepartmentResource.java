@@ -3,6 +3,8 @@ package app.keystone.dept;
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.RequiresPermission;
+import app.keystone.auth.DataScopeService;
+import app.keystone.user.UserRepository;
 import jakarta.inject.Inject;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.ws.rs.*;
@@ -17,11 +19,13 @@ public class DepartmentResource {
     @Inject DepartmentRepository departments;
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
+    @Inject DataScopeService dataScopes;
+    @Inject UserRepository users;
 
     @GET @RequiresPermission("department:read")
-    public ApiResponse<List<Department>> list() { return ApiResponse.ok(departments.list()); }
+    public ApiResponse<List<Department>> list() { return ApiResponse.ok(departments.list(dataScopes.forUser(subjectId()))); }
     @GET @Path("/dropdown") @RequiresPermission("department:read")
-    public ApiResponse<List<Department>> dropdown() { return ApiResponse.ok(departments.list()); }
+    public ApiResponse<List<Department>> dropdown() { return ApiResponse.ok(departments.list(dataScopes.forUser(subjectId()))); }
 
     @POST @RequiresPermission("department:write")
     public Response create(DepartmentRequest request) {
@@ -49,4 +53,9 @@ public class DepartmentResource {
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("department not found")).build(); }
     public record DepartmentRequest(String code, String name, Long parentId, Integer sortOrder, Boolean enabled) {}
     private String actor() { return identity.getPrincipal().getName(); }
+    private long subjectId() {
+        Object value = identity.getAttribute("userId");
+        if (value instanceof Number number) return number.longValue();
+        return users.findAuthUserByUsername(identity.getPrincipal().getName()).orElseThrow(() -> new NotAuthorizedException("subject not found")).id();
+    }
 }
