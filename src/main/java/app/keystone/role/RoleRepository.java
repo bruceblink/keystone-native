@@ -30,6 +30,12 @@ public class RoleRepository {
         return updateExtended(code, name, enabled, null, null);
     }
 
+    /** 通过公开 UUID 主键更新角色；角色 code 仅作为业务标识保存。 */
+    public Role updateById(String id, String name, Boolean enabled) {
+        requireId(id);
+        return ormRoles.updateRoleById(id, name, enabled, null, null);
+    }
+
     public Role updateExtended(String code, String name, Boolean enabled, String dataScope, String deptScope) {
         try {
             return ormRoles.updateRole(code, name, enabled, dataScope, deptScope);
@@ -50,6 +56,12 @@ public class RoleRepository {
         }
     }
 
+    /** 通过公开 UUID 主键删除角色。 */
+    public void deleteById(String id) {
+        requireId(id);
+        ormRoles.deleteRoleById(id);
+    }
+
     public Role findById(String id) {
         return ormRoles.findRoleById(id);
     }
@@ -66,6 +78,12 @@ public class RoleRepository {
         } catch (RuntimeException e) {
             throw new IllegalStateException("Could not assign role permissions", e);
         }
+    }
+
+    /** 通过公开 UUID 主键替换角色权限。 */
+    public void assignPermissionsById(String id, List<String> permissions) {
+        requireId(id);
+        ormRoles.assignPermissionsById(id, permissions);
     }
 
     public void assignUsers(String code, List<String> userIds) {
@@ -94,6 +112,14 @@ public class RoleRepository {
 
     private static void require(String value, String field) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException(field + " is required");
+    }
+
+    private static void requireId(String value) {
+        try {
+            app.keystone.identity.UuidValues.requireCanonical(value);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("id must be a UUID", e);
+        }
     }
 
     private static boolean isUniqueConstraint(Throwable error) {

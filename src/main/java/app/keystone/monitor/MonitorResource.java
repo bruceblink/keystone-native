@@ -13,7 +13,7 @@ import java.lang.management.ManagementFactory;
 import java.util.List;
 import java.util.Map;
 
-@Path("/monitor")
+@Path("/v1/monitor")
 @Produces(MediaType.APPLICATION_JSON)
 public class MonitorResource {
     @Inject SessionRepository sessions;

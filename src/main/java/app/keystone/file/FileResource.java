@@ -17,7 +17,7 @@ import java.nio.file.Paths;
 import java.util.List;
 import java.util.UUID;
 
-@Path("/file")
+@Path("/v1/file")
 public class FileResource {
     private final java.nio.file.Path root;
 
@@ -40,7 +40,7 @@ public class FileResource {
         int dot = original.lastIndexOf('.'); if (dot > 0 && dot < original.length() - 1) extension = original.substring(dot).toLowerCase(java.util.Locale.ROOT).replaceAll("[^a-z0-9.]", "");
         String generated = UUID.randomUUID() + extension;
         java.nio.file.Path target = safePath(generated); Files.copy(file.uploadedFile(), target);
-        return new Upload("/api/file/download?fileName=" + generated, generated, generated, original);
+        return new Upload("/api/v1/file/download?fileName=" + generated, generated, generated, original);
     }
 
     private java.nio.file.Path safePath(String fileName) {

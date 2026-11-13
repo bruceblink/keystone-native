@@ -40,6 +40,17 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
     }
 
     @Transactional
+    public Role updateRoleById(String id, String name, Boolean enabled, String dataScope, String deptScope) {
+        ApiKeyRoleEntity role = findRoleEntityById(id);
+        if (role == null) throw new java.util.NoSuchElementException("role not found");
+        boolean changed = name != null && !name.isBlank() || enabled != null
+                || dataScope != null && !dataScope.isBlank() || deptScope != null;
+        role.update(name, enabled, dataScope, deptScope);
+        if (changed) bumpPermissionVersion(role);
+        return role.toRole();
+    }
+
+    @Transactional
     public void deleteRole(String code) {
         ApiKeyRoleEntity role = find("code", code).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (role == null) throw new java.util.NoSuchElementException("role not found");
@@ -48,8 +59,25 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
     }
 
     @Transactional
+    public void deleteRoleById(String id) {
+        ApiKeyRoleEntity role = findRoleEntityById(id);
+        if (role == null) throw new java.util.NoSuchElementException("role not found");
+        bumpPermissionVersion(role);
+        delete(role);
+    }
+
+    @Transactional
     public void assignPermissions(String code, List<String> permissionCodes) {
         ApiKeyRoleEntity role = find("code", code).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+        if (role == null) throw new java.util.NoSuchElementException("role not found");
+        Set<ApiKeyPermissionEntity> resolved = resolvePermissions(permissionCodes);
+        role.replacePermissions(resolved);
+        bumpPermissionVersion(role);
+    }
+
+    @Transactional
+    public void assignPermissionsById(String id, List<String> permissionCodes) {
+        ApiKeyRoleEntity role = findRoleEntityById(id);
         if (role == null) throw new java.util.NoSuchElementException("role not found");
         Set<ApiKeyPermissionEntity> resolved = resolvePermissions(permissionCodes);
         role.replacePermissions(resolved);
