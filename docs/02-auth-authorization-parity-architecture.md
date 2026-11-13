@@ -16,13 +16,13 @@
 | 授权执行点 | Policy Enforcement Point（PEP） | 在 HTTP、LiveView 或领域命令入口执行 PDP 决策。 | 不复制另一套权限规则。 |
 | 安全事件 | Security event | 记录登录、令牌、API Key、MFA 和授权结果。 | 不保存密码、令牌或完整 API Key。 |
 
-新系统只使用两段权限格式：`resource:action`，例如 `user:read`、`user:write`、`api-key:create`、`session:revoke`。三段权限、菜单权限字段和角色名称不属于新接口、数据库或授权输入。权限目录使用固定 UUIDv5，角色只保存权限目录 ID。
+新系统只使用两段权限格式：`resource:action`，例如 `user:read`、`user:update`、`api-key:create`、`session:revoke`。三段权限、菜单权限字段和角色名称不属于新接口、数据库或授权输入。权限目录使用固定 UUIDv5，角色只保存权限目录 ID。
 
 ## 主键和标识符
 
 用户、角色、部门、岗位、菜单、配置、字典、公告、任务、任务日志、登录日志、操作日志、权限、会话、刷新令牌、刷新令牌事件、服务主体、API Key、MFA 请求和安全事件的逻辑主键统一使用规范小写连字符 UUID。接口和领域层使用字符串；Native 的 MySQL 持久化使用 `BINARY(16)`，Phoenix 的 PostgreSQL 使用原生 `uuid`。新业务实体默认使用 UUIDv7，以便保留创建时间排序特征；权限目录和固定种子使用 UUIDv5，并固定命名空间和名称规则。UUIDv5 不用于随机业务实体。
 
-两个项目都禁止把 UUID 转回整数、使用自增整数或在接口中同时暴露整数和 UUID。Native 的 MySQL 使用 `BINARY(16)` 保存 UUID 原始 16 字节：SQL 写入使用 `UUID_TO_BIN(?, 0)`，文本结果使用 `BIN_TO_UUID(id, 0)`；按 ID 过滤时在参数侧使用 `UUID_TO_BIN(:uuid, 0)`，不在过滤列上调用 `BIN_TO_UUID`，以保持索引可用。ORM 直接把规范字符串转换为同样的 16 字节值，不再叠加 SQL 转换。`0` 保持 UUIDv7 的时间字段顺序，不使用 UUIDv1 专用的字节交换。应用层和 HTTP 接口只接受或返回 36 字符的规范 UUID 字符串。Phoenix 的 PostgreSQL 使用原生 `uuid` 类型。迁移阶段一次性替换旧整数主键、外键、索引、缓存键、日志字段、令牌 Claim 和测试数据。
+两个项目都禁止把 UUID 转回整数、使用自增整数或在接口中同时暴露整数和 UUID。Native 的 MySQL 使用 `BINARY(16)` 保存 UUID 原始 16 字节：SQL 写入使用 `UUID_TO_BIN(?, 0)`，文本结果使用 `BIN_TO_UUID(id, 0)`；按 ID 过滤时在参数侧使用 `UUID_TO_BIN(:uuid, 0)`，不在过滤列上调用 `BIN_TO_UUID`，以保持索引可用。Native ORM 内部使用 UUID 属性和二进制 JDBC 类型，接口层转换为规范字符串，不再叠加 SQL 转换。`0` 保持 UUIDv7 的时间字段顺序，不使用 UUIDv1 专用的字节交换。应用层和 HTTP 接口只接受或返回 36 字符的规范 UUID 字符串。Phoenix 的 PostgreSQL 使用原生 `uuid` 类型。迁移阶段一次性替换旧整数主键、外键、索引、缓存键、日志字段、令牌 Claim 和测试数据。
 
 UUID 生成规则必须集中在基础模块。UUIDv7 生成失败时请求失败，不使用时间戳拼接、随机字符串或整数回退。UUIDv5 固定使用命名空间 `eb754ae2-49de-5e5f-87ef-1fa5eded86d8`，名称使用 UTF-8 小写规范权限前缀 `permission:<resource>:<action>`。例如 `permission:user:read` 的 UUIDv5 是 `950c8856-7230-5a63-937f-472185c3a8c4`。两个项目必须共享该向量和完整权限目录向量。
 
