@@ -18,7 +18,7 @@
 
 ## 当前实现证据
 
-截至 `025562c`，受保护资源已经使用 `@RequiresPermission` 和集中授权服务。用户接口已接入 `ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` 范围策略。API Key 已接入 Quarkus `HttpAuthenticationMechanism`，支持服务主体、范围交集、轮换、撤销、过期和最后使用时间节流。
+截至 `b5b3e71`，受保护资源已经使用 `@RequiresPermission` 和集中授权服务。用户接口已接入 `ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` 范围策略。API Key 已接入 Quarkus `HttpAuthenticationMechanism`，支持服务主体、范围交集、轮换、撤销、过期和最后使用时间节流。数据访问层已开始迁移到 Hibernate ORM with Panache；`sys_security_event` 已完成第一阶段迁移，其他旧 Repository 仍待迁移。
 
 当前会话状态保存在 `sys_auth_session`，刷新令牌保留在 `sys_refresh_token` 作为轮换明细。访问令牌有效期为五分钟，并校验 `iss`、`sub`、`aud`、`jti`、`sid`、`iat`、`exp` 和 `permission_version`。权限版本变化、密码变更、用户禁用和会话撤销都会使受影响的访问令牌失效。
 
@@ -93,6 +93,14 @@ API Key 使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存 SHA-256 �
 - 兼容客户端仍可调用 `GET /login/rsa-public-key`，但该接口读取同一个外部公钥位置，不再读取仓库内资源。
 
 ## 数据模型变更
+
+### 数据访问层选择
+
+当前项目选择 **Quarkus Hibernate ORM with Panache**，采用 `PanacheRepository<Entity>` 模式。该模式基于 Hibernate ORM/JPA，保留实体与 Repository 的职责分离，适合现有 Quarkus CDI、MySQL、事务和 Native 构建环境。项目不引入 MyBatis，也不采用 Panache Active Record 模式。
+
+Flyway 继续负责数据库结构迁移，Hibernate ORM 设置为不自动创建或修改表结构。新增业务数据访问代码不得直接注入 `DataSource`、拼接 SQL 或使用 `PreparedStatement`。只有 Flyway 迁移文件和经过单独记录的数据库特定并发操作可以保留原生 SQL。
+
+第一阶段已将 `sys_security_event` 迁移到 `SecurityEventEntity` 和 `SecurityEventRepository`。`sys_api_key_rate_limit`、用户、会话、MFA 和其他旧 Repository 仍使用 JDBC，后续按安全边界和事务复杂度分批迁移。迁移期间不得在同一业务职责中新增两套持久化实现。
 
 当前已新增 `sys_api_key`、`sys_auth_session`、MFA 基础表和相关用户字段。后续仍需要补充以下表或字段：
 
