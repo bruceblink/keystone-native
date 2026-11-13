@@ -1,62 +1,67 @@
 package app.keystone.auth;
 
+import app.keystone.dept.DepartmentOrmRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
-import javax.sql.DataSource;
-import java.sql.Connection;
+import jakarta.transaction.Transactional;
+
 import java.util.LinkedHashSet;
 import java.util.Set;
 
-/**
- * 读取主体的数据范围，并把角色范围合并为一次请求使用的策略。
- * 该服务只负责范围计算；具体资源仍由数据访问层把策略转换为查询条件。
- */
+/** 读取主体的数据范围，并把角色范围合并为一次请求使用的策略。 */
 @ApplicationScoped
 public class DataScopeService {
-    @Inject DataSource dataSource;
+    private static final int DEPARTMENT_BATCH_SIZE = 500;
 
-    /** 为当前请求主体读取已启用角色的范围；数据库异常时由调用方按失败关闭处理。 */
+    @Inject ApiKeyUserRepository users;
+    @Inject DepartmentOrmRepository departments;
+
+    /** 在一个 ORM 事务内读取用户和角色，避免范围计算使用不同数据快照。 */
+    @Transactional
     public Scope forUser(long userId) {
-        try (var c = dataSource.getConnection()) {
-            return readScope(c, userId);
-        } catch (Exception e) {
+        try {
+            ApiKeyUserEntity user = users.findEnabledEntity(userId);
+            if (user == null) return Scope.none();
+            Long ownDepartment = user.departmentId();
+            boolean all = false;
+            boolean self = false;
+            var allowedDepartments = new LinkedHashSet<Long>();
+            for (ApiKeyRoleEntity role : user.roles()) {
+                if (!role.enabled()) continue;
+                switch (normalizeScope(role.dataScope())) {
+                    case "ALL" -> all = true;
+                    case "SELF" -> self = true;
+                    case "DEPARTMENT" -> addIfPresent(allowedDepartments, ownDepartment);
+                    case "DEPARTMENT_AND_CHILDREN" -> allowedDepartments.addAll(descendants(ownDepartment));
+                    case "CUSTOM" -> allowedDepartments.addAll(parseDepartments(role.deptScope()));
+                    default -> throw new IllegalStateException("Unsupported data scope");
+                }
+            }
+            return new Scope(all, self, allowedDepartments, ownDepartment);
+        } catch (RuntimeException e) {
             throw new IllegalStateException("Could not resolve user data scope", e);
         }
     }
 
-    /** 先读取主体部门，再合并每个启用角色的范围；多个角色采用并集。 */
-    private Scope readScope(Connection c, long userId) throws Exception {
-        Long ownDepartment = null;
-        try (var user = c.prepareStatement("SELECT dept_id FROM sys_user WHERE id = ? AND enabled = true")) {
-            user.setLong(1, userId);
-            try (var rs = user.executeQuery()) {
-                if (!rs.next()) return Scope.none();
-                long department = rs.getLong(1);
-                if (!rs.wasNull()) ownDepartment = department;
-            }
-        }
-
-        boolean all = false;
-        boolean self = false;
-        var departments = new LinkedHashSet<Long>();
-        String sql = "SELECT r.data_scope, r.dept_scope FROM sys_role r JOIN sys_user_role ur ON ur.role_id = r.id WHERE ur.user_id = ? AND r.enabled = true";
-        try (var roles = c.prepareStatement(sql)) {
-            roles.setLong(1, userId);
-            try (var rs = roles.executeQuery()) {
-                while (rs.next()) {
-                    String scope = normalizeScope(rs.getString("data_scope"));
-                    switch (scope) {
-                        case "ALL" -> all = true;
-                        case "SELF" -> self = true;
-                        case "DEPARTMENT" -> addIfPresent(departments, ownDepartment);
-                        case "DEPARTMENT_AND_CHILDREN" -> departments.addAll(descendants(c, ownDepartment));
-                        case "CUSTOM" -> departments.addAll(parseDepartments(rs.getString("dept_scope")));
-                        default -> throw new IllegalStateException("Unsupported data scope: " + scope);
-                    }
+    private Set<Long> descendants(Long departmentId) {
+        if (departmentId == null) return Set.of();
+        var result = new LinkedHashSet<Long>();
+        var frontier = new LinkedHashSet<Long>();
+        frontier.add(departmentId);
+        result.add(departmentId);
+        while (!frontier.isEmpty()) {
+            var next = new LinkedHashSet<Long>();
+            var parents = new java.util.ArrayList<>(frontier);
+            for (int start = 0; start < parents.size(); start += DEPARTMENT_BATCH_SIZE) {
+                int end = Math.min(start + DEPARTMENT_BATCH_SIZE, parents.size());
+                var batch = new LinkedHashSet<>(parents.subList(start, end));
+                for (Long child : departments.findChildIds(batch)) {
+                    if (result.add(child)) next.add(child);
                 }
             }
+            frontier = next;
         }
-        return new Scope(all, self, departments, ownDepartment);
+        return result;
     }
 
     private static String normalizeScope(String value) {
@@ -67,7 +72,7 @@ public class DataScopeService {
         if (value != null) target.add(value);
     }
 
-    /** 解析 CUSTOM 的部门 ID；格式错误直接失败，避免把错误配置扩大为全部范围。 */
+    /** 解析 CUSTOM 部门 ID；格式错误直接失败，不能扩大为全部范围。 */
     private static Set<Long> parseDepartments(String value) {
         var result = new LinkedHashSet<Long>();
         if (value == null || value.isBlank()) return result;
@@ -83,24 +88,7 @@ public class DataScopeService {
         return result;
     }
 
-    /** 使用去重递归查询包含根部门在内的所有子部门，循环关系不会重复返回记录。 */
-    private static Set<Long> descendants(Connection c, Long departmentId) throws Exception {
-        if (departmentId == null) return Set.of();
-        var result = new LinkedHashSet<Long>();
-        String sql = "WITH RECURSIVE department_tree AS (SELECT id FROM sys_dept WHERE id = ? UNION SELECT d.id FROM sys_dept d JOIN department_tree t ON d.parent_id = t.id) SELECT id FROM department_tree";
-        try (var p = c.prepareStatement(sql)) {
-            p.setLong(1, departmentId);
-            try (var rs = p.executeQuery()) {
-                while (rs.next()) result.add(rs.getLong(1));
-            }
-        }
-        return result;
-    }
-
-    /**
-     * 范围只允许并集，不允许因为某个角色范围较小而扩大限制。
-     * 没有有效角色时返回空范围，调用方必须拒绝所有目标记录。
-     */
+    /** 范围只允许并集；没有有效角色时返回空范围。 */
     public record Scope(boolean all, boolean self, Set<Long> departments, Long ownDepartment) {
         public Scope {
             departments = Set.copyOf(departments == null ? Set.of() : departments);
@@ -126,18 +114,12 @@ public class DataScopeService {
             return all || departmentId != null && ((self && departmentId.equals(ownDepartment)) || departments.contains(departmentId));
         }
 
-        /**
-         * 判断新建部门时的父部门是否在当前主体的写入范围内。
-         * 受限主体不能创建没有父部门的根部门；全量范围主体可以创建根部门。
-         */
+        /** 判断新建部门时的父部门是否在当前主体的写入范围内。 */
         public boolean allowsDepartmentCreation(Long parentDepartmentId) {
             return all || parentDepartmentId != null && allowsDepartment(parentDepartmentId);
         }
 
-        /**
-         * 判断更新部门时目标部门和新的父部门是否都在当前主体的写入范围内。
-         * parentDepartmentId 为 null 表示请求没有修改父部门。
-         */
+        /** 判断更新部门时目标部门和新的父部门是否都在当前主体的写入范围内。 */
         public boolean allowsDepartmentUpdate(long targetDepartmentId, Long parentDepartmentId) {
             return allowsDepartment(targetDepartmentId)
                     && (parentDepartmentId == null || allowsDepartment(parentDepartmentId));

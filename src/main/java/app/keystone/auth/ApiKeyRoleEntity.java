@@ -22,6 +22,12 @@ public class ApiKeyRoleEntity {
     @Column(nullable = false)
     private boolean enabled;
 
+    @Column(name = "data_scope", nullable = false, length = 32)
+    private String dataScope;
+
+    @Column(name = "dept_scope", columnDefinition = "TEXT")
+    private String deptScope;
+
     @Column(nullable = false, length = 64)
     private String code;
 
@@ -41,6 +47,14 @@ public class ApiKeyRoleEntity {
 
     String code() {
         return code;
+    }
+
+    String dataScope() {
+        return dataScope;
+    }
+
+    String deptScope() {
+        return deptScope;
     }
 
     Set<ApiKeyPermissionEntity> permissions() {

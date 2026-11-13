@@ -141,6 +141,14 @@ public class ApiKeyUserEntity {
         return permissionVersion;
     }
 
+    Long departmentId() {
+        return deptId;
+    }
+
+    Set<ApiKeyRoleEntity> roles() {
+        return roles;
+    }
+
     String passwordHash() {
         return passwordHash;
     }
