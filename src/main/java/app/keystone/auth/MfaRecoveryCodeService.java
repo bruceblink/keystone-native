@@ -29,7 +29,7 @@ public class MfaRecoveryCodeService {
     private static final int CODE_BYTES = 16;
     private static final int CODE_HEX_LENGTH = CODE_BYTES * 2;
     private static final int GROUP_HEX_LENGTH = 4;
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private final SecureRandom random = new SecureRandom();
     private static final HexFormat HEX = HexFormat.of().withUpperCase();
     private final String pepper;
 
@@ -46,7 +46,7 @@ public class MfaRecoveryCodeService {
         Set<String> seen = new HashSet<>(CODE_COUNT);
         while (codes.size() < CODE_COUNT) {
             byte[] bytes = new byte[CODE_BYTES];
-            RANDOM.nextBytes(bytes);
+            random.nextBytes(bytes);
             String code = format(HEX.formatHex(bytes));
             if (seen.add(code)) codes.add(code);
         }

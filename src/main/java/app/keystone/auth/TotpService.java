@@ -25,13 +25,13 @@ public class TotpService {
     public static final int SECRET_BYTES = 20;
     private static final int WINDOW_STEPS = 1;
     private static final int CODE_MODULUS = 1_000_000;
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private final SecureRandom random = new SecureRandom();
     private static final char[] BASE32_ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567".toCharArray();
 
     /** 生成 160 位随机密钥，并返回无填充的 RFC 4648 Base32 文本。 */
     public String generateSecret() {
         byte[] secret = new byte[SECRET_BYTES];
-        RANDOM.nextBytes(secret);
+        random.nextBytes(secret);
         return encodeBase32(secret);
     }
 

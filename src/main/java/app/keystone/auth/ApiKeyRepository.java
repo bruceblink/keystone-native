@@ -20,7 +20,7 @@ import java.util.Set;
 
 @ApplicationScoped
 public class ApiKeyRepository {
-    private static final SecureRandom RANDOM = new SecureRandom();
+    private final SecureRandom random = new SecureRandom();
     @Inject DataSource dataSource;
     /** 多节点部署使用数据库条件更新，避免本地缓存造成各节点重复写入。 */
     @ConfigProperty(name = "keystone.security.api-key.last-used-update-interval-seconds", defaultValue = "60")
@@ -131,7 +131,7 @@ public class ApiKeyRepository {
     private static List<String> split(String value) { return value == null || value.isBlank() ? List.of() : List.of(value.split(" ")); }
     private static Instant instant(java.sql.ResultSet rs, String column) throws Exception { var value = rs.getTimestamp(column); return value == null ? null : value.toInstant(); }
 
-    private static String random(int bytes) { byte[] value = new byte[bytes]; RANDOM.nextBytes(value); return Base64.getUrlEncoder().withoutPadding().encodeToString(value); }
+    private String random(int bytes) { byte[] value = new byte[bytes]; random.nextBytes(value); return Base64.getUrlEncoder().withoutPadding().encodeToString(value); }
     private static String hash(String value) { try { return java.util.HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8))); } catch (Exception e) { throw new IllegalStateException("SHA-256 is unavailable", e); } }
     public record IssuedApiKey(String id, String name, String prefix, String apiKey, List<String> scopes, Instant expiresAt) {}
     public record Principal(String keyId, String subjectId, long userId, String username, List<String> scopes) {}
