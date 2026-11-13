@@ -74,6 +74,30 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         return user.toUser();
     }
 
+    /** 按数据范围锁定并删除单个用户，管理员账号始终受保护。 */
+    @Transactional
+    public void deleteUser(long userId, DataScopeService.Scope scope, long subjectId) {
+        ApiKeyUserEntity user = findScopedForUpdate(userId, scope, subjectId);
+        if (user == null) throw new java.util.NoSuchElementException("user not found or protected");
+        delete(user);
+    }
+
+    /** 按数据范围批量删除用户，跳过不存在、管理员和范围外记录。 */
+    @Transactional
+    public int deleteUsers(List<Long> userIds, DataScopeService.Scope scope, long subjectId) {
+        if (userIds == null || userIds.isEmpty()) return 0;
+        int deleted = 0;
+        for (Long userId : userIds) {
+            if (userId == null) continue;
+            ApiKeyUserEntity user = findScopedForUpdate(userId, scope, subjectId);
+            if (user != null) {
+                delete(user);
+                deleted++;
+            }
+        }
+        return deleted;
+    }
+
     /**
      * 在同一事务中锁定用户、校验密码并更新失败锁定状态。
      * 用户行写锁保证并发失败请求不会覆盖失败计数。
@@ -173,5 +197,32 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
             throw new IllegalArgumentException("unknown role: " + unknown);
         }
         return new LinkedHashSet<>(found);
+    }
+
+    private ApiKeyUserEntity findScopedForUpdate(long userId, DataScopeService.Scope scope, long subjectId) {
+        var query = new StringBuilder("id = ?1 and username <> 'admin'");
+        var parameters = new java.util.ArrayList<Object>();
+        parameters.add(userId);
+        appendScope(query, parameters, scope, subjectId);
+        return find(query.toString(), parameters.toArray()).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    }
+
+    private static void appendScope(StringBuilder query, List<Object> parameters,
+                                    DataScopeService.Scope scope, long subjectId) {
+        if (scope.all()) return;
+        var clauses = new java.util.ArrayList<String>();
+        if (scope.self()) {
+            parameters.add(subjectId);
+            clauses.add("id = ?" + parameters.size());
+        }
+        if (!scope.departments().isEmpty()) {
+            var placeholders = new java.util.ArrayList<String>();
+            for (Long department : scope.departments()) {
+                parameters.add(department);
+                placeholders.add("?" + parameters.size());
+            }
+            clauses.add("deptId in (" + String.join(", ", placeholders) + ")");
+        }
+        query.append(" and ").append(clauses.isEmpty() ? "1 = 0" : "(" + String.join(" or ", clauses) + ")");
     }
 }

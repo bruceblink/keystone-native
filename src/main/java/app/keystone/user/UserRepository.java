@@ -115,29 +115,21 @@ public class UserRepository {
     }
 
     public void delete(long id, DataScopeService.Scope scope, long subjectId) {
-        String sql = appendScope("DELETE FROM sys_user WHERE id = ? AND username <> 'admin'", scope, "");
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql)) {
-            p.setLong(1, id);
-            bindScope(p, 2, scope, subjectId);
-            if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("user not found or protected");
+        try {
+            ormUsers.deleteUser(id, scope, subjectId);
+        } catch (java.util.NoSuchElementException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not delete user", e);
         }
-        catch (java.util.NoSuchElementException e) { throw e; }
-        catch (Exception e) { throw new IllegalStateException("Could not delete user", e); }
     }
 
     public int deleteAll(List<Long> ids, DataScopeService.Scope scope, long subjectId) {
-        if (ids == null || ids.isEmpty()) return 0;
-        String sql = appendScope("DELETE FROM sys_user WHERE id = ? AND username <> 'admin'", scope, "");
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql)) {
-            for (Long id : ids) {
-                if (id != null) {
-                    p.setLong(1, id);
-                    bindScope(p, 2, scope, subjectId);
-                    p.addBatch();
-                }
-            }
-            int[] result = p.executeBatch(); int count = 0; for (int value : result) if (value > 0) count += value; return count;
-        } catch (Exception e) { throw new IllegalStateException("Could not delete users", e); }
+        try {
+            return ormUsers.deleteUsers(ids, scope, subjectId);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not delete users", e);
+        }
     }
 
     private Optional<User> find(Connection c, long id) throws Exception {
