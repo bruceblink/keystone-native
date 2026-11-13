@@ -1,3 +1,3 @@
 package app.keystone.dict;
 
-public record DictionaryType(long id, String code, String name, boolean enabled) {}
+public record DictionaryType(String id, String code, String name, boolean enabled) {}

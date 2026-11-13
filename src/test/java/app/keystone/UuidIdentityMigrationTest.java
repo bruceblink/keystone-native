@@ -35,4 +35,19 @@ class UuidIdentityMigrationTest {
         assertTrue(sql.contains("UUID_TO_BIN"));
         assertTrue(sql.contains("INSERT INTO sys_uuid_menu_post_migration"));
     }
+
+    @Test
+    void contentMigrationUsesBinaryIdsAndGuardedReplay() throws Exception {
+        String sql = Files.readString(Path.of("src/main/resources/db/migration/V48__notice_config_dictionary_identity_uuid.sql"));
+        assertTrue(sql.contains("sys_uuid_content_migration"));
+        assertTrue(sql.contains("@uuid_content_should_rebuild"));
+        assertTrue(sql.contains("sys_config"));
+        assertTrue(sql.contains("sys_notice"));
+        assertTrue(sql.contains("sys_dict_type"));
+        assertTrue(sql.contains("sys_dict_item"));
+        assertTrue(sql.contains("type_id BINARY(16)"));
+        assertTrue(sql.contains("UUID_TO_BIN"));
+        assertTrue(sql.contains("BIN_TO_UUID"));
+        assertTrue(sql.contains("INSERT IGNORE INTO sys_uuid_content_migration"));
+    }
 }

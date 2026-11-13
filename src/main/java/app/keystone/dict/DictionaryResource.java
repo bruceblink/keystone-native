@@ -45,12 +45,12 @@ public class DictionaryResource {
     public Response deleteType(@PathParam("code") String code) { try { dictionaries.deleteType(code); logs.record(actor(), "DELETE", "dictionary-type", code, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (java.util.NoSuchElementException e) { return notFoundType(); } }
 
     @PUT @Path("/items/{id}") @RequiresPermission("dictionary:update")
-    public Response updateItem(@PathParam("id") long id, ItemRequest request) { if (request == null) return bad("request body is required"); try { var item = dictionaries.updateItem(id, request.label(), request.sortOrder(), request.enabled()); logs.record(actor(), "UPDATE", "dictionary-item", String.valueOf(id), item.value()); return Response.ok(ApiResponse.ok(item)).build(); } catch (java.util.NoSuchElementException e) { return notFound(); } }
+    public Response updateItem(@PathParam("id") String id, ItemRequest request) { if (request == null) return bad("request body is required"); try { var item = dictionaries.updateItem(id, request.label(), request.sortOrder(), request.enabled()); logs.record(actor(), "UPDATE", "dictionary-item", id, item.value()); return Response.ok(ApiResponse.ok(item)).build(); } catch (java.util.NoSuchElementException | IllegalArgumentException e) { return notFound(); } }
 
     @DELETE @Path("/items/{id}") @RequiresPermission("dictionary:delete")
-    public Response deleteItem(@PathParam("id") long id) {
-        try { dictionaries.deleteItem(id); logs.record(actor(), "DELETE", "dictionary-item", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
-        catch (java.util.NoSuchElementException e) { return notFound(); }
+    public Response deleteItem(@PathParam("id") String id) {
+        try { dictionaries.deleteItem(id); logs.record(actor(), "DELETE", "dictionary-item", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
+        catch (java.util.NoSuchElementException | IllegalArgumentException e) { return notFound(); }
     }
 
     private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).build(); }

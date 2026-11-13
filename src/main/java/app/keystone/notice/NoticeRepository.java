@@ -9,7 +9,7 @@ import java.util.List;
 
 /** 公告管理入口；具体持久化由 Panache Repository 负责。 */
 @ApplicationScoped
-public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, Long> {
+public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, java.util.UUID> {
     @Transactional
     public List<Notice> list(boolean publicOnly) {
         String query = publicOnly
@@ -33,24 +33,24 @@ public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, Lon
     }
 
     @Transactional
-    public Notice update(long id, String title, String content, String type, Boolean enabled) {
-        NoticeEntity entity = find("id", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    public Notice update(String id, String title, String content, String type, Boolean enabled) {
+        NoticeEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("notice not found");
         entity.update(title, content, type, enabled);
         return entity.toModel();
     }
 
     @Transactional
-    public Notice publish(long id, boolean published) {
-        NoticeEntity entity = find("id", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    public Notice publish(String id, boolean published) {
+        NoticeEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("notice not found");
         entity.publish(published);
         return entity.toModel();
     }
 
     @Transactional
-    public void delete(long id) {
-        NoticeEntity entity = find("id", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    public void delete(String id) {
+        NoticeEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("notice not found");
         delete(entity);
     }

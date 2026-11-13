@@ -2,20 +2,22 @@ package app.keystone.config;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /** 映射系统配置记录，表结构由 Flyway 管理。 */
 @Entity
 @Table(name = "sys_config")
 public class SystemConfigEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(name = "config_key", nullable = false, length = 128)
     private String key;
@@ -36,6 +38,7 @@ public class SystemConfigEntity {
     }
 
     SystemConfigEntity(String key, String value, String description) {
+        this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.key = key;
         this.value = value;
         this.description = description;
@@ -49,6 +52,6 @@ public class SystemConfigEntity {
     }
 
     SystemConfig toModel() {
-        return new SystemConfig(id, key, value, description, enabled, updatedAt);
+        return new SystemConfig(id.toString(), key, value, description, enabled, updatedAt);
     }
 }

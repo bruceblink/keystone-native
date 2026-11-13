@@ -2,21 +2,23 @@ package app.keystone.notice;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
+import java.util.UUID;
 
 /** 映射公告内容和发布状态；数据库表结构由 Flyway 管理。 */
 @Entity
 @Table(name = "sys_notice")
 public class NoticeEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(nullable = false, length = 200)
     private String title;
@@ -47,6 +49,7 @@ public class NoticeEntity {
     }
 
     NoticeEntity(String title, String content, String type, String createdBy) {
+        this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.title = title.trim();
         this.content = content;
         this.noticeType = type == null ? "NOTICE" : type;
@@ -67,6 +70,6 @@ public class NoticeEntity {
     }
 
     Notice toModel() {
-        return new Notice(id, title, content, noticeType, published, enabled, publishAt, createdBy, createdAt);
+        return new Notice(id.toString(), title, content, noticeType, published, enabled, publishAt, createdBy, createdAt);
     }
 }

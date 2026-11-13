@@ -9,7 +9,7 @@ import java.util.List;
 
 /** 使用 Panache 管理系统配置记录。 */
 @ApplicationScoped
-public class SystemConfigOrmRepository implements PanacheRepositoryBase<SystemConfigEntity, Long> {
+public class SystemConfigOrmRepository implements PanacheRepositoryBase<SystemConfigEntity, java.util.UUID> {
     @Transactional
     public List<SystemConfig> listConfigs() {
         return find("order by key").list().stream().map(SystemConfigEntity::toModel).toList();

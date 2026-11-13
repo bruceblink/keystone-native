@@ -9,7 +9,7 @@ import java.util.List;
 
 /** 使用 Panache 管理字典类型。 */
 @ApplicationScoped
-public class DictionaryTypeOrmRepository implements PanacheRepositoryBase<DictionaryTypeEntity, Long> {
+public class DictionaryTypeOrmRepository implements PanacheRepositoryBase<DictionaryTypeEntity, java.util.UUID> {
     @Transactional
     public List<DictionaryType> listTypes() {
         return find("order by code").list().stream().map(DictionaryTypeEntity::toModel).toList();

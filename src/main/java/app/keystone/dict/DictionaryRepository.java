@@ -62,7 +62,7 @@ public class DictionaryRepository {
         }
     }
 
-    public DictionaryItem updateItem(long id, String label, Integer sortOrder, Boolean enabled) {
+    public DictionaryItem updateItem(String id, String label, Integer sortOrder, Boolean enabled) {
         try {
             return itemsRepository.updateItem(id, label, sortOrder, enabled);
         } catch (java.util.NoSuchElementException e) {
@@ -82,7 +82,7 @@ public class DictionaryRepository {
         }
     }
 
-    public void deleteItem(long id) {
+    public void deleteItem(String id) {
         try {
             itemsRepository.deleteItem(id);
         } catch (java.util.NoSuchElementException e) {
