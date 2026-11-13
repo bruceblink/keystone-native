@@ -2,12 +2,11 @@ package app.keystone.auth;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import javax.sql.DataSource;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
-import java.sql.Timestamp;
 import java.time.Instant;
 import java.util.HexFormat;
 import java.util.List;
@@ -15,83 +14,70 @@ import java.util.List;
 /** Limits repeated invalid API Key attempts by source and credential dimensions. */
 @ApplicationScoped
 public class ApiKeyRateLimiter {
-    @Inject DataSource dataSource;
+    @Inject ApiKeyRateLimitRepository repository;
     @ConfigProperty(name = "keystone.security.api-key.rate-limit.max-failures", defaultValue = "20") int maxFailures;
     @ConfigProperty(name = "keystone.security.api-key.rate-limit.window-seconds", defaultValue = "60") long windowSeconds;
     @ConfigProperty(name = "keystone.security.api-key.rate-limit.block-seconds", defaultValue = "300") long blockSeconds;
 
+    @Transactional
     public boolean isBlocked(String value, String ipAddress) {
         validate(value, ipAddress);
         validateConfig();
-        try (var c = dataSource.getConnection()) {
-            for (String key : keys(value, ipAddress)) if (blocked(c, key)) return true;
+        try {
+            Instant now = Instant.now();
+            for (String key : keys(value, ipAddress)) {
+                var row = repository.findByScopeKey(key);
+                if (row != null && row.isBlockedAt(now)) return true;
+            }
             return false;
-        } catch (Exception e) { throw new IllegalStateException("Could not check API key rate limit", e); }
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not check API key rate limit", e);
+        }
     }
 
+    @Transactional
     public void recordFailure(String value, String ipAddress) {
         validate(value, ipAddress);
         validateConfig();
-        try (var c = dataSource.getConnection()) {
-            c.setAutoCommit(false);
-            try {
-                cleanup(c);
-                for (String key : keys(value, ipAddress)) increment(c, key);
-                c.commit();
-            } catch (Exception e) { c.rollback(); throw e; }
-        } catch (Exception e) { throw new IllegalStateException("Could not record API key failure", e); }
+        try {
+            Instant now = Instant.now();
+            repository.deleteExpired(now.minusSeconds(windowSeconds), now);
+            for (String key : keys(value, ipAddress)) increment(key, now);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not record API key failure", e);
+        }
     }
 
+    @Transactional
     public void clear(String value, String ipAddress) {
         validate(value, ipAddress);
         validateConfig();
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement("DELETE FROM sys_api_key_rate_limit WHERE scope_key = ?")) {
+        try {
             var dimensions = keys(value, ipAddress);
             // 成功认证只清理当前凭据桶；来源地址桶必须保留，避免一个有效 key 清空其他调用方的失败记录。
-            p.setString(1, dimensions.get(1)); p.executeUpdate();
-        } catch (Exception e) { throw new IllegalStateException("Could not clear API key rate limit", e); }
+            repository.deleteByScopeKey(dimensions.get(1));
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not clear API key rate limit", e);
+        }
     }
 
     static List<String> keys(String value, String ipAddress) {
         return List.of(hash("ip:" + normalize(ipAddress, "unknown")), hash("key:" + normalize(value, "unknown")));
     }
 
-    private boolean blocked(java.sql.Connection c, String key) throws Exception {
-        try (var p = c.prepareStatement("SELECT blocked_until FROM sys_api_key_rate_limit WHERE scope_key = ?")) {
-            p.setString(1, key);
-            try (var rs = p.executeQuery()) {
-                if (!rs.next()) return false;
-                Timestamp blockedUntil = rs.getTimestamp(1);
-                return blockedUntil != null && blockedUntil.toInstant().isAfter(Instant.now());
-            }
+    private void increment(String key, Instant now) {
+        var row = repository.findForUpdate(key);
+        if (row == null) {
+            Instant blockedUntil = maxFailures <= 1 ? now.plusSeconds(blockSeconds) : null;
+            repository.persistAndFlush(new ApiKeyRateLimitEntity(key, now, 1, blockedUntil));
+            return;
         }
-    }
-
-    private void increment(java.sql.Connection c, String key) throws Exception {
-        String sql = """
-                INSERT INTO sys_api_key_rate_limit(scope_key, window_started_at, attempt_count, blocked_until)
-                VALUES (?, CURRENT_TIMESTAMP, 1, IF(1 >= ?, TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP), NULL))
-                ON DUPLICATE KEY UPDATE
-                attempt_count = IF(window_started_at < TIMESTAMPADD(SECOND, -?, CURRENT_TIMESTAMP), 1, attempt_count + 1),
-                window_started_at = IF(window_started_at < TIMESTAMPADD(SECOND, -?, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, window_started_at),
-                blocked_until = IF(attempt_count >= ?, TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP), NULL)
-                """;
-        try (var update = c.prepareStatement(sql)) {
-            update.setString(1, key);
-            update.setInt(2, maxFailures);
-            update.setLong(3, blockSeconds);
-            update.setLong(4, windowSeconds);
-            update.setLong(5, windowSeconds);
-            update.setInt(6, maxFailures);
-            update.setLong(7, blockSeconds);
-            update.executeUpdate();
-        }
-    }
-
-    private void cleanup(java.sql.Connection c) throws Exception {
-        try (var p = c.prepareStatement("DELETE FROM sys_api_key_rate_limit WHERE (blocked_until IS NULL AND window_started_at < TIMESTAMPADD(SECOND, -?, CURRENT_TIMESTAMP)) OR (blocked_until IS NOT NULL AND blocked_until < CURRENT_TIMESTAMP)")) {
-            p.setLong(1, windowSeconds); p.executeUpdate();
-        }
+        boolean currentWindow = row.windowStartedAt() != null
+                && row.windowStartedAt().plusSeconds(windowSeconds).isAfter(now);
+        int attempts = currentWindow ? row.attemptCount() + 1 : 1;
+        Instant windowStartedAt = currentWindow ? row.windowStartedAt() : now;
+        Instant blockedUntil = attempts >= maxFailures ? now.plusSeconds(blockSeconds) : null;
+        row.update(windowStartedAt, attempts, blockedUntil);
     }
 
     private void validateConfig() {

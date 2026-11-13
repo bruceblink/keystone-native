@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -33,5 +34,14 @@ class ApiKeyRateLimiterTest {
         String sql = Files.readString(Path.of("src/main/resources/db/migration/V42__api_key_rate_limit.sql"));
         assertTrue(sql.contains("scope_key CHAR(64) PRIMARY KEY"));
         assertTrue(!sql.contains("api_key") || sql.contains("sys_api_key_rate_limit"));
+    }
+
+    @Test
+    void limiterUsesPanacheRepositoryInsteadOfJdbc() throws Exception {
+        String source = Files.readString(Path.of("src/main/java/app/keystone/auth/ApiKeyRateLimiter.java"));
+        assertTrue(source.contains("ApiKeyRateLimitRepository"));
+        assertTrue(source.contains("@Transactional"));
+        assertFalse(source.contains("DataSource"));
+        assertFalse(source.contains("prepareStatement"));
     }
 }
