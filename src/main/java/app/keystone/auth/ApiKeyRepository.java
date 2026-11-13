@@ -1,6 +1,5 @@
 package app.keystone.auth;
 
-import app.keystone.user.UserRepository;
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
 import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -26,7 +25,7 @@ import java.util.UUID;
 public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
     private final SecureRandom random = new SecureRandom();
 
-    @Inject UserRepository users;
+    @Inject ApiKeyUserRepository users;
     @Inject ServiceSubjectRepository subjects;
 
     /** 多节点部署使用参数化 HQL 条件更新，避免本地缓存造成重复写入。 */
@@ -55,15 +54,17 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
     @Transactional
     public Principal authenticate(String value) {
         if (value == null || value.isBlank()) return null;
-        ApiKeyEntity key = find("keyHash", hash(value)).firstResult();
-        if (key == null || key.revokedAt() != null || expired(key.expiresAt())) return null;
+        Instant now = Instant.now();
+        ApiKeyEntity key = find("keyHash = ?1 and revokedAt is null and (expiresAt is null or expiresAt > ?2)",
+                hash(value), now).firstResult();
+        if (key == null) return null;
         if (key.subjectId() == null) return null;
         ServiceSubjectEntity subject = subjects.findById(key.subjectId());
         if (subject == null || !subject.enabled()) return null;
-        var user = users.findAuthUser(key.userId());
-        if (user.isEmpty()) return null;
+        ApiKeyUserEntity user = users.findEnabled(key.userId());
+        if (user == null) return null;
         touchLastUsed(key.id());
-        return new Principal(key.id(), key.subjectId(), key.userId(), user.get().username(), split(key.scopes()));
+        return new Principal(key.id(), key.subjectId(), key.userId(), user.username(), split(key.scopes()));
     }
 
     /** 只在达到最小间隔后更新使用时间，条件更新由数据库原子执行。 */
@@ -139,10 +140,6 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         if (expiresAt != null && (expiresAt.isBefore(now) || expiresAt.isAfter(now.plusSeconds(90L * 24 * 3600)))) {
             throw new IllegalArgumentException("expiresAt must be within 90 days");
         }
-    }
-
-    private static boolean expired(Instant expiresAt) {
-        return expiresAt != null && !expiresAt.isAfter(Instant.now());
     }
 
     private static List<String> normalizeScopes(Collection<String> scopes) {

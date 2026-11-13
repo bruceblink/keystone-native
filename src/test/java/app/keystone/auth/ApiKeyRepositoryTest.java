@@ -15,7 +15,9 @@ class ApiKeyRepositoryTest {
         String source = Files.readString(Path.of("src/main/java/app/keystone/auth/ApiKeyRepository.java"));
 
         assertTrue(source.contains("PanacheRepository<ApiKeyEntity>"));
+        assertTrue(source.contains("ApiKeyUserRepository"));
         assertTrue(source.contains("@Transactional"));
+        assertFalse(source.contains("import app.keystone.user.UserRepository"));
         assertFalse(source.contains("DataSource"));
         assertFalse(source.contains("PreparedStatement"));
         assertFalse(source.contains("prepareStatement"));
