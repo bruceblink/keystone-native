@@ -18,7 +18,7 @@
 
 ## 当前实现证据
 
-截至当前分支实现，受保护资源已经使用 `@RequiresPermission` 和集中授权服务。用户接口已接入 `ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` 范围策略。API Key 已接入 Quarkus `HttpAuthenticationMechanism`，支持服务主体、范围交集、轮换、撤销、过期和最后使用时间节流。数据访问层已开始迁移到 Hibernate ORM with Panache；安全事件、登录审计、操作日志、登录和 API Key 限流记录以及用户登录认证已使用 ORM Repository，其他旧 Repository 仍待迁移。
+截至当前分支实现，受保护资源已经使用 `@RequiresPermission` 和集中授权服务。用户接口已接入 `ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` 范围策略。API Key 已接入 Quarkus `HttpAuthenticationMechanism`，支持服务主体、范围交集、轮换、撤销、过期和最后使用时间节流。数据访问层已统一使用 Hibernate ORM with Panache；安全事件、登录审计、操作日志、限流、MFA、用户、角色、部门和管理资源已使用 ORM Repository，后续重点是并发验收、故障回滚和外部身份能力。
 
 当前会话状态保存在 `sys_auth_session`，刷新令牌保留在 `sys_refresh_token` 作为轮换明细。访问令牌有效期为五分钟，并校验 `iss`、`sub`、`aud`、`jti`、`sid`、`iat`、`exp` 和 `permission_version`。权限版本变化、密码变更、用户禁用和会话撤销都会使受影响的访问令牌失效。
 
@@ -100,7 +100,7 @@ API Key 使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存 SHA-256 �
 
 Flyway 继续负责数据库结构迁移，Hibernate ORM 设置为不自动创建或修改表结构。新增业务数据访问代码不得直接注入 `DataSource`、拼接 SQL 或使用 `PreparedStatement`。只有 Flyway 迁移文件和经过单独记录的数据库特定并发操作可以保留原生 SQL。
 
-第一阶段已将 `sys_security_event` 迁移到 `SecurityEventEntity` 和 `SecurityEventRepository`；登录审计已使用 `LoginLogEntity` 和 `LoginLogRepository`，操作日志已使用 `OperationLogEntity` 和 `OperationLogRepository`，登录、API Key 和 MFA 限流已分别使用 `LoginRateLimitEntity`、`ApiKeyRateLimitEntity`、`MfaRateLimitEntity` 及对应的 Panache Repository，API Key 主记录已使用 `ApiKeyEntity`、`ServiceSubjectEntity` 和对应的 Panache Repository，API Key 认证和签发权限读取已使用独立的用户、角色和权限 ORM 映射，会话已使用 `AuthSessionEntity`、`RefreshTokenEntity`、`RefreshTokenEventEntity` 和对应的 Panache Repository，MFA 会话状态已复用 `AuthSessionEntity`，MFA 认证请求、TOTP 状态和恢复码已使用 ORM Repository，用户创建、认证、失败登录锁定、密码修改、用户资料与角色综合更新、用户删除、列表和范围查询、数据范围读取、权限读取、权限版本和登录元数据已使用 ORM 用户和授权 Repository，角色管理和部门管理已使用 ORM Repository。其他旧 Repository 仍使用 JDBC，后续按安全边界和事务复杂度分批迁移。迁移期间不得在同一业务职责中新增两套持久化实现。
+第一阶段已将 `sys_security_event` 迁移到 `SecurityEventEntity` 和 `SecurityEventRepository`；登录审计已使用 `LoginLogEntity` 和 `LoginLogRepository`，操作日志已使用 `OperationLogEntity` 和 `OperationLogRepository`，登录、API Key 和 MFA 限流已分别使用 `LoginRateLimitEntity`、`ApiKeyRateLimitEntity`、`MfaRateLimitEntity` 及对应的 Panache Repository，API Key 主记录已使用 `ApiKeyEntity`、`ServiceSubjectEntity` 和对应的 Panache Repository，API Key 认证和签发权限读取已使用独立的用户、角色和权限 ORM 映射，会话已使用 `AuthSessionEntity`、`RefreshTokenEntity`、`RefreshTokenEventEntity` 和对应的 Panache Repository，MFA 会话状态已复用 `AuthSessionEntity`，MFA 认证请求、TOTP 状态和恢复码已使用 ORM Repository，用户创建、认证、失败登录锁定、密码修改、用户资料与角色综合更新、用户删除、列表和范围查询、数据范围读取、权限读取、权限版本和登录元数据已使用 ORM 用户和授权 Repository，角色管理、部门管理、配置、字典、任务、菜单、通知和岗位管理已使用 ORM Repository。业务仓储不再直接使用 JDBC；后续工作集中在并发验收、故障回滚、运行监测和未完成的外部身份能力。迁移期间不得在同一业务职责中新增两套持久化实现。
 
 当前已新增 `sys_api_key`、`sys_auth_session`、MFA 基础表和相关用户字段。后续仍需要补充以下表或字段：
 
