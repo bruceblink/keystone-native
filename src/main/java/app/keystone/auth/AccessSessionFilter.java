@@ -7,6 +7,7 @@ import jakarta.ws.rs.container.ContainerRequestContext;
 import jakarta.ws.rs.container.ContainerRequestFilter;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.Provider;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.quarkus.security.identity.SecurityIdentity;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
@@ -16,6 +17,7 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
 public class AccessSessionFilter implements ContainerRequestFilter {
     @Inject SecurityIdentity identity;
     @Inject SessionRepository sessions;
+    @Inject ObjectMapper objectMapper;
 
     @Override
     public void filter(ContainerRequestContext context) {
@@ -26,8 +28,8 @@ public class AccessSessionFilter implements ContainerRequestFilter {
             context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access token session identifier is required").build());
             return;
         }
-        long userId = claimLong(jwt.getClaim("userId"));
-        long permissionVersion = claimLong(jwt.getClaim("permission_version"));
+        long userId = claimLong(claim(jwt, "userId"));
+        long permissionVersion = claimLong(claim(jwt, "permission_version"));
         if (userId <= 0 || permissionVersion < 0) {
             context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access token permission version is required").build());
             return;
@@ -42,4 +44,21 @@ public class AccessSessionFilter implements ContainerRequestFilter {
     /** JWT 库可能把整数声明还原为不同 Number 类型，统一转换后再查询数据库。 */
     private static long claimLong(Object value) { return value instanceof Number number ? number.longValue() : value instanceof String text ? parse(text) : -1; }
     private static long parse(String value) { try { return Long.parseLong(value); } catch (NumberFormatException e) { return -1; } }
+
+    private Object claim(JsonWebToken jwt, String name) {
+        Object value = jwt.getClaim(name);
+        if (value instanceof Number || value instanceof String) return value;
+        try {
+            String raw = jwt.getRawToken();
+            if (raw == null) return null;
+            String[] parts = raw.split("\\.", -1);
+            if (parts.length != 3) return null;
+            String payload = new String(java.util.Base64.getUrlDecoder().decode(parts[1]), java.nio.charset.StandardCharsets.UTF_8);
+            var node = objectMapper.readTree(payload).get(name);
+            if (node == null || node.isNull()) return null;
+            return node.isNumber() ? node.numberValue() : node.asText();
+        } catch (Exception e) {
+            return null;
+        }
+    }
 }

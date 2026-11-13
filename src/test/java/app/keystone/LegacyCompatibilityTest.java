@@ -9,7 +9,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 
 @QuarkusTest
-class LegacyCompatibilityTest {
+class LegacyCompatibilityTest extends AuthTestFixture {
     @Test
     void publicLoginCompatibilityEndpointsRemainAvailable() {
         given().when().get("/getConfig").then().statusCode(200).body("data.captchaEnabled", is(false)).body("data.registerEnabled", is(false));

@@ -1,6 +1,6 @@
 # Keystone Native
 
-Keystone 的独立 Quarkus Native 重实现，使用 **Quarkus 3.40.1 + Gradle + Java 21 + MySQL + Flyway + SmallRye JWT（RS256）**。项目与原有 Spring Boot 工程并行演进，不修改原项目。
+Keystone 的独立 Quarkus Native 重实现，使用 **Quarkus 3.40.1 + Gradle + GraalVM JDK 25 + MySQL + Flyway + SmallRye JWT（RS256）**。项目与原有 Spring Boot 工程并行演进，不修改原项目。
 
 ## 已实现功能
 
@@ -29,7 +29,7 @@ curl -X POST http://localhost:8080/api/v1/auth/change-initial-password \
 
 ## 本地运行
 
-需要 JDK 21+ 和 Docker（用于 MySQL）。项目使用 Gradle Wrapper，无需预装 Gradle。
+需要 GraalVM JDK 25 和 Docker（用于 MySQL）。项目使用 Gradle Wrapper，无需预装 Gradle。
 
 ```bash
 docker compose up -d mysql
@@ -105,7 +105,7 @@ GitHub Actions 在每次推送和 Pull Request 中执行 MySQL 集成测试、JV
 - `docker image inspect .Size` 是镜像层解压后的本地占用，不是 registry 传输大小。
 - `docker save | gzip` 是压缩后的传输归档大小，不代表容器运行时占用。
 - `MiB` 使用 `1 MiB = 1,048,576 bytes`；Docker 的 `MB` 显示为四舍五入后的展示值。
-- JVM 对照镜像使用 `eclipse-temurin:21-jre`；Native 镜像使用 `Dockerfile` 中固定 digest 的 Quarkus Micro Image。
+- JVM 构建和测试统一使用 GraalVM JDK 25；Native 镜像使用 `Dockerfile` 中固定 digest 的 Quarkus Micro Image。
 - Native 镜像大小按当前 runner 与固定 digest 的运行时镜像层实测；完整多阶段 Docker 构建需要向 Docker BuildKit 提供 `proxy-ca` secret（如使用代理环境）。
 - Spring Boot 的 95.6 MB 是原 Keystone 的可执行 Fat JAR，用作参考基线，不是本仓库生成的产物。
 

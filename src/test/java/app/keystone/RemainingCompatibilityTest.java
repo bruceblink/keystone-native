@@ -9,7 +9,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 
 @QuarkusTest
-class RemainingCompatibilityTest {
+class RemainingCompatibilityTest extends AuthTestFixture {
     @Test
     void rootMenuJobProfileAndExportRoutesAreAvailable() {
         String token = given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")

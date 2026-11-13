@@ -10,7 +10,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.hasItem;
 
 @QuarkusTest
-class JobResourceTest {
+class JobResourceTest extends AuthTestFixture {
     @Test
     void annotatedJobCanBeDiscoveredAndTriggered() {
         String token = login();

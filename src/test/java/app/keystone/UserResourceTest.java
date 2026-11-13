@@ -10,7 +10,7 @@ import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.not;
 
 @QuarkusTest
-class UserResourceTest {
+class UserResourceTest extends AuthTestFixture {
     @Test
     void adminCanFilterAndUpdateProfileFieldsButRegularUsersOnlySeeTheirOwnRecord() {
         String admin = login("admin", "password");

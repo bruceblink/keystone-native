@@ -10,7 +10,7 @@ import static org.hamcrest.Matchers.containsString;
 import static org.hamcrest.Matchers.is;
 
 @QuarkusTest
-class FileResourceTest {
+class FileResourceTest extends AuthTestFixture {
     @Test
     void authenticatedUploadAndSafeDownloadWork() {
         String token = given().contentType("application/json").body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")

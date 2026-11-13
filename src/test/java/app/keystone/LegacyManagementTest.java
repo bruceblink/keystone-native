@@ -8,7 +8,7 @@ import static io.restassured.http.ContentType.JSON;
 import static org.hamcrest.Matchers.is;
 
 @QuarkusTest
-class LegacyManagementTest {
+class LegacyManagementTest extends AuthTestFixture {
     @Test
     void originalManagementRoutesAreAvailable() {
         String token = given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")

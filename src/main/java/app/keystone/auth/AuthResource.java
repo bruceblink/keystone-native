@@ -196,7 +196,9 @@ public class AuthResource {
     @POST @Path("/logout") @RequiresPermission("session:logout")
     public Response logout() {
         if (identity.isAnonymous() || !(identity.getPrincipal() instanceof JsonWebToken jwt)) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("authentication is required")).build();
-        sessions.revokeSession(jwt.getClaim("sid"));
+        Object sessionId = JwtClaims.get(jwt, "sid");
+        if (sessionId == null || sessionId.toString().isBlank()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("authentication session is incomplete")).build();
+        sessions.revokeSession(sessionId.toString());
         return Response.ok(ApiResponse.ok(java.util.Map.of("loggedOut", true))).build();
     }
 
@@ -231,8 +233,8 @@ public class AuthResource {
         return new CurrentHumanSession(userId, sessionId, clientId);
     }
 
-    private static String claimText(JsonWebToken jwt, String name) { Object value = jwt.getClaim(name); return value == null ? null : value.toString(); }
-    private static long claimLong(JsonWebToken jwt, String name) { Object value = jwt.getClaim(name); if (value instanceof Number number) return number.longValue(); try { return Long.parseLong(String.valueOf(value)); } catch (Exception e) { return -1; } }
+    private static String claimText(JsonWebToken jwt, String name) { Object value = JwtClaims.get(jwt, name); return value == null ? null : value.toString(); }
+    private static long claimLong(JsonWebToken jwt, String name) { Object value = JwtClaims.get(jwt, name); if (value instanceof Number number) return number.longValue(); try { return Long.parseLong(String.valueOf(value)); } catch (Exception e) { return -1; } }
     /** 签发失败时撤销刚创建或刚轮换的会话，避免令牌不可用但刷新状态仍保持活动。 */
     private Response tokenUnavailable(String sessionId) {
         try { sessions.revokeSession(sessionId); } catch (IllegalStateException ignored) { }

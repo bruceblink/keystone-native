@@ -9,7 +9,7 @@ import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.is;
 
 @QuarkusTest
-class LegacyUserRoleTest {
+class LegacyUserRoleTest extends AuthTestFixture {
     @Test
     void originalUserAndRoleRoutesSupportCrudAndAssignment() {
         String token = given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")

@@ -79,12 +79,12 @@ public class MfaStepUpInterceptor {
         }
 
         private static String claimText(JsonWebToken jwt, String name) {
-            Object value = jwt.getClaim(name);
+            Object value = JwtClaims.get(jwt, name);
             return value == null ? null : value.toString();
         }
 
         private static long claimLong(JsonWebToken jwt, String name) {
-            Object value = jwt.getClaim(name);
+            Object value = JwtClaims.get(jwt, name);
             if (value instanceof Number number) return number.longValue();
             try {
                 return Long.parseLong(String.valueOf(value));

@@ -12,7 +12,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.hamcrest.Matchers.*;
 
 @QuarkusTest
-class ApiKeyResourceTest {
+class ApiKeyResourceTest extends AuthTestFixture {
     @Inject DataSource dataSource;
 
     @Test
@@ -55,7 +55,7 @@ class ApiKeyResourceTest {
         var issued = issue(admin, "rotation", "audit:read");
         String oldKey = issued.path("data.apiKey");
         String oldId = issued.path("data.id");
-        var rotated = given().auth().oauth2(admin)
+        var rotated = given().auth().oauth2(admin).contentType(JSON)
                 .when().post("/v1/api-keys/" + oldId + "/rotate")
                 .then().statusCode(200)
                 .body("data.apiKey", startsWith("ks_live_"))

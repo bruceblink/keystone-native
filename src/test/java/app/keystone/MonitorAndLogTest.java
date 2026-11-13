@@ -9,7 +9,7 @@ import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.is;
 
 @QuarkusTest
-class MonitorAndLogTest {
+class MonitorAndLogTest extends AuthTestFixture {
     @Test
     void adminCanInspectSessionsAndAuditLogs() {
         String token = given().contentType(JSON).header("X-Forwarded-For", "192.0.2.10").body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
