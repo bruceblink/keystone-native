@@ -121,6 +121,7 @@ JWT_PRIVATE_KEY_LOCATION
 JWT_PUBLIC_KEY_LOCATION
 JWT_KEY_ID
 JWT_JWK_CACHE_SECONDS（可选，默认 60，范围 1-3600）
+JWT_JWK_KEYS（可选，默认 `none`；使用 `old-kid=旧公钥位置;another-kid=另一公钥位置` 发布重叠 JWK）
 TRUSTED_PROXY_CIDRS（可选，逗号分隔的受信反向代理 CIDR；为空时忽略 X-Forwarded-For）
 JWT_ISSUER（可选，默认 keystone-native）
 JWT_AUDIENCE（可选，默认 keystone-api）

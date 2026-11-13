@@ -26,11 +26,15 @@ public class JwtConfigurationStartupCheck {
     String privateKeyLocation;
     @ConfigProperty(name = "keystone.security.jwt.key-id", defaultValue = "")
     String keyId;
+    @ConfigProperty(name = "keystone.security.jwt.jwk-keys", defaultValue = "")
+    String additionalJwkKeys;
 
     /** 启动前验证密钥标识和公私钥位置；失败会阻止应用进入可服务状态。 */
     void onStart(@Observes StartupEvent ignored) {
         AccessTokenService.requireKeyId(keyId);
-        requireReadable("JWT public key", publicKeyLocation);
+        for (JwkSetService.KeySource source : JwkSetService.keySources(publicKeyLocation, keyId, additionalJwkKeys)) {
+            requireReadable("JWT public key " + source.keyId(), source.location());
+        }
         requireReadable("JWT signing key", privateKeyLocation);
     }
 

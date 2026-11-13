@@ -89,7 +89,7 @@ API Key 使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存 SHA-256 �
 ### JWT 公钥发现
 
 - `GET /api/.well-known/jwks.json`：公开返回当前外部 RSA 公钥的 RFC 7517 JWK Set。响应只包含 `kty`、`kid`、`alg`、`use`、`n` 和 `e`，公钥读取失败返回 `503`。缺少或非法的 `JWT_KEY_ID` 属于启动配置错误，应用应在就绪检查中失败。
-- 当前实现只发布一个配置 key，并使用 `JWT_JWK_CACHE_SECONDS` 控制 1 至 3600 秒的已校验快照缓存。缓存过期后的读取、解析和 JWK 组装全部成功时才替换快照；失败时继续提供上一个有效快照，直到缓存过期后请求失败。发布双 key、验证旧 key 的存留时间和旧 key 清理必须由后续 key registry 统一管理。
+- 当前实现默认发布一个配置 key，也支持通过 `JWT_JWK_KEYS` 以 `kid=location;kid=location` 配置多个重叠公钥，并使用 `JWT_JWK_CACHE_SECONDS` 控制 1 至 3600 秒的已校验快照缓存。缓存过期后的读取、解析和 JWK 组装全部成功时才替换快照；失败时继续提供上一个有效快照，直到缓存过期后请求失败。持久化 key registry、旧 key 验证配置和到期清理仍需后续实现。
 - 兼容客户端仍可调用 `GET /login/rsa-public-key`，但该接口读取同一个外部公钥位置，不再读取仓库内资源。
 
 ## 数据模型变更

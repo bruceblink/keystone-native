@@ -38,6 +38,26 @@ class JwkSetServiceTest {
     }
 
     @Test
+    void publishesConfiguredOverlappingKeys() throws Exception {
+        Path key = Files.createTempFile("keystone-jwk-overlap-", ".pem");
+        try {
+            Files.writeString(key, Files.readString(Path.of("src/test/resources/keys/publicKey.pem")));
+            var service = new JwkSetService("keys/publicKey.pem", "current", 60, "old=" + key);
+            assertEquals(2, service.current().keys().size());
+            assertEquals("current", service.current().keys().get(0).kid());
+            assertEquals("old", service.current().keys().get(1).kid());
+        } finally {
+            Files.deleteIfExists(key);
+        }
+    }
+
+    @Test
+    void rejectsDuplicateOverlappingKeyIds() {
+        assertThrows(IllegalArgumentException.class,
+                () -> new JwkSetService("keys/publicKey.pem", "current", 60, "current=keys/publicKey.pem"));
+    }
+
+    @Test
     void keepsOneValidatedSnapshotForJwkAndPemReaders() throws Exception {
         Path key = Files.createTempFile("keystone-jwk-", ".pem");
         try {
