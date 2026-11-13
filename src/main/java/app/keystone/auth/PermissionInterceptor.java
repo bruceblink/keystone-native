@@ -1,5 +1,6 @@
 package app.keystone.auth;
 
+import app.keystone.audit.SecurityEventRepository;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
@@ -17,6 +18,7 @@ import jakarta.ws.rs.core.Response;
 public class PermissionInterceptor {
     @Inject SecurityIdentity identity;
     @Inject AuthorizationService authorization;
+    @Inject SecurityEventRepository securityEvents;
 
     @AroundInvoke
     Object check(InvocationContext context) throws Exception {
@@ -25,10 +27,23 @@ public class PermissionInterceptor {
         if (identity == null || identity.isAnonymous()) throw new NotAuthorizedException("authentication is required");
         if (requirement == null) throw new ForbiddenException("permission denied");
         try {
-            if (!authorization.allowed(identity, requirement.value())) throw new ForbiddenException("permission denied");
+            if (!authorization.allowed(identity, requirement.value())) {
+                recordDenied(requirement.value(), "permission denied");
+                throw new ForbiddenException("permission denied");
+            }
         } catch (IllegalStateException e) {
+            recordDenied(requirement.value(), "authorization state is unavailable");
             throw new ServiceUnavailableException(Response.status(Response.Status.SERVICE_UNAVAILABLE).entity("authorization state is unavailable").build(), e);
         }
         return context.proceed();
+    }
+
+    private void recordDenied(String permission, String detail) {
+        try {
+            String actor = identity == null || identity.isAnonymous() ? null : identity.getPrincipal().getName();
+            Object credentialValue = identity == null || identity.isAnonymous() ? null : identity.getAttribute("credentialType");
+            String credential = credentialValue == null ? null : String.valueOf(credentialValue);
+            securityEvents.record("AUTHORIZATION", actor, credential, null, "permission", permission, "DENIED", detail);
+        } catch (IllegalStateException ignored) { }
     }
 }
