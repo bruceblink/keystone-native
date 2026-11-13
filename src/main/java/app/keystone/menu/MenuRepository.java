@@ -13,7 +13,7 @@ import java.util.Set;
 
 /** 菜单管理入口；具体持久化由 Panache Repository 负责。 */
 @ApplicationScoped
-public class MenuRepository implements PanacheRepositoryBase<MenuEntity, Long> {
+public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.util.UUID> {
     @Inject MenuRoleOrmRepository roles;
 
     @Transactional
@@ -21,7 +21,7 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, Long> {
         if (roleCodes == null || roleCodes.isEmpty()) return List.of();
         return find("select distinct m from MenuEntity m join m.roles role "
                         + "where m.enabled = true and role.code in ?1 "
-                        + "order by coalesce(m.parentId, 0), m.sortOrder, m.id", roleCodes)
+                        + "order by m.parentId, m.sortOrder, m.id", roleCodes)
                 .list().stream().map(MenuEntity::toModel).toList();
     }
 
@@ -40,16 +40,16 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, Long> {
     }
 
     @Transactional
-    public Menu update(long id, MenuRequest request) {
-        MenuEntity entity = find("id", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    public Menu update(String id, MenuRequest request) {
+        MenuEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("menu not found");
         entity.update(request);
         return entity.toModel();
     }
 
     @Transactional
-    public void delete(long id) {
-        MenuEntity entity = find("id", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    public void delete(String id) {
+        MenuEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("menu not found");
         try {
             delete(entity);
@@ -60,8 +60,8 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, Long> {
     }
 
     @Transactional
-    public void assignRoles(long menuId, List<String> roleCodes) {
-        MenuEntity menu = find("id", menuId).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    public void assignRoles(String menuId, List<String> roleCodes) {
+        MenuEntity menu = find("id", app.keystone.identity.UuidValues.parse(menuId)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (menu == null) throw new java.util.NoSuchElementException("menu not found");
         var normalized = new LinkedHashSet<String>();
         for (String code : roleCodes == null ? List.<String>of() : roleCodes) {
@@ -87,7 +87,7 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, Long> {
         return false;
     }
 
-    public record MenuRequest(Long parentId, String code, String name, String path, String component,
+    public record MenuRequest(String parentId, String code, String name, String path, String component,
                               String menuType, String permission, Integer sortOrder, Boolean enabled) {
     }
 }

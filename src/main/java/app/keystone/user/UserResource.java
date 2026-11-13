@@ -106,7 +106,7 @@ public class UserResource {
     private static Response forbidden() { return Response.status(Response.Status.FORBIDDEN).entity(ApiResponse.error("data scope denied")).build(); }
     private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).build(); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("user not found")).build(); }
-    public record UserRequest(String username, String password, String displayName, String deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, Boolean clearDept, List<String> roleCodes) {
+    public record UserRequest(String username, String password, String displayName, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, Boolean clearDept, List<String> roleCodes) {
         public boolean clearDepartment() { return Boolean.TRUE.equals(clearDept); }
     }
     public record PasswordRequest(String password) {}

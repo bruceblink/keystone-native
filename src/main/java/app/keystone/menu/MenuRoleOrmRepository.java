@@ -8,7 +8,7 @@ import java.util.List;
 
 /** 读取菜单角色绑定所需的启用角色。 */
 @ApplicationScoped
-class MenuRoleOrmRepository implements PanacheRepositoryBase<ApiKeyRoleEntity, Long> {
+class MenuRoleOrmRepository implements PanacheRepositoryBase<ApiKeyRoleEntity, java.util.UUID> {
     List<ApiKeyRoleEntity> findEnabledByCodes(List<String> codes) {
         return find("code in ?1 and enabled = true", codes).list();
     }

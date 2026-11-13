@@ -66,8 +66,9 @@ public class ApiKeyUserEntity {
     @Convert(converter = UuidBinaryConverter.class)
     private String deptId;
 
-    @Column(name = "post_id")
-    private Long postId;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(name = "post_id", columnDefinition = "BINARY(16)")
+    private UUID postId;
 
     @Column(length = 128)
     private String email;
@@ -104,14 +105,14 @@ public class ApiKeyUserEntity {
     }
 
     /** 创建用户实体；调用方必须在同一事务内绑定已经校验过的启用角色。 */
-    ApiKeyUserEntity(String username, String passwordHash, String displayName, String deptId, Long postId,
+    ApiKeyUserEntity(String username, String passwordHash, String displayName, String deptId, String postId,
                      String email, String phoneNumber, Integer sex, String avatar, String remark) {
         this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.username = username;
         this.passwordHash = passwordHash;
         this.displayName = displayName;
         this.deptId = deptId;
-        this.postId = postId;
+        this.postId = postId == null ? null : app.keystone.identity.UuidValues.parse(postId);
         this.email = email;
         this.phoneNumber = phoneNumber;
         this.sex = sex;
@@ -234,12 +235,12 @@ public class ApiKeyUserEntity {
     }
 
     /** 更新用户资料字段；调用方必须在用户行写锁事务内调用。 */
-    void updateProfile(String newDisplayName, boolean updateDept, String newDeptId, Long newPostId,
+    void updateProfile(String newDisplayName, boolean updateDept, String newDeptId, String newPostId,
                        String newEmail, String newPhoneNumber, Integer newSex, String newAvatar,
                        String newRemark, Boolean newEnabled) {
         if (newDisplayName != null && !newDisplayName.isBlank()) displayName = newDisplayName.trim();
         if (updateDept) deptId = newDeptId;
-        if (newPostId != null) postId = newPostId;
+        if (newPostId != null) postId = app.keystone.identity.UuidValues.parse(newPostId);
         if (newEmail != null) email = emptyToNull(newEmail);
         if (newPhoneNumber != null) phoneNumber = emptyToNull(newPhoneNumber);
         if (newSex != null) sex = newSex;
@@ -261,13 +262,13 @@ public class ApiKeyUserEntity {
         var roleCodes = roles.stream().filter(ApiKeyRoleEntity::enabled).map(ApiKeyRoleEntity::code).sorted().toList();
         return new UserRepository.AuthUser(id(), username, displayName,
                 roleCodes,
-                mustChangePassword, deptId, postId, email, phoneNumber, sex, avatar, loginIp, loginAt, remark);
+                mustChangePassword, deptId, postId == null ? null : postId.toString(), email, phoneNumber, sex, avatar, loginIp, loginAt, remark);
     }
 
     /** 转换为用户管理接口返回的公开字段，不包含密码和凭据版本。 */
     User toUser() {
         var roleCodes = roles.stream().filter(ApiKeyRoleEntity::enabled).map(ApiKeyRoleEntity::code).sorted().toList();
-        return new User(id(), username, displayName, deptId, postId, enabled,
+        return new User(id(), username, displayName, deptId, postId == null ? null : postId.toString(), enabled,
                 email, phoneNumber, sex, avatar, loginIp, loginAt, remark,
                 roleCodes);
     }

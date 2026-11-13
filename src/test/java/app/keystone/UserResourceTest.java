@@ -16,10 +16,10 @@ class UserResourceTest extends AuthTestFixture {
         String admin = login("admin", "password");
         String username = "profile_" + System.nanoTime();
         String peerUsername = "profile_peer_" + System.nanoTime();
-        int id = given().auth().oauth2(admin).contentType(JSON)
+        String id = given().auth().oauth2(admin).contentType(JSON)
                 .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Profile User\",\"email\":\"old@example.test\",\"phoneNumber\":\"13800000000\",\"roleCodes\":[\"USER\"]}")
                 .when().post("/v1/users").then().statusCode(201).body("data.email", is("old@example.test")).extract().path("data.id");
-        int peerId = given().auth().oauth2(admin).contentType(JSON)
+        String peerId = given().auth().oauth2(admin).contentType(JSON)
                 .body("{\"username\":\"" + peerUsername + "\",\"password\":\"password\",\"displayName\":\"Peer User\",\"roleCodes\":[\"USER\"]}")
                 .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
 
@@ -40,7 +40,7 @@ class UserResourceTest extends AuthTestFixture {
     void changingUserRolesInvalidatesExistingAccessToken() {
         String admin = login("admin", "password");
         String username = "permission_version_" + System.nanoTime();
-        int id = given().auth().oauth2(admin).contentType(JSON)
+        String id = given().auth().oauth2(admin).contentType(JSON)
                 .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Version User\",\"roleCodes\":[\"USER\"]}")
                 .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
         String user = login(username, "password");

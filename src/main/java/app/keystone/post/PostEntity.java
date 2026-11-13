@@ -2,18 +2,20 @@ package app.keystone.post;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import java.util.UUID;
 
 /** 映射岗位基础信息；数据库表结构由 Flyway 管理。 */
 @Entity
 @Table(name = "sys_post")
 public class PostEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(nullable = false, length = 64)
     private String code;
@@ -31,6 +33,7 @@ public class PostEntity {
     }
 
     PostEntity(String code, String name, int sortOrder) {
+        this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.code = code.trim();
         this.name = name.trim();
         this.sortOrder = sortOrder;
@@ -44,6 +47,6 @@ public class PostEntity {
     }
 
     Post toModel() {
-        return new Post(id, code, name, sortOrder, enabled);
+        return new Post(id == null ? null : id.toString(), code, name, sortOrder, enabled);
     }
 }

@@ -64,7 +64,7 @@ public class UserRepository {
         return create(username, password, displayName, deptId, null, null, null, null, null, null, roleCodes);
     }
 
-    public User create(String username, String password, String displayName, String deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar, String remark, List<String> roleCodes) {
+    public User create(String username, String password, String displayName, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, List<String> roleCodes) {
         if (username == null || username.isBlank() || password == null || password.isBlank() || displayName == null || displayName.isBlank()) throw new IllegalArgumentException("username, password and displayName are required");
         passwordPolicy.validate(username, password);
         try {
@@ -82,7 +82,7 @@ public class UserRepository {
         return updateExtended(id, password, displayName, deptId != null, deptId, null, null, null, null, null, null, enabled, roleCodes);
     }
 
-    public User updateExtended(String id, String password, String displayName, boolean updateDept, String deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
+    public User updateExtended(String id, String password, String displayName, boolean updateDept, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
         try {
             return ormUsers.updateUser(id, password, displayName, updateDept, deptId, postId,
                     email, phoneNumber, sex, avatar, remark, enabled, roleCodes, passwordPolicy);
@@ -164,7 +164,7 @@ public class UserRepository {
     }
 
     public record AuthUser(String id, String username, String displayName, List<String> roles, boolean mustChangePassword,
-                           String deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar,
+                           String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar,
                            String loginIp, java.time.Instant loginAt, String remark) {}
     public record Page(List<User> items, int page, int size, long total) {}
 }

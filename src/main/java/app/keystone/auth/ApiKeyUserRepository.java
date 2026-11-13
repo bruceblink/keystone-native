@@ -42,7 +42,7 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
 
     /** 在一个 ORM 事务中创建用户并绑定启用角色。 */
     @Transactional
-    public User createUser(String username, String passwordHash, String displayName, String deptId, Long postId,
+    public User createUser(String username, String passwordHash, String displayName, String deptId, String postId,
                            String email, String phoneNumber, Integer sex, String avatar, String remark,
                            List<String> roleCodes) {
         var resolvedRoles = resolveRoles(roleCodes);
@@ -56,7 +56,7 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
     /** 在一条用户写锁事务中完成资料、密码和角色更新。 */
     @Transactional
     public User updateUser(String userId, String password, String displayName, boolean updateDept, String deptId,
-                           Long postId, String email, String phoneNumber, Integer sex, String avatar,
+                           String postId, String email, String phoneNumber, Integer sex, String avatar,
                            String remark, Boolean enabled, List<String> roleCodes, PasswordPolicy passwordPolicy) {
         ApiKeyUserEntity user = find("id = ?1", app.keystone.identity.UuidValues.parse(userId))
                 .withLock(LockModeType.PESSIMISTIC_WRITE)

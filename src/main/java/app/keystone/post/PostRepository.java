@@ -9,7 +9,7 @@ import java.util.List;
 
 /** 岗位管理入口；具体持久化由 Panache Repository 负责。 */
 @ApplicationScoped
-public class PostRepository implements PanacheRepositoryBase<PostEntity, Long> {
+public class PostRepository implements PanacheRepositoryBase<PostEntity, java.util.UUID> {
     @Transactional
     public List<Post> list() {
         return find("order by sortOrder, id").list().stream().map(PostEntity::toModel).toList();
@@ -30,16 +30,16 @@ public class PostRepository implements PanacheRepositoryBase<PostEntity, Long> {
     }
 
     @Transactional
-    public Post update(long id, String name, Integer sortOrder, Boolean enabled) {
-        PostEntity entity = find("id", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    public Post update(String id, String name, Integer sortOrder, Boolean enabled) {
+        PostEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("post not found");
         entity.update(name, sortOrder, enabled);
         return entity.toModel();
     }
 
     @Transactional
-    public void delete(long id) {
-        PostEntity entity = find("id", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    public void delete(String id) {
+        PostEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("post not found");
         delete(entity);
     }

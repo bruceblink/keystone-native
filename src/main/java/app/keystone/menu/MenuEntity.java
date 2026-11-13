@@ -4,8 +4,6 @@ import app.keystone.auth.ApiKeyRoleEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
@@ -14,17 +12,22 @@ import jakarta.persistence.Table;
 
 import java.util.HashSet;
 import java.util.Set;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** 映射菜单及其角色绑定；数据库表结构由 Flyway 管理。 */
 @Entity
 @Table(name = "sys_menu")
 public class MenuEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
-    @Column(name = "parent_id")
-    private Long parentId;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(name = "parent_id", columnDefinition = "BINARY(16)")
+    private UUID parentId;
 
     @Column(nullable = false, length = 64)
     private String code;
@@ -59,7 +62,8 @@ public class MenuEntity {
     }
 
     MenuEntity(MenuRepository.MenuRequest request) {
-        parentId = request.parentId();
+        id = UUID.fromString(app.keystone.identity.UuidValues.v7());
+        parentId = request.parentId() == null ? null : app.keystone.identity.UuidValues.parse(request.parentId());
         code = request.code().trim();
         name = request.name().trim();
         path = request.path();
@@ -86,6 +90,6 @@ public class MenuEntity {
     }
 
     Menu toModel() {
-        return new Menu(id, parentId, code, name, path, component, menuType, permission, sortOrder, enabled);
+        return new Menu(id == null ? null : id.toString(), parentId == null ? null : parentId.toString(), code, name, path, component, menuType, permission, sortOrder, enabled);
     }
 }
