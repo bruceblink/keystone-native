@@ -48,7 +48,8 @@ public class MfaStepUpInterceptor {
             var status = mfa.findStatus(claims.userId())
                     .orElseThrow(() -> new NotAuthorizedException("authentication subject is unavailable"));
             if (!status.required()) return context.proceed();
-            if (!status.enabled() || !sessions.hasRecentStepUp(claims.sessionId(), claims.userId(), claims.clientId(), STEP_UP_AGE, REQUIRED_ASSURANCE)) {
+            if (!"AAL2".equals(claims.assurance()) || claims.authenticationMethods().stream().noneMatch(method -> method.equals("otp") || method.equals("recovery"))
+                    || !status.enabled() || !sessions.hasRecentStepUp(claims.sessionId(), claims.userId(), claims.clientId(), STEP_UP_AGE, REQUIRED_ASSURANCE)) {
                 throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "permission_denied", "recent MFA step-up is required"));
             }
         } catch (NotAuthorizedException | ForbiddenException e) {
@@ -64,18 +65,22 @@ public class MfaStepUpInterceptor {
         return Claims.from(jwt);
     }
 
-    record Claims(String userId, String sessionId, String clientId) {
+    record Claims(String userId, String sessionId, String clientId, String tokenType, String assurance, java.util.List<String> authenticationMethods) {
         static Claims from(JsonWebToken jwt) {
             if (jwt == null) throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "human bearer authentication is required"));
             String userId = claimUuid(jwt, "userId");
             String sessionId = claimText(jwt, "sid");
             String clientId = claimText(jwt, "client_id");
+            String tokenType = claimText(jwt, "type");
+            String assurance = claimText(jwt, "aal");
+            java.util.List<String> authenticationMethods = JwtClaims.strings(jwt, "amr");
             if (userId == null || sessionId == null || sessionId.isBlank() || clientId == null || clientId.isBlank()
+                    || !"access".equals(tokenType) || !("AAL1".equals(assurance) || "AAL2".equals(assurance)) || authenticationMethods.isEmpty()
                     || !sessionId.matches("[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
                     || !clientId.matches("[a-z0-9][a-z0-9._-]{0,63}")) {
                 throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "authentication session is incomplete"));
             }
-            return new Claims(userId, sessionId, clientId);
+            return new Claims(userId, sessionId, clientId, tokenType, assurance, authenticationMethods);
         }
 
         private static String claimText(JsonWebToken jwt, String name) {

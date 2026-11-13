@@ -29,6 +29,13 @@ public class AccessSessionFilter implements ContainerRequestFilter {
             context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "access token session identifier is required"));
             return;
         }
+        String tokenType = stringClaim(jwt, "type");
+        String assurance = stringClaim(jwt, "aal");
+        if (!"access".equals(tokenType) || !("AAL1".equals(assurance) || "AAL2".equals(assurance))
+                || JwtClaims.strings(jwt, "amr").isEmpty()) {
+            context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "access token authentication claims are incomplete"));
+            return;
+        }
         String userId = claimUuid(claim(jwt, "userId"));
         long permissionVersion = claimLong(claim(jwt, "permission_version"));
         if (userId == null || permissionVersion < 0) {
@@ -50,6 +57,11 @@ public class AccessSessionFilter implements ContainerRequestFilter {
     }
     private static long claimLong(Object value) { return value instanceof Number number ? number.longValue() : value instanceof String text ? parse(text) : -1; }
     private static long parse(String value) { try { return Long.parseLong(value); } catch (NumberFormatException e) { return -1; } }
+
+    private String stringClaim(JsonWebToken jwt, String name) {
+        Object value = claim(jwt, name);
+        return value == null ? null : value.toString();
+    }
 
     private Object claim(JsonWebToken jwt, String name) {
         Object value = jwt.getClaim(name);

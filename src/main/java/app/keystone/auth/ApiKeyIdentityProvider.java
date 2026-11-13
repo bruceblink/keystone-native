@@ -36,7 +36,8 @@ public class ApiKeyIdentityProvider implements IdentityProvider<ApiKeyAuthentica
             }
             try { rateLimiter.clear(request.value(), request.clientAddress()); }
             catch (IllegalStateException e) { recordEvent(request, principal.username(), principal.keyId(), "RATE_LIMIT_CLEAR_FAILED", "API key rate-limit cleanup failed"); }
-            recordEvent(request, principal.username(), principal.keyId(), "SUCCESS", null);
+            recordEvent(request, principal.username(), principal.keyId(), "SUCCESS", null,
+                    new SecurityEventRepository.Context(null, String.join(" ", principal.scopes()), null));
             var builder = QuarkusSecurityIdentity.builder()
                     .setPrincipal(new ApiKeyPrincipal(principal.username(), principal.keyId()))
                     .addAttribute("credentialType", "API_KEY")
@@ -51,11 +52,16 @@ public class ApiKeyIdentityProvider implements IdentityProvider<ApiKeyAuthentica
     }
 
     private void recordEvent(ApiKeyAuthenticationRequest request, String outcome, String detail) {
-        recordEvent(request, null, null, outcome, detail);
+        recordEvent(request, null, null, outcome, detail, SecurityEventRepository.Context.empty());
     }
 
     private void recordEvent(ApiKeyAuthenticationRequest request, String actor, String credentialId, String outcome, String detail) {
-        try { securityEvents.record("API_KEY_AUTH", actor, "API_KEY", credentialId, request.clientAddress(), "authentication", "api-key", outcome, detail); }
+        recordEvent(request, actor, credentialId, outcome, detail, SecurityEventRepository.Context.empty());
+    }
+
+    private void recordEvent(ApiKeyAuthenticationRequest request, String actor, String credentialId, String outcome,
+                             String detail, SecurityEventRepository.Context eventContext) {
+        try { securityEvents.record("API_KEY_AUTH", actor, "API_KEY", credentialId, request.clientAddress(), "authentication", "api-key", outcome, eventContext, detail); }
         catch (IllegalStateException ignored) { }
     }
 

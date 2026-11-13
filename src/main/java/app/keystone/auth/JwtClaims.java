@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import org.eclipse.microprofile.jwt.JsonWebToken;
 
 import java.util.Base64;
+import java.util.ArrayList;
+import java.util.List;
 
 /** Reads custom JWT claims across MicroProfile JWT implementations. */
 final class JwtClaims {
@@ -25,5 +27,29 @@ final class JwtClaims {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** 读取 JWT 数组声明，兼容 SmallRye 已解析集合和原始 JSON 数组。 */
+    static List<String> strings(JsonWebToken jwt, String name) {
+        List<String> result = new ArrayList<>();
+        if (jwt == null) return result;
+        Object direct = jwt.getClaim(name);
+        if (direct instanceof Iterable<?> values) {
+            for (Object value : values) if (value instanceof String text && !text.isBlank()) result.add(text);
+            return List.copyOf(result);
+        }
+        if (direct instanceof String text && !text.isBlank()) return List.of(text);
+        try {
+            String raw = jwt.getRawToken();
+            if (raw == null) return List.of();
+            String[] parts = raw.split("\\.", -1);
+            if (parts.length != 3) return List.of();
+            var node = JSON.readTree(Base64.getUrlDecoder().decode(parts[1])).get(name);
+            if (node == null || !node.isArray()) return List.of();
+            node.forEach(item -> { if (item.isTextual() && !item.asText().isBlank()) result.add(item.asText()); });
+        } catch (Exception ignored) {
+            return List.of();
+        }
+        return List.copyOf(result);
     }
 }

@@ -1,6 +1,7 @@
 package app.keystone.audit;
 
 import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
@@ -9,6 +10,7 @@ import jakarta.persistence.Table;
 
 import java.time.Instant;
 import java.util.UUID;
+import app.keystone.identity.UuidBinaryConverter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -33,6 +35,10 @@ public class SecurityEventEntity {
     @Column(name = "credential_id", length = 128)
     private String credentialId;
 
+    @Convert(converter = UuidBinaryConverter.class)
+    @Column(name = "session_id", columnDefinition = "BINARY(16)", length = 16)
+    private String sessionId;
+
     @Column(name = "source_ip", length = 64)
     private String sourceIp;
 
@@ -41,6 +47,12 @@ public class SecurityEventEntity {
 
     @Column(length = 128)
     private String action;
+
+    @Column(columnDefinition = "TEXT")
+    private String scope;
+
+    @Column(name = "request_id", length = 128)
+    private String requestId;
 
     @Column(nullable = false, length = 32)
     private String outcome;
@@ -56,6 +68,13 @@ public class SecurityEventEntity {
 
     SecurityEventEntity(String eventType, String actor, String credentialType, String credentialId,
                         String sourceIp, String resource, String action, String outcome, String detail) {
+        this(eventType, actor, credentialType, credentialId, sourceIp, resource, action, outcome,
+                null, null, null, detail);
+    }
+
+    SecurityEventEntity(String eventType, String actor, String credentialType, String credentialId,
+                        String sourceIp, String resource, String action, String outcome,
+                        String sessionId, String scope, String requestId, String detail) {
         this.id = java.util.UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.eventType = eventType;
         this.actor = actor;
@@ -66,6 +85,9 @@ public class SecurityEventEntity {
         this.action = action;
         this.outcome = outcome;
         this.detail = detail;
+        this.sessionId = sessionId == null ? null : app.keystone.identity.UuidValues.requireCanonical(sessionId);
+        this.scope = scope;
+        this.requestId = requestId;
     }
 
     public String getId() {

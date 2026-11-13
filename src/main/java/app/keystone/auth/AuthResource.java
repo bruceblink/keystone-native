@@ -125,7 +125,7 @@ public class AuthResource {
         }
         Response tokenResponse;
         try {
-            tokenResponse = Response.ok(ApiResponse.ok(tokens.issue(user.get(), created.refreshToken(), created.accessTokenId(), created.sessionId(), created.clientId(), created.approvedScope(), created.refreshExpiresAt()))).build();
+            tokenResponse = Response.ok(ApiResponse.ok(tokens.issue(user.get(), created.refreshToken(), created.accessTokenId(), created.sessionId(), created.clientId(), created.approvedScope(), created.refreshExpiresAt(), verification.assurance(), verification.amr()))).build();
         } catch (IllegalStateException e) { return tokenUnavailable(created.sessionId()); }
         users.markLogin(user.get().id(), clientAddress);
         loginLogs.record(user.get().username(), "SUCCESS", clientAddress, "MFA login successful", userAgent);

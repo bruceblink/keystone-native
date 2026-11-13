@@ -9,6 +9,7 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.emptyOrNullString;
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 @QuarkusTest
 class AuthResourceTest extends AuthTestFixture {
@@ -23,6 +24,18 @@ class AuthResourceTest extends AuthTestFixture {
                 .body("data.sessionId", not(emptyOrNullString()))
                 .body("data.clientId", is("web"))
                 .body("data.roles[0]", is("ADMIN"));
+    }
+
+    @Test
+    void accessTokenCarriesCanonicalAuthenticationClaims() throws Exception {
+        String token = given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
+                .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");
+        String payload = new String(java.util.Base64.getUrlDecoder().decode(token.split("\\.")[1]), java.nio.charset.StandardCharsets.UTF_8);
+        var claims = new com.fasterxml.jackson.databind.ObjectMapper().readTree(payload);
+        assertEquals("access", claims.path("type").asText());
+        assertEquals("AAL1", claims.path("aal").asText());
+        assertTrue(claims.path("amr").isArray());
+        assertEquals("pwd", claims.path("amr").get(0).asText());
     }
 
     @Test

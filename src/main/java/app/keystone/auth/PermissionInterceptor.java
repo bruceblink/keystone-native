@@ -2,6 +2,7 @@ package app.keystone.auth;
 
 import app.keystone.ApiResponse;
 import app.keystone.audit.SecurityEventRepository;
+import app.keystone.audit.SecurityEventContext;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.vertx.ext.web.RoutingContext;
 import jakarta.annotation.Priority;
@@ -52,7 +53,8 @@ public class PermissionInterceptor {
             String credentialId = credentialIdValue == null ? null : String.valueOf(credentialIdValue);
             String forwardedFor = routingContext == null || routingContext.request() == null ? null : routingContext.request().getHeader("X-Forwarded-For");
             String sourceIp = clientAddresses.resolve(routingContext, forwardedFor);
-            securityEvents.record("AUTHORIZATION", actor, credential, credentialId, sourceIp, "permission", permission, "DENIED", detail);
+            securityEvents.record("AUTHORIZATION", actor, credential, credentialId, sourceIp, "permission", permission, "DENIED",
+                    SecurityEventContext.from(identity, routingContext), detail);
         } catch (IllegalStateException ignored) { }
     }
 }

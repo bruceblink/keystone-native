@@ -8,6 +8,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.HashSet;
+import java.util.List;
 
 @ApplicationScoped
 public class AccessTokenService {
@@ -28,6 +29,16 @@ public class AccessTokenService {
 
     /** 刷新会话只能在创建时批准的权限范围内发行访问令牌。 */
     public AuthResource.TokenResponse issue(UserRepository.AuthUser user, String refreshToken, String accessTokenId, String sessionId, String clientId, String approvedScope, Instant refreshExpiresAt) {
+        return issue(user, refreshToken, accessTokenId, sessionId, clientId, approvedScope, refreshExpiresAt, "AAL1", "pwd");
+    }
+
+    /**
+     * 发行带认证强度的访问令牌；刷新流程使用 AAL1，MFA 登录使用 AAL2。
+     * `amr` 只保存已完成的认证方法，不保存验证码或其他秘密材料。
+     */
+    public AuthResource.TokenResponse issue(UserRepository.AuthUser user, String refreshToken, String accessTokenId,
+                                            String sessionId, String clientId, String approvedScope,
+                                            Instant refreshExpiresAt, String assurance, String authenticationMethod) {
         Instant expiresAt = Instant.now().plus(ACCESS_LIFETIME);
         java.util.List<String> permissions = new java.util.ArrayList<>(users.permissions(user.id()));
         if (approvedScope != null) {
@@ -39,10 +50,13 @@ public class AccessTokenService {
                 .subject(String.valueOf(user.id()))
                 .audience(audience)
                 .upn(user.username())
+                .claim("type", "access")
                 .claim("jti", accessTokenId)
                 .claim("sid", sessionId)
                 .claim("client_id", clientId)
                 .claim("permission_version", permissionVersion)
+                .claim("aal", normalizeAssurance(assurance))
+                .claim("amr", List.of(normalizeAuthenticationMethod(authenticationMethod)))
                 .claim("userId", user.id())
                 .claim("scope", String.join(" ", permissions))
                 .groups(new HashSet<>(user.roles()))
@@ -63,5 +77,17 @@ public class AccessTokenService {
             throw new IllegalStateException("JWT key id is invalid");
         }
         return normalized;
+    }
+
+    private static String normalizeAssurance(String value) {
+        if ("AAL1".equals(value) || "AAL2".equals(value)) return value;
+        throw new IllegalArgumentException("JWT assurance must be AAL1 or AAL2");
+    }
+
+    private static String normalizeAuthenticationMethod(String value) {
+        if (value == null || value.isBlank() || !value.matches("[a-z][a-z0-9._:-]{0,31}")) {
+            throw new IllegalArgumentException("JWT authentication method is invalid");
+        }
+        return value;
     }
 }

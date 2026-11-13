@@ -40,21 +40,24 @@ class MfaStepUpInterceptorTest {
 
     @Test
     void claimsRecordKeepsRequiredSessionFields() {
-        var claims = new MfaStepUpInterceptor.Claims(USER_ID, "session-1", "web");
+        var claims = new MfaStepUpInterceptor.Claims(USER_ID, "session-1", "web", "access", "AAL2", java.util.List.of("otp"));
         assertEquals(USER_ID, claims.userId());
         assertEquals("session-1", claims.sessionId());
         assertEquals("web", claims.clientId());
+        assertEquals("access", claims.tokenType());
+        assertEquals("AAL2", claims.assurance());
+        assertTrue(claims.authenticationMethods().contains("otp"));
     }
 
     @Test
     void rejectsIncompleteOrInvalidJwtSessionClaims() {
         assertThrows(jakarta.ws.rs.NotAuthorizedException.class,
-                () -> MfaStepUpInterceptor.claims(jwt(Map.of("userId", USER_ID, "client_id", "web"))));
+                () -> MfaStepUpInterceptor.claims(jwt(Map.of("userId", USER_ID, "client_id", "web", "type", "access", "aal", "AAL1", "amr", java.util.List.of("pwd")))));
         assertThrows(jakarta.ws.rs.NotAuthorizedException.class,
-                () -> MfaStepUpInterceptor.claims(jwt(Map.of("userId", "not-a-uuid", "sid", "session-1", "client_id", "web"))));
+                () -> MfaStepUpInterceptor.claims(jwt(Map.of("userId", "not-a-uuid", "sid", "session-1", "client_id", "web", "type", "access", "aal", "AAL1", "amr", java.util.List.of("pwd")))));
         assertThrows(jakarta.ws.rs.NotAuthorizedException.class,
-                () -> MfaStepUpInterceptor.claims(jwt(Map.of("userId", USER_ID, "sid", "session-1", "client_id", "web;drop"))));
-        var claims = MfaStepUpInterceptor.claims(jwt(Map.of("userId", USER_ID, "sid", "session-1", "client_id", "web")));
+                () -> MfaStepUpInterceptor.claims(jwt(Map.of("userId", USER_ID, "sid", "session-1", "client_id", "web;drop", "type", "access", "aal", "AAL1", "amr", java.util.List.of("pwd")))));
+        var claims = MfaStepUpInterceptor.claims(jwt(Map.of("userId", USER_ID, "sid", "session-1", "client_id", "web", "type", "access", "aal", "AAL2", "amr", java.util.List.of("otp"))));
         assertEquals(USER_ID, claims.userId());
     }
 
