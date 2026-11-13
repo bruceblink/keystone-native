@@ -2,7 +2,7 @@
 
 跨项目统一架构见 [`02-auth-authorization-parity-architecture.md`](02-auth-authorization-parity-architecture.md)。本文件同时记录 Native 本地实施任务和与 Keystone Phoenix 的跨项目验收要求。项目采用一次性重构，不保留旧接口、旧权限格式、旧响应封装或旧整数主键。
 
-更新日期：2026-11-14。当前代码基线为 `31388f2`。`73d1bb9` 完成 71 项规范权限目录和生产授权调用点迁移；`31388f2` 完成用户、角色、部门及认证直接关系的 MySQL UUID 主键迁移，删除 compat/Legacy 路由。已验证 `compileJava`、UUID 迁移静态检查和目标测试 32 项（3 项跳过）通过；本地 MySQL 8.4 的 Flyway V46 已成功执行。岗位、菜单、公告、配置、字典、任务、日志和统一错误响应仍待后续切片。
+更新日期：2026-11-14。当前代码基线为 `c3b96f7`。`73d1bb9` 完成 71 项规范权限目录和生产授权调用点迁移；`31388f2` 完成用户、角色、部门及认证直接关系的 MySQL UUID 主键迁移，删除 compat/Legacy 路由；`c3b96f7` 完成岗位、菜单及直接关系的 MySQL UUID 主键迁移。已验证 `compileJava`、UUID 迁移静态检查和目标测试 32 项（3 项跳过）通过；本地 MySQL 8.4 的 Flyway V46/V47 已成功执行。公告、配置、字典、任务、日志和统一错误响应仍待后续切片。
 
 ## 跨项目统一主线
 
