@@ -1,47 +1,61 @@
 package app.keystone.notice;
 
+import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
-import javax.sql.DataSource;
-import java.sql.ResultSet;
-import java.util.ArrayList;
+import jakarta.persistence.LockModeType;
+import jakarta.transaction.Transactional;
+
 import java.util.List;
 
+/** 公告管理入口；具体持久化由 Panache Repository 负责。 */
 @ApplicationScoped
-public class NoticeRepository {
-    @Inject DataSource dataSource;
-
+public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, Long> {
+    @Transactional
     public List<Notice> list(boolean publicOnly) {
-        String sql = "SELECT id, title, content, notice_type, published, enabled, publish_at, created_by, created_at FROM sys_notice " + (publicOnly ? "WHERE published = true AND enabled = true AND (publish_at IS NULL OR publish_at <= CURRENT_TIMESTAMP) " : "") + "ORDER BY COALESCE(publish_at, created_at) DESC, id DESC";
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql); var rs = p.executeQuery()) { var result = new ArrayList<Notice>(); while (rs.next()) result.add(read(rs)); return result; }
-        catch (Exception e) { throw new IllegalStateException("Could not list notices", e); }
+        String query = publicOnly
+                ? "published = true and enabled = true and (publishAt is null or publishAt <= ?1) order by coalesce(publishAt, createdAt) desc, id desc"
+                : "order by coalesce(publishAt, createdAt) desc, id desc";
+        var result = publicOnly ? find(query, java.time.Instant.now()) : find(query);
+        return result.list().stream().map(NoticeEntity::toModel).toList();
     }
 
+    @Transactional
     public Notice create(String title, String content, String type, String createdBy) {
-        require(title, "title"); require(content, "content");
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement("INSERT INTO sys_notice(title, content, notice_type, created_by) VALUES (?, ?, ?, ?)", java.sql.Statement.RETURN_GENERATED_KEYS)) { p.setString(1, title.trim()); p.setString(2, content); p.setString(3, type == null ? "NOTICE" : type); p.setString(4, createdBy); p.executeUpdate(); try (var keys = p.getGeneratedKeys()) { keys.next(); return find(c, keys.getLong(1)); } }
-        catch (Exception e) { throw new IllegalStateException("Could not create notice", e); }
+        require(title, "title");
+        require(content, "content");
+        try {
+            NoticeEntity entity = new NoticeEntity(title, content, type, createdBy);
+            persistAndFlush(entity);
+            return entity.toModel();
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not create notice", e);
+        }
     }
 
+    @Transactional
     public Notice update(long id, String title, String content, String type, Boolean enabled) {
-        var fields = new ArrayList<String>(); var values = new ArrayList<Object>();
-        if (title != null && !title.isBlank()) { fields.add("title = ?"); values.add(title.trim()); }
-        if (content != null) { fields.add("content = ?"); values.add(content); }
-        if (type != null) { fields.add("notice_type = ?"); values.add(type); }
-        if (enabled != null) { fields.add("enabled = ?"); values.add(enabled); }
-        try (var c = dataSource.getConnection()) { if (!fields.isEmpty()) try (var p = c.prepareStatement("UPDATE sys_notice SET " + String.join(", ", fields) + " WHERE id = ?")) { for (int i = 0; i < values.size(); i++) p.setObject(i + 1, values.get(i)); p.setLong(values.size() + 1, id); if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("notice not found"); } return find(c, id); }
-        catch (java.util.NoSuchElementException e) { throw e; }
-        catch (Exception e) { throw new IllegalStateException("Could not update notice", e); }
+        NoticeEntity entity = find("id", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+        if (entity == null) throw new java.util.NoSuchElementException("notice not found");
+        entity.update(title, content, type, enabled);
+        return entity.toModel();
     }
 
+    @Transactional
     public Notice publish(long id, boolean published) {
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement("UPDATE sys_notice SET published = ?, publish_at = ? WHERE id = ?")) { p.setBoolean(1, published); if (published) p.setTimestamp(2, java.sql.Timestamp.from(java.time.Instant.now())); else p.setNull(2, java.sql.Types.TIMESTAMP); p.setLong(3, id); if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("notice not found"); return find(c, id); }
-        catch (java.util.NoSuchElementException e) { throw e; }
-        catch (Exception e) { throw new IllegalStateException("Could not publish notice", e); }
+        NoticeEntity entity = find("id", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+        if (entity == null) throw new java.util.NoSuchElementException("notice not found");
+        entity.publish(published);
+        return entity.toModel();
     }
 
-    public void delete(long id) { try (var c = dataSource.getConnection(); var p = c.prepareStatement("DELETE FROM sys_notice WHERE id = ?")) { p.setLong(1, id); if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("notice not found"); } catch (java.util.NoSuchElementException e) { throw e; } catch (Exception e) { throw new IllegalStateException("Could not delete notice", e); } }
-    private static void require(String v, String f) { if (v == null || v.isBlank()) throw new IllegalArgumentException(f + " is required"); }
-    private static Notice find(java.sql.Connection c, long id) throws Exception { try (var p = c.prepareStatement("SELECT id, title, content, notice_type, published, enabled, publish_at, created_by, created_at FROM sys_notice WHERE id = ?")) { p.setLong(1, id); try (var rs = p.executeQuery()) { if (!rs.next()) throw new java.util.NoSuchElementException("notice not found"); return read(rs); } } }
-    private static Notice read(ResultSet rs) throws Exception { var publish = rs.getTimestamp("publish_at"); return new Notice(rs.getLong("id"), rs.getString("title"), rs.getString("content"), rs.getString("notice_type"), rs.getBoolean("published"), rs.getBoolean("enabled"), publish == null ? null : publish.toInstant(), rs.getString("created_by"), rs.getTimestamp("created_at").toInstant()); }
+    @Transactional
+    public void delete(long id) {
+        NoticeEntity entity = find("id", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+        if (entity == null) throw new java.util.NoSuchElementException("notice not found");
+        delete(entity);
+    }
+
+    private static void require(String value, String field) {
+        if (value == null || value.isBlank()) throw new IllegalArgumentException(field + " is required");
+    }
 }
