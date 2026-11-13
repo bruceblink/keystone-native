@@ -126,6 +126,23 @@ public class DataScopeService {
             return all || departmentId != null && ((self && departmentId.equals(ownDepartment)) || departments.contains(departmentId));
         }
 
+        /**
+         * 判断新建部门时的父部门是否在当前主体的写入范围内。
+         * 受限主体不能创建没有父部门的根部门；全量范围主体可以创建根部门。
+         */
+        public boolean allowsDepartmentCreation(Long parentDepartmentId) {
+            return all || parentDepartmentId != null && allowsDepartment(parentDepartmentId);
+        }
+
+        /**
+         * 判断更新部门时目标部门和新的父部门是否都在当前主体的写入范围内。
+         * parentDepartmentId 为 null 表示请求没有修改父部门。
+         */
+        public boolean allowsDepartmentUpdate(long targetDepartmentId, Long parentDepartmentId) {
+            return allowsDepartment(targetDepartmentId)
+                    && (parentDepartmentId == null || allowsDepartment(parentDepartmentId));
+        }
+
         public boolean isEmpty() {
             return !all && !self && departments.isEmpty();
         }

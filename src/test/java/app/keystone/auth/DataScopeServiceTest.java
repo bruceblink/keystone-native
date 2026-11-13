@@ -24,4 +24,23 @@ class DataScopeServiceTest {
         assertTrue(scope.allowsDepartment(9L));
         assertFalse(scope.allowsDepartment(8L));
     }
+
+    @Test
+    void restrictedScopeCanCreateOnlyUnderAnAllowedDepartment() {
+        var scope = new DataScopeService.Scope(false, true, Set.of(), 7L);
+
+        assertTrue(scope.allowsDepartmentCreation(7L));
+        assertFalse(scope.allowsDepartmentCreation(8L));
+        assertFalse(scope.allowsDepartmentCreation(null));
+    }
+
+    @Test
+    void departmentUpdateRequiresTargetAndNewParentWithinScope() {
+        var scope = new DataScopeService.Scope(false, false, Set.of(7L, 9L), null);
+
+        assertTrue(scope.allowsDepartmentUpdate(7L, null));
+        assertTrue(scope.allowsDepartmentUpdate(7L, 9L));
+        assertFalse(scope.allowsDepartmentUpdate(8L, 7L));
+        assertFalse(scope.allowsDepartmentUpdate(7L, 8L));
+    }
 }
