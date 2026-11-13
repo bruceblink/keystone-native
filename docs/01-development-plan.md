@@ -2,7 +2,7 @@
 
 跨项目统一架构见 [`02-auth-authorization-parity-architecture.md`](02-auth-authorization-parity-architecture.md)。本文件同时记录 Native 本地实施任务和与 Keystone Phoenix 的跨项目验收要求。项目采用一次性重构，不保留旧接口、旧权限格式、旧响应封装或旧整数主键。
 
-更新日期：2026-11-14。当前代码基线为 `a2b0c2a`。`73d1bb9` 完成 71 项规范权限目录和生产授权调用点迁移；`31388f2` 完成用户、角色、部门及认证直接关系的 MySQL UUID 主键迁移，删除 compat/Legacy 路由；`c3b96f7` 完成岗位、菜单及直接关系的 MySQL UUID 主键迁移；`68e8c8a` 完成公告、配置、字典及直接关系的 MySQL UUID 主键迁移；`698da41` 完成任务、任务日志、登录/操作/安全日志及刷新令牌关联 ID 的 MySQL UUID 主键迁移；`a2b0c2a` 统一错误响应结构。已验证 `compileJava`、UUID 迁移静态检查和目标测试通过；本地 MySQL 8.4 的 Flyway V46-V49 已成功执行。`is_admin` 字段和历史测试夹具仍待后续切片。
+更新日期：2026-11-14。当前代码基线为 `27c0de5`。`73d1bb9` 完成 71 项规范权限目录和生产授权调用点迁移；`31388f2` 完成用户、角色、部门及认证直接关系的 MySQL UUID 主键迁移，删除 compat/Legacy 路由；`c3b96f7` 完成岗位、菜单及直接关系的 MySQL UUID 主键迁移；`68e8c8a` 完成公告、配置、字典及直接关系的 MySQL UUID 主键迁移；`698da41` 完成任务、任务日志、登录/操作/安全日志及刷新令牌关联 ID 的 MySQL UUID 主键迁移；`a2b0c2a` 统一错误响应结构；`27c0de5` 完成全量测试夹具清理和任务日志 warning 修复。已验证 `compileJava`、UUID 迁移静态检查和全量测试 127 项通过；本地 MySQL 8.4 的 Flyway V46-V49 已成功执行。主线已无 `is_admin` 字段，Phoenix 历史测试夹具仍待清理。
 
 ## 跨项目统一主线
 
