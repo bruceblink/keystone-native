@@ -68,25 +68,20 @@ public class ApiKeyRateLimiter {
     }
 
     private void increment(java.sql.Connection c, String key) throws Exception {
-        Instant now = Instant.now();
-        int attempts = 1;
-        Timestamp windowStarted = Timestamp.from(now);
-        try (var find = c.prepareStatement("SELECT window_started_at, attempt_count FROM sys_api_key_rate_limit WHERE scope_key = ? FOR UPDATE")) {
-            find.setString(1, key);
-            try (var rs = find.executeQuery()) {
-                if (rs.next()) {
-                    Timestamp existingWindow = rs.getTimestamp(1);
-                    if (existingWindow != null && existingWindow.toInstant().plusSeconds(windowSeconds).isAfter(now)) {
-                        attempts = rs.getInt(2) + 1;
-                        windowStarted = existingWindow;
-                    }
-                }
-            }
-        }
-        Timestamp blockedUntil = attempts >= maxFailures ? Timestamp.from(now.plusSeconds(blockSeconds)) : null;
-        try (var update = c.prepareStatement("INSERT INTO sys_api_key_rate_limit(scope_key, window_started_at, attempt_count, blocked_until) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE window_started_at = VALUES(window_started_at), attempt_count = VALUES(attempt_count), blocked_until = VALUES(blocked_until)")) {
-            update.setString(1, key); update.setTimestamp(2, windowStarted); update.setInt(3, attempts);
-            if (blockedUntil == null) update.setNull(4, java.sql.Types.TIMESTAMP); else update.setTimestamp(4, blockedUntil);
+        String sql = "INSERT INTO sys_api_key_rate_limit(scope_key, window_started_at, attempt_count, blocked_until) "
+                + "VALUES (?, CURRENT_TIMESTAMP, 1, IF(1 >= ?, TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP), NULL)) "
+                + "ON DUPLICATE KEY UPDATE "
+                + "attempt_count = IF(window_started_at < TIMESTAMPADD(SECOND, -?, CURRENT_TIMESTAMP), 1, attempt_count + 1), "
+                + "window_started_at = IF(window_started_at < TIMESTAMPADD(SECOND, -?, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, window_started_at), "
+                + "blocked_until = IF(attempt_count >= ?, TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP), NULL)";
+        try (var update = c.prepareStatement(sql)) {
+            update.setString(1, key);
+            update.setInt(2, maxFailures);
+            update.setLong(3, blockSeconds);
+            update.setLong(4, windowSeconds);
+            update.setLong(5, windowSeconds);
+            update.setInt(6, maxFailures);
+            update.setLong(7, blockSeconds);
             update.executeUpdate();
         }
     }
