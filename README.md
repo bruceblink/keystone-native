@@ -25,7 +25,7 @@ curl -X POST http://localhost:8080/api/v1/auth/change-initial-password \
   -d '{"username":"admin","currentPassword":"password","newPassword":"replace-with-a-strong-password"}'
 ```
 
-生产环境必须通过 `JWT_PRIVATE_KEY_LOCATION` 提供签名私钥，通过 `JWT_PUBLIC_KEY_LOCATION` 提供外部验证公钥，并通过 `JWT_KEY_ID` 提供当前签名密钥的标识。应用没有内置生产公钥回退；缺少外部公钥或密钥标识时，令牌验证或签发会失败。
+生产环境必须通过 `JWT_PRIVATE_KEY_LOCATION` 提供签名私钥，通过 `JWT_PUBLIC_KEY_LOCATION` 提供当前外部 RSA 公钥，并通过 `JWT_KEY_ID` 提供当前签名密钥的标识。启用重叠密钥时，还必须通过 `JWT_VERIFY_PUBLIC_KEY_LOCATION` 指向包含全部公钥的 JWK Set 文件或 HTTPS JWK Set URL。应用没有内置生产公钥回退；缺少外部公钥或密钥标识时，令牌验证或签发会失败。
 
 ## 本地运行
 
@@ -119,6 +119,7 @@ DB_USERNAME
 DB_PASSWORD
 JWT_PRIVATE_KEY_LOCATION
 JWT_PUBLIC_KEY_LOCATION
+JWT_VERIFY_PUBLIC_KEY_LOCATION（可选；配置重叠 JWT 公钥时必填，指向 JWK Set 文件或 HTTPS JWK Set URL）
 JWT_KEY_ID
 JWT_JWK_CACHE_SECONDS（可选，默认 60，范围 1-3600）
 JWT_JWK_KEYS（可选，默认 `none`；使用 `old-kid=旧公钥位置;another-kid=另一公钥位置` 发布重叠 JWK）

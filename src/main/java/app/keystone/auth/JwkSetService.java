@@ -41,7 +41,7 @@ public class JwkSetService {
 
     @Inject
     public JwkSetService(
-            @ConfigProperty(name = "mp.jwt.verify.publickey.location", defaultValue = "") String publicKeyLocation,
+            @ConfigProperty(name = "keystone.security.jwt.public-key-location", defaultValue = "") String publicKeyLocation,
             @ConfigProperty(name = "keystone.security.jwt.key-id", defaultValue = "") String keyId,
             @ConfigProperty(name = "keystone.security.jwt.jwk-cache-seconds", defaultValue = "60") long cacheSeconds,
             @ConfigProperty(name = "keystone.security.jwt.jwk-keys", defaultValue = "") String additionalKeys) {

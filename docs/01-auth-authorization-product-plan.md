@@ -28,7 +28,7 @@
 
 现代和兼容登录入口在密码正确且用户要求 MFA 时返回 `MFA_REQUIRED` 和不透明挑战 ID，不创建会话或令牌；`POST /api/v1/auth/mfa/verify` 校验 TOTP 或恢复码后才创建会话和令牌。`POST /api/v1/auth/mfa/enroll`、`POST /api/v1/auth/mfa/enroll/verify` 提供管理员 enrollment，`PUT /api/v1/auth/mfa/policy/{userId}` 只允许对已完成 enrollment 的用户启用策略。API Key 被拒绝进入这些人类 MFA 路径。恢复码只在 enrollment 成功响应中返回一次，数据库保存 HMAC，不保存恢复码明文。
 
-上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `kid`。`GET /api/.well-known/jwks.json` 已发布当前 RSA 公钥，旧的 `GET /login/rsa-public-key` 兼容路由也改为读取相同的外部公钥配置；当前 JWK Set 只发布一个 key，尚未支持密钥重叠轮换。
+上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `kid`。`GET /api/.well-known/jwks.json` 已发布当前 RSA 公钥，旧的 `GET /login/rsa-public-key` 兼容路由也改为读取相同的外部公钥配置；当前实现支持通过 `JWT_JWK_KEYS` 发布多个重叠公钥，并在启用多 key 时要求 `JWT_VERIFY_PUBLIC_KEY_LOCATION` 指向 JWK Set 文件或 HTTPS JWK Set URL。
 
 当前验证边界仍然明确：静态主源码和测试源码编译、JWK 字段与缓存 smoke、MFA 聚合方法边界测试、可信代理解析 smoke 和差异检查已通过；Quarkus HTTP、MySQL 8.4 迁移、并发 TOTP/恢复码消费、真实浏览器验收仍未完成。MFA enrollment、TOTP、恢复码和挑战消费已经使用单数据库事务；成功后的限流清理采用提交后尽力处理，清理失败只记录不改变成功响应。`TRUSTED_PROXY_CIDRS` 为空时忽略 `X-Forwarded-For`，仅在 TCP 远端属于配置网段且转发链合法时使用原始客户端地址。账户锁定的初始读取与失败更新之间仍需 MySQL 8.4 并发验收，不能把静态事务代码当作并发证明。`@Context RoutingContext` 的真实 HTTP 注入、数据库故障回滚和代理链部署验收仍未完成。OIDC、WebAuthn、密钥重叠轮换、跨租户边界和全资源数据范围仍未完成。
 
@@ -89,7 +89,7 @@ API Key 使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存 SHA-256 �
 ### JWT 公钥发现
 
 - `GET /api/.well-known/jwks.json`：公开返回当前外部 RSA 公钥的 RFC 7517 JWK Set。响应只包含 `kty`、`kid`、`alg`、`use`、`n` 和 `e`，公钥读取失败返回 `503`。缺少或非法的 `JWT_KEY_ID` 属于启动配置错误，应用应在就绪检查中失败。
-- 当前实现默认发布一个配置 key，也支持通过 `JWT_JWK_KEYS` 以 `kid=location;kid=location` 配置多个重叠公钥，并使用 `JWT_JWK_CACHE_SECONDS` 控制 1 至 3600 秒的已校验快照缓存。缓存过期后的读取、解析和 JWK 组装全部成功时才替换快照；失败时继续提供上一个有效快照，直到缓存过期后请求失败。持久化 key registry、旧 key 验证配置和到期清理仍需后续实现。
+- 当前实现默认发布一个配置 key，也支持通过 `JWT_JWK_KEYS` 以 `kid=location;kid=location` 配置多个重叠公钥，并使用 `JWT_JWK_CACHE_SECONDS` 控制 1 至 3600 秒的已校验快照缓存。启用多个 key 时，`JWT_VERIFY_PUBLIC_KEY_LOCATION` 必须指向包含全部公钥的 JWK Set 文件或 HTTPS JWK Set URL；继续使用单个 PEM 会在启动检查阶段失败。缓存过期后的读取、解析和 JWK 组装全部成功时才替换快照；失败时继续提供上一个有效快照，直到缓存过期后请求失败。持久化 key registry、旧 key 到期清理和旧 key HTTP 验收仍需后续实现。
 - 兼容客户端仍可调用 `GET /login/rsa-public-key`，但该接口读取同一个外部公钥位置，不再读取仓库内资源。
 
 ## 数据模型变更
@@ -170,7 +170,7 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 - [x] 要求外部 JWT 公钥和 `kid` 密钥标识，删除仓库内生产公钥 fallback。
 - [ ] 增加 OIDC 授权码 + PKCE；校验 `state`、`nonce`、issuer、audience 和时间窗口。
 - [x] 发布 JWK Set，使用外部 RSA 公钥和 `kid`，公钥不可用时返回 `503`。
-- [x] 增加 `JWT_JWK_KEYS` 多 key JWK 发布和启动位置检查；当前仍只保证端点发布，SmallRye JWT 验证必须配置真正的 JWK Set 文件或 HTTPS JWK URL，key registry、旧 key 到期清理和旧 key HTTP 验收仍未完成。
+- [x] 增加 `JWT_JWK_KEYS` 多 key JWK 发布和启动位置检查；启用多 key 时必须配置真正的 JWK Set 文件或 HTTPS JWK URL，key registry、旧 key 到期清理和旧 key HTTP 验收仍未完成。
 
 #### 管理员 TOTP 第一版实现和限制
 
