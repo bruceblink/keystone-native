@@ -36,4 +36,23 @@ public class DepartmentEntity {
     Long id() {
         return id;
     }
+
+    DepartmentEntity(String code, String name, Long parentId, int sortOrder) {
+        this.code = code;
+        this.name = name;
+        this.parentId = parentId;
+        this.sortOrder = sortOrder;
+        this.enabled = true;
+    }
+
+    void update(String newName, Long newParentId, Integer newSortOrder, Boolean newEnabled) {
+        if (newName != null && !newName.isBlank()) name = newName.trim();
+        if (newParentId != null) parentId = newParentId;
+        if (newSortOrder != null) sortOrder = newSortOrder;
+        if (newEnabled != null) enabled = newEnabled;
+    }
+
+    Department toModel() {
+        return new Department(id, parentId, code, name, sortOrder, enabled);
+    }
 }
