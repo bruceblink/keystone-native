@@ -91,6 +91,8 @@ scope_allowed(principal, scope, resource, context)
 - MFA：第一版使用 TOTP、一次性恢复码和短期认证请求。敏感写操作需要 AAL2 step-up。并发消费必须只有一次成功。
 - 外部身份：后续使用 OIDC Authorization Code + PKCE，并校验 `state`、`nonce`、issuer、audience 和时间窗口。
 
+两个项目的资源路径存在语言适配边界：Phoenix 管理资源使用 `/api/v1/system/*`，Native 使用 `/api/v1/{users,roles,departments,...}`；两者共享 Principal、权限、范围、错误和审计语义，不提供旧根路径。认证统一使用 `/api/v1/auth/*`；JWK Set 保留标准路径 `/api/.well-known/jwks.json`。
+
 ## Phoenix 适配边界
 
 Phoenix 使用 Controller、Plug、LiveView 事件和领域命令作为 PEP；`KeystonePhoenix.Authz`、`PolicyStore` 和 `Principal` 作为 PDP 适配层。Ecto、PostgreSQL 和 Ecto migration 负责持久化。
@@ -100,6 +102,8 @@ Phoenix 只提供 `/api/v1` 接口，并统一返回 `{success,data,message,erro
 ## Native 适配边界
 
 Native 使用 Quarkus REST、`HttpAuthenticationMechanism`、`PermissionInterceptor`、`AuthorizationService` 和 `DataScopeService` 作为 PEP/PDP 适配层；Hibernate ORM with Panache、MySQL 和 Flyway 负责持久化。`AuthResource`、`ApiKeyResource`、`MfaService` 和 `JwkSetService` 必须共享同一 Principal 和权限目录。
+
+Phoenix 的 API Key 领域与 HTTP PEP 已实现。Native 与 Phoenix 都使用 `ks_live_<prefix>_<secret>`、摘要存储、批准范围交集、过期、撤销和轮换；API Key 不能调用密码、MFA 或 API Key 管理路径。
 
 Phoenix 的 LiveView 事件总线属于管理界面能力。Native 当前只提供后端 API；若后续需要管理界面，单独定义客户端和事件协议，不把 LiveView 行为强行复制到 Quarkus 服务。
 
