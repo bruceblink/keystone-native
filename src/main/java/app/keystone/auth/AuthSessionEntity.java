@@ -76,6 +76,8 @@ public class AuthSessionEntity {
     Instant lastSeenAt() { return lastSeenAt; }
     Instant revokedAt() { return revokedAt; }
     Instant createdAt() { return createdAt; }
+    Instant mfaVerifiedAt() { return mfaVerifiedAt; }
+    String mfaAssurance() { return mfaAssurance; }
 
     boolean activeAt(Instant now) {
         return revokedAt == null && refreshExpiresAt != null && refreshExpiresAt.isAfter(now)
@@ -89,5 +91,11 @@ public class AuthSessionEntity {
     void touch(Instant now, Instant nextIdle) {
         idleExpiresAt = nextIdle;
         lastSeenAt = now;
+    }
+
+    void markMfaVerified(Instant now, String assurance, String amr) {
+        mfaVerifiedAt = now;
+        mfaAssurance = assurance;
+        mfaAmr = amr;
     }
 }
