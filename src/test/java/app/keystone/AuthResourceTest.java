@@ -21,6 +21,8 @@ class AuthResourceTest {
     void enableDevelopmentFixture() throws Exception {
         try (var c = dataSource.getConnection(); var p = c.prepareStatement("UPDATE sys_user SET must_change_password = false WHERE username = 'admin'")) { p.executeUpdate(); }
         try (var c = dataSource.getConnection(); var p = c.prepareStatement("UPDATE sys_refresh_token SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = (SELECT id FROM sys_user WHERE username = 'admin') AND revoked_at IS NULL")) { p.executeUpdate(); }
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("UPDATE sys_auth_session SET revoked_at = CURRENT_TIMESTAMP WHERE user_id = (SELECT id FROM sys_user WHERE username = 'admin') AND revoked_at IS NULL")) { p.executeUpdate(); }
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("DELETE FROM sys_login_rate_limit")) { p.executeUpdate(); }
     }
 
     @Test

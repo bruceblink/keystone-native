@@ -5,6 +5,7 @@ import jakarta.inject.Inject;
 import javax.sql.DataSource;
 import java.sql.ResultSet;
 import java.util.ArrayList;
+import java.util.LinkedHashSet;
 import java.util.List;
 
 @ApplicationScoped
@@ -54,7 +55,8 @@ public class RoleRepository {
     public Role findByCode(String code) { try (var c = dataSource.getConnection()) { return findByCode(c, code); } catch (java.util.NoSuchElementException e) { throw e; } catch (Exception e) { throw new IllegalStateException("Could not find role", e); } }
 
     public void assignPermissions(String code, List<String> permissions) {
-        try (var c = dataSource.getConnection()) { c.setAutoCommit(false); try { long roleId = roleId(c, code); try (var d = c.prepareStatement("DELETE FROM sys_role_permission WHERE role_id = ?")) { d.setLong(1, roleId); d.executeUpdate(); } try (var p = c.prepareStatement("INSERT INTO sys_role_permission(role_id, permission_id) SELECT ?, id FROM sys_permission WHERE code = ?")) { for (String permission : permissions == null ? List.<String>of() : permissions) { p.setLong(1, roleId); p.setString(2, permission); if (p.executeUpdate() == 0) throw new IllegalArgumentException("unknown permission: " + permission); } } bumpPermissionVersion(c, roleId); c.commit(); } catch (Exception e) { c.rollback(); throw e; } }
+        var uniquePermissions = new LinkedHashSet<>(permissions == null ? List.<String>of() : permissions);
+        try (var c = dataSource.getConnection()) { c.setAutoCommit(false); try { long roleId = roleId(c, code); try (var d = c.prepareStatement("DELETE FROM sys_role_permission WHERE role_id = ?")) { d.setLong(1, roleId); d.executeUpdate(); } try (var p = c.prepareStatement("INSERT INTO sys_role_permission(role_id, permission_id) SELECT ?, id FROM sys_permission WHERE code = ?")) { for (String permission : uniquePermissions) { p.setLong(1, roleId); p.setString(2, permission); if (p.executeUpdate() == 0) throw new IllegalArgumentException("unknown permission: " + permission); } } bumpPermissionVersion(c, roleId); c.commit(); } catch (Exception e) { c.rollback(); throw e; } }
         catch (java.util.NoSuchElementException | IllegalArgumentException e) { throw e; }
         catch (Exception e) { throw new IllegalStateException("Could not assign role permissions", e); }
     }
