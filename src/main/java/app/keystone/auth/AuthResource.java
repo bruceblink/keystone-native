@@ -93,7 +93,7 @@ public class AuthResource {
         } catch (IllegalStateException e) { return tokenUnavailable(session.sessionId()); }
     }
 
-    /** 用登录挑战完成第二因素后才创建刷新会话。 */
+    /** 用登录验证请求完成第二因素后才创建刷新会话。 */
     @POST @Path("/mfa/verify") @PermitAll @RejectApiKey
     public Response verifyMfa(LoginMfaRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
         if (request == null || request.username() == null || request.challengeId() == null || request.code() == null) {
@@ -146,7 +146,7 @@ public class AuthResource {
         }
     }
 
-    /** 只接受当前会话绑定的 enrollment 挑战，并在成功后返回一次性恢复码。 */
+    /** 只接受当前会话绑定的 enrollment 验证请求，并在成功后返回一次性恢复码。 */
     @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
     public Response verifyMfaEnrollment(MfaCodeRequest request) {
         return verifyMfaEnrollment(request, null);

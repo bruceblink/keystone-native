@@ -13,9 +13,9 @@ import java.util.Optional;
 import java.util.UUID;
 
 /**
- * 编排管理员 TOTP 的 enrollment、登录挑战和策略状态。
+ * 编排管理员 TOTP 的 enrollment、登录验证请求和策略状态。
  *
- * <p>本服务不记录密码、TOTP 明文或恢复码。挑战状态、密文和一次性消费分别交给
+ * <p>本服务不记录密码、TOTP 明文或恢复码。认证请求状态、密文和一次性消费分别交给
  * 对应仓储处理；数据库异常直接向资源层传播为失败关闭。</p>
  */
 @ApplicationScoped
@@ -98,12 +98,12 @@ public class MfaService {
         return Optional.of(new EnrollmentResult(batch.codes()));
     }
 
-    /** 校验登录挑战；成功后调用方才可以创建刷新会话和访问令牌。 */
+    /** 校验登录验证请求；成功后调用方才可以创建刷新会话和访问令牌。 */
     public Optional<LoginVerification> verifyLogin(long userId, String challengeId, String clientId, String code) {
         return verifyLogin(userId, challengeId, clientId, code, null);
     }
 
-    /** 带来源地址的登录挑战校验；主体和地址失败次数同时受限。 */
+    /** 带来源地址的登录验证请求校验；主体和地址失败次数同时受限。 */
     public Optional<LoginVerification> verifyLogin(long userId, String challengeId, String clientId, String code, String ipAddress) {
         String boundClientId = normalizeClientId(clientId);
         if (rateLimiter.isBlocked(userId, ipAddress)) return Optional.empty();

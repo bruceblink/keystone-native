@@ -24,13 +24,13 @@
 
 令牌签发失败时，登录和 MFA 登录会撤销刚创建的会话；刷新失败时会撤销刚轮换的会话，避免数据库中保留客户端无法使用的刷新状态。签名密钥配置错误仍应在启动或就绪检查阶段被发现。
 
-当前新增了 MFA 第一版运行链路：`V39__mfa_foundation.sql` 建立 TOTP、恢复码和认证挑战数据表，`V40__mfa_permissions.sql` 建立 `mfa:manage` 权限；`TotpService` 实现 RFC 6238 六位验证码、三步时钟窗口和时间步返回，`MfaSecretCipher` 使用 AES-256-GCM 保护 TOTP 密钥，`MfaRecoveryCodeService` 使用部署级 pepper 计算恢复码 HMAC，`MfaChallengeRepository`、`MfaSessionRepository` 和 `MfaRepository` 分别处理挑战、会话认证强度、密文状态和一次性消费条件，`MfaService` 编排 enrollment、登录挑战、恢复码和强制 MFA 策略。
+当前新增了 MFA 第一版运行链路：`V39__mfa_foundation.sql` 建立 TOTP、恢复码和认证请求数据表，`V40__mfa_permissions.sql` 建立 `mfa:manage` 权限；`TotpService` 实现 RFC 6238 六位验证码、三步时钟窗口和时间步返回，`MfaSecretCipher` 使用 AES-256-GCM 保护 TOTP 密钥，`MfaRecoveryCodeService` 使用部署级 pepper 计算恢复码 HMAC，`MfaChallengeRepository`、`MfaSessionRepository` 和 `MfaRepository` 分别处理认证请求、会话认证强度、密文状态和一次性消费条件，`MfaService` 编排 enrollment、登录验证请求、恢复码和强制 MFA 策略。
 
-现代和兼容登录入口在密码正确且用户要求 MFA 时返回 `MFA_REQUIRED` 和不透明挑战 ID，不创建会话或令牌；`POST /api/v1/auth/mfa/verify` 校验 TOTP 或恢复码后才创建会话和令牌。`POST /api/v1/auth/mfa/enroll`、`POST /api/v1/auth/mfa/enroll/verify` 提供管理员 enrollment，`PUT /api/v1/auth/mfa/policy/{userId}` 只允许对已完成 enrollment 的用户启用策略。API Key 被拒绝进入这些人类 MFA 路径。恢复码只在 enrollment 成功响应中返回一次，数据库保存 HMAC，不保存恢复码明文。
+现代和兼容登录入口在密码正确且用户要求 MFA 时返回 `MFA_REQUIRED` 和不透明认证请求 ID，不创建会话或令牌；`POST /api/v1/auth/mfa/verify` 校验 TOTP 或恢复码后才创建会话和令牌。`POST /api/v1/auth/mfa/enroll`、`POST /api/v1/auth/mfa/enroll/verify` 提供管理员 enrollment，`PUT /api/v1/auth/mfa/policy/{userId}` 只允许对已完成 enrollment 的用户启用策略。API Key 被拒绝进入这些人类 MFA 路径。恢复码只在 enrollment 成功响应中返回一次，数据库保存 HMAC，不保存恢复码明文。
 
 上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `kid`。`GET /api/.well-known/jwks.json` 已发布当前 RSA 公钥，旧的 `GET /login/rsa-public-key` 兼容路由也改为读取相同的外部公钥配置；当前实现支持通过 `JWT_JWK_KEYS` 发布多个重叠公钥，并在启用多 key 时要求 `JWT_VERIFY_PUBLIC_KEY_LOCATION` 指向 JWK Set 文件或 HTTPS JWK Set URL。
 
-当前验证边界仍然明确：静态主源码和测试源码编译、JWK 字段与缓存 smoke、MFA 聚合方法边界测试、可信代理解析 smoke 和差异检查已通过；Quarkus HTTP、MySQL 8.4 迁移、并发 TOTP/恢复码消费、真实浏览器验收仍未完成。MFA enrollment、TOTP、恢复码和挑战消费已经使用单数据库事务；成功后的限流清理采用提交后尽力处理，清理失败只记录不改变成功响应。`TRUSTED_PROXY_CIDRS` 为空时忽略 `X-Forwarded-For`，仅在 TCP 远端属于配置网段且转发链合法时使用原始客户端地址。账户锁定的行锁更新、登录限流首次创建记录的唯一键竞争仍需 MySQL 8.4 并发验收，不能把静态事务代码当作并发证明。`@Context RoutingContext` 的真实 HTTP 注入、数据库故障回滚和代理链部署验收仍未完成。OIDC、WebAuthn、密钥重叠轮换、跨租户边界和全资源数据范围仍未完成。
+当前验证边界仍然明确：静态主源码和测试源码编译、JWK 字段与缓存 smoke、MFA 聚合方法边界测试、可信代理解析 smoke 和差异检查已通过；Quarkus HTTP、MySQL 8.4 迁移、并发 TOTP/恢复码消费、真实浏览器验收仍未完成。MFA enrollment、TOTP、恢复码和认证请求消费已经使用单数据库事务；成功后的限流清理采用提交后尽力处理，清理失败只记录不改变成功响应。`TRUSTED_PROXY_CIDRS` 为空时忽略 `X-Forwarded-For`，仅在 TCP 远端属于配置网段且转发链合法时使用原始客户端地址。账户锁定的行锁更新、登录限流首次创建记录的唯一键竞争仍需 MySQL 8.4 并发验收，不能把静态事务代码当作并发证明。`@Context RoutingContext` 的真实 HTTP 注入、数据库故障回滚和代理链部署验收仍未完成。OIDC、WebAuthn、密钥重叠轮换、跨租户边界和全资源数据范围仍未完成。
 
 ## 目标架构
 
@@ -130,7 +130,7 @@ Flyway 继续负责数据库结构迁移，Hibernate ORM 设置为不自动创�
 - [x] 增加 API Key 按权限码的接口测试和日志脱敏测试用例；Quarkus/MySQL 运行验收仍待执行。
 - [x] 增加失败登录、账户锁定指数退避、管理员 MFA 第一版运行边界和 MFA 主体/IP 双维度限流；API Key 猜测专项和生产运行验收仍待执行。
 
-当前已增加密码策略、第五次失败起指数账户锁定、成功登录清零失败计数、密码更新重置锁定状态并递增 `credential_version`，并在现代和兼容登录入口增加数据库限流。API Key 认证失败现在按来源地址和凭据摘要双维度限流，失败窗口只保存哈希键；成功认证只清理当前凭据桶，来源地址桶保留到窗口结束。`sys_security_event` 已统一记录 API Key 认证结果和权限拒绝结果，并保存非秘密 `credential_id` 和来源地址，事件不保存令牌、密码或完整 API Key。管理员 MFA 已完成第一版 TOTP enrollment、登录挑战、恢复码、策略开关和主体/IP 双维度失败限流；生产运行验收仍未完成。
+当前已增加密码策略、第五次失败起指数账户锁定、成功登录清零失败计数、密码更新重置锁定状态并递增 `credential_version`，并在现代和兼容登录入口增加数据库限流。API Key 认证失败现在按来源地址和凭据摘要双维度限流，失败窗口只保存哈希键；成功认证只清理当前凭据桶，来源地址桶保留到窗口结束。`sys_security_event` 已统一记录 API Key 认证结果和权限拒绝结果，并保存非秘密 `credential_id` 和来源地址，事件不保存令牌、密码或完整 API Key。管理员 MFA 已完成第一版 TOTP enrollment、登录验证请求、恢复码、策略开关和主体/IP 双维度失败限流；生产运行验收仍未完成。
 
 当前代码已完成 API Key 的统一 Quarkus 身份入口、服务主体回填、scope 格式和签发者权限交集、元数据列表、轮换、幂等撤销、操作日志记录和 `last_used_at` 最小更新间隔。P0 仍未完成 API Key 猜测专项验收、完整 HTTP 接口运行验收和 MySQL 并发验收，因此不能标记为完成。
 
@@ -164,7 +164,7 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 
 ### P3：多因素和外部身份
 
-- [x] 完成管理员 TOTP 第一版：enrollment、登录挑战、恢复码一次性消费、会话认证强度和强制策略开关。
+- [x] 完成管理员 TOTP 第一版：enrollment、登录验证请求、恢复码一次性消费、会话认证强度和强制策略开关。
 - [x] 将 step-up 接入 API Key、角色、用户、会话和 MFA enrollment/策略管理敏感写操作。
 - [x] 提供当前密码加 step-up 保护的恢复码独立轮换接口。
 - [x] 要求外部 JWT 公钥和 `kid` 密钥标识，删除仓库内生产公钥 fallback。
@@ -174,36 +174,36 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 
 #### 管理员 TOTP 第一版实现和限制
 
-当前第一版实现管理员 TOTP、一次性恢复码和登录挑战。API Key 不参与人类用户 MFA。WebAuthn 作为后续更强的抗钓鱼方案。API Key、角色、用户、在线会话和 MFA enrollment/策略管理敏感写操作已经接入 step-up；恢复码轮换还要求当前密码，并在数据库事务内替换旧批次。
+当前第一版实现管理员 TOTP、一次性恢复码和登录验证请求。API Key 不参与人类用户 MFA。WebAuthn 作为后续更强的抗钓鱼方案。API Key、角色、用户、在线会话和 MFA enrollment/策略管理敏感写操作已经接入 step-up；恢复码轮换还要求当前密码，并在数据库事务内替换旧批次。
 
 已追加 `V39__mfa_foundation.sql` 和 `V40__mfa_permissions.sql`，没有修改已执行迁移：
 
 - `sys_user_mfa` 保存 `user_id`、TOTP 密文、随机 nonce、`key_version`、启用时间、失败计数、锁定时间和最近成功的时间步。TOTP 密钥使用 AES-256-GCM 加密；首版若不能接入 KMS，必须配置 32 字节 `MFA_MASTER_KEY`，并记录密钥版本和重新加密流程。
 - `sys_mfa_recovery_code` 保存恢复码哈希、批次和消费时间。生成至少十个高熵恢复码，只在生成响应中显示一次。消费使用行锁和条件更新，保证并发请求只能成功一次。
-- `sys_auth_challenge` 保存不透明挑战 ID、主体、用途、客户端、过期时间、尝试次数和消费时间。挑战有效期建议五分钟，只绑定密码已验证的主体和客户端，不保存密码、TOTP 明文或完整恢复码。
+- `sys_auth_challenge` 保存不透明认证请求 ID、主体、用途、客户端、过期时间、尝试次数和消费时间。认证请求有效期建议五分钟，只绑定密码已验证的主体和客户端，不保存密码、TOTP 明文或完整恢复码。
 - `sys_auth_session` 增加 `mfa_verified_at` 和认证强度字段。现有用户默认不启用 MFA；迁移不能直接把 `admin` 设置为必须 MFA。
 
 实现组件和接口顺序如下：
 
 1. `MfaSecretCipher` 使用 AES-256-GCM 保存 TOTP 密文，密钥版本由配置提供；未配置主密钥时只在实际使用密文时失败。
-2. `POST /v1/auth/mfa/enroll` 创建短期 enrollment 挑战并返回一次性 TOTP 配置材料。
+2. `POST /v1/auth/mfa/enroll` 创建短期 enrollment 验证请求并返回一次性 TOTP 配置材料。
 3. `POST /v1/auth/mfa/enroll/verify` 校验 TOTP 后启用 MFA，并返回一次性恢复码列表。
-4. 密码正确且用户要求 MFA 时，`POST /v1/auth/login` 和兼容登录入口只返回 `MFA_REQUIRED` 和不透明挑战 ID，不签发会话或令牌。
+4. 密码正确且用户要求 MFA 时，`POST /v1/auth/login` 和兼容登录入口只返回 `MFA_REQUIRED` 和不透明认证请求 ID，不签发会话或令牌。
 5. `POST /v1/auth/mfa/verify` 校验 TOTP 或恢复码后，才创建 `sys_auth_session`、刷新令牌和访问令牌，并写入 `mfa_verified_at`、认证强度和 `amr`。
 6. `PUT /v1/auth/mfa/policy/{userId}` 只允许对已经完成 enrollment 的用户启用强制 MFA，并在策略变化后撤销该用户的会话。
 7. API Key 被 `RejectApiKey` 拦截器拒绝进入登录、enrollment、MFA 验证和策略管理路径。
 
-TOTP 使用 RFC 6238 的 30 秒时间步、六位数字和允许前后一个时间步的时钟偏差。相同时间步的重复使用必须失败。当前失败次数按主体和来源地址双维度计数并短时锁定；数据库只保存哈希后的维度键。密码变更、用户禁用、会话撤销和重新 enrollment 必须撤销相关挑战。
+TOTP 使用 RFC 6238 的 30 秒时间步、六位数字和允许前后一个时间步的时钟偏差。相同时间步的重复使用必须失败。当前失败次数按主体和来源地址双维度计数并短时锁定；数据库只保存哈希后的维度键。密码变更、用户禁用、会话撤销和重新 enrollment 必须撤销相关认证请求。
 
 API Key、角色、用户、在线会话、MFA enrollment/策略变更和恢复码轮换均已接入 step-up。恢复码轮换还必须提供当前密码。API Key 不能执行这些人类用户 MFA 管理路径。
 
-实现验收必须证明：未完成 enrollment 的用户不获得强制 MFA 令牌；正确 TOTP 才能创建会话；错误、过期、错误客户端和重复挑战统一失败；恢复码只能消费一次；同一时间步并发请求只有一次成功；密钥、恢复码和完整 `otpauth` 数据不出现在日志、错误响应或数据库明文。当前已完成单事务代码、静态编译、固定向量和输入边界 smoke；MySQL 8.4 迁移、并发消费、故障回滚和真实 HTTP 运行验收仍未完成，因此 MFA 不能标记为生产完成。
+实现验收必须证明：未完成 enrollment 的用户不获得强制 MFA 令牌；正确 TOTP 才能创建会话；错误、过期、错误客户端和重复认证请求统一失败；恢复码只能消费一次；同一时间步并发请求只有一次成功；密钥、恢复码和完整 `otpauth` 数据不出现在日志、错误响应或数据库明文。当前已完成单事务代码、静态编译、固定向量和输入边界 smoke；MySQL 8.4 迁移、并发消费、故障回滚和真实 HTTP 运行验收仍未完成，因此 MFA 不能标记为生产完成。
 
 ### P4：运营与发布
 
 - [ ] 增加安全事件指标、异常登录告警、API Key 轮换报告、事件容量限制和保留清理。
 - [ ] 进行 MySQL 8.4 并发刷新、故障恢复、备份还原和密钥轮换演练。
-- [x] 完成 MFA 因子消费的单事务实现，覆盖 enrollment、TOTP、恢复码和挑战状态；MySQL 并发与故障验收仍待执行。
+- [x] 完成 MFA 因子消费的单事务实现，覆盖 enrollment、TOTP、恢复码和认证请求状态；MySQL 并发与故障验收仍待执行。
 - [x] 完成可信代理地址解析，默认使用连接远端地址，拒绝未验证的 `X-Forwarded-For` 链；真实 HTTP 注入和部署链验收仍待执行。
 - [x] 增加 `JWT_KEY_ID`、签名私钥和公钥集合的启动检查；Quarkus 就绪状态和运行时签名错误验收仍待执行。
 - [ ] 删除旧根路由、旧 token 字段、旧兼容资源和无效测试。
@@ -234,7 +234,7 @@ API Key、角色、用户、在线会话、MFA enrollment/策略变更和恢复�
 5. 必须把权限码落实到每个接口、服务方法和查询条件。现有 `@RolesAllowed("ADMIN")` 仍然是角色级控制，不能作为新模型的验收证据。
 6. 必须继续补齐 API Key 的过期、审计和并发运行测试；列出、轮换、范围上限和一次性明文已经有实现与静态接口测试。
 7. 必须在受信反向代理配置明确后才启用 `X-Forwarded-For` 的 MFA 来源限流；部署直接暴露应用端口时，应使用连接远端地址，并对无法解析的地址采用独立、可观测的处理策略。
-8. enrollment、恢复码批次替换、TOTP 接受和挑战消费已经放入同一事务；仍必须完成 MySQL 并发和故障注入验收，证明失败时不会留下部分状态。
+8. enrollment、恢复码批次替换、TOTP 接受和认证请求消费已经放入同一事务；仍必须完成 MySQL 并发和故障注入验收，证明失败时不会留下部分状态。
 9. `JWT_KEY_ID`、签名私钥和公钥位置已经接入启动检查；仍必须通过 Quarkus 启动和就绪验收，证明配置错误不会创建不可用会话或轮换出客户端无法使用的新刷新令牌。
 
 ## 必须先确定的架构决策
@@ -281,7 +281,7 @@ API Key 认证成功后创建统一的 `SecurityIdentity`，身份属性必须�
 | API Key | 服务主体、范围交集、一次性明文、过期、撤销、轮换、审计、限速 | 部分完成 |
 | 授权 | 默认拒绝、权限码、显式拒绝、实时失效、服务层和查询层复核 | 部分完成：权限码和权限版本失效已实现，显式拒绝及全量服务层复核未完成 |
 | 数据范围 | SELF、DEPARTMENT、子部门、CUSTOM、导出和批量操作无越权 | 部分完成：用户资源已接入，其他资源和运行验收未完成 |
-| MFA | 管理员强制 MFA、恢复码、重新验证和敏感操作升级认证 | 部分完成：TOTP enrollment、登录挑战、恢复码、策略开关、主体/IP 限流、敏感写操作 step-up、恢复码轮换和因子单事务消费已实现；MySQL 并发、故障回滚和 HTTP 运行验收未完成 |
+| MFA | 管理员强制 MFA、恢复码、重新验证和敏感操作升级认证 | 部分完成：TOTP enrollment、登录验证请求、恢复码、策略开关、主体/IP 限流、敏感写操作 step-up、恢复码轮换和因子单事务消费已实现；MySQL 并发、故障回滚和 HTTP 运行验收未完成 |
 | Web 与传输 | HTTPS、CORS、CSRF、Cookie 属性、浏览器存储、缓存控制 | 未完成 |
 | 审计 | 签发、使用、失败、撤销、重用、权限拒绝和管理员操作可追踪 | 部分完成：API Key 认证、权限拒绝和非秘密 credential ID 已记录；保留清理、容量控制、完整凭据生命周期和运行验收未完成 |
 | 运维 | 密钥托管、轮换、备份恢复、告警、限流、数据库故障行为 | 未完成 |
