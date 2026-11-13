@@ -19,7 +19,7 @@ class JobResourceTest extends AuthTestFixture {
                 .then().statusCode(200).body("data.invokeTarget", hasItem("keystoneJob.heartbeat()"));
 
         String code = "test-job-" + System.nanoTime();
-        int id = given().auth().oauth2(token).contentType(JSON)
+        String id = given().auth().oauth2(token).contentType(JSON)
                 .body("{\"code\":\"" + code + "\",\"name\":\"Test job\",\"cron\":\"0/30 * * * * ?\",\"invokeTarget\":\"keystoneJob.heartbeat()\",\"concurrent\":false}")
                 .when().post("/v1/jobs")
                 .then().statusCode(201).extract().path("data.id");

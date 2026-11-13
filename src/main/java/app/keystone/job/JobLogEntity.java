@@ -71,6 +71,8 @@ public class JobLogEntity {
     }
 
     JobLogEntity(JobLog log) {
+        // 每次任务执行记录使用 UUIDv7，保持日志主键的时间顺序和统一身份格式。
+        id = app.keystone.identity.UuidValues.v7Uuid();
         jobId = log.jobId() == null ? null : UUID.fromString(app.keystone.identity.UuidValues.requireCanonical(log.jobId()));
         jobCode = log.jobCode();
         jobName = log.jobName();

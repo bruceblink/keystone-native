@@ -78,7 +78,7 @@ public class JobService {
 
     private void run(String id, ScheduledExecution execution) {
         try { run(jobs.findById(id), AUTO_TRIGGER); }
-        catch (Exception e) { LOG.errorf(e, "Keystone job %d failed", id); }
+        catch (Exception e) { LOG.errorf(e, "Keystone job %s failed", id); }
     }
 
     private void run(Job job, int triggerType) {
@@ -95,7 +95,7 @@ public class JobService {
             message = "任务正在执行，本次触发已跳过";
         } else {
             try {
-                LOG.infof("Executing Keystone job %d (%s)", job.id(), job.invokeTarget());
+                LOG.infof("Executing Keystone job %s (%s)", job.id(), job.invokeTarget());
                 invocations.invoke(job.invokeTarget(), job.jobParams());
                 jobs.markRun(job.id(), "SUCCESS");
             } catch (Exception e) {
@@ -104,7 +104,7 @@ public class JobService {
                 exception = trim(stackTrace(e), 4000);
                 failure = e instanceof RuntimeException runtime ? runtime : new IllegalStateException(e);
                 jobs.markRun(job.id(), "FAILED");
-                if (triggerType == AUTO_TRIGGER) LOG.errorf(e, "Keystone job %d failed", job.id());
+                if (triggerType == AUTO_TRIGGER) LOG.errorf(e, "Keystone job %s failed", job.id());
             } finally {
                 if (!job.concurrent()) lock.unlock();
             }
