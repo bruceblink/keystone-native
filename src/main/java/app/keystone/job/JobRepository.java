@@ -1,88 +1,90 @@
 package app.keystone.job;
 
+import io.quarkus.hibernate.orm.panache.PanacheRepository;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
-import javax.sql.DataSource;
-import java.sql.ResultSet;
-import java.util.ArrayList;
+import jakarta.persistence.LockModeType;
+import jakarta.transaction.Transactional;
+
+import java.time.Instant;
 import java.util.List;
 
+/** 使用 ORM 管理计划任务，数据库结构由 Flyway 管理。 */
 @ApplicationScoped
-public class JobRepository {
-    @Inject DataSource dataSource;
-
+public class JobRepository implements PanacheRepository<JobEntity> {
+    @Transactional
     public List<Job> list() {
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement(select("ORDER BY id")); var rs = p.executeQuery()) {
-            var result = new ArrayList<Job>(); while (rs.next()) result.add(read(rs)); return result;
-        } catch (Exception e) { throw new IllegalStateException("Could not list jobs", e); }
+        return find("order by id").list().stream().map(JobEntity::toModel).toList();
     }
 
+    @Transactional
     public List<Job> enabled() {
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement(select("WHERE enabled = true ORDER BY id")); var rs = p.executeQuery()) {
-            var result = new ArrayList<Job>(); while (rs.next()) result.add(read(rs)); return result;
-        } catch (Exception e) { throw new IllegalStateException("Could not load enabled jobs", e); }
+        return find("enabled = true order by id").list().stream().map(JobEntity::toModel).toList();
     }
 
-    public Job create(String code, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
-        require(code, "code"); require(name, "name"); require(cron, "cron"); require(invokeTarget, "invokeTarget");
-        String sql = "INSERT INTO sys_job(code, name, job_group, invoke_target, job_params, cron, concurrent, enabled, remark) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)";
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql, java.sql.Statement.RETURN_GENERATED_KEYS)) {
-            p.setString(1, code.trim()); p.setString(2, name.trim()); p.setString(3, group == null || group.isBlank() ? "DEFAULT" : group.trim());
-            p.setString(4, invokeTarget.trim()); p.setString(5, jobParams); p.setString(6, cron.trim()); p.setBoolean(7, concurrent == null || concurrent); p.setBoolean(8, enabled == null || enabled); p.setString(9, remark);
-            p.executeUpdate();
-            try (var keys = p.getGeneratedKeys()) { keys.next(); return find(c, keys.getLong(1)); }
-        } catch (java.sql.SQLIntegrityConstraintViolationException e) { throw new IllegalArgumentException("job code already exists", e); }
-        catch (Exception e) { throw new IllegalStateException("Could not create job", e); }
+    @Transactional
+    public Job create(String code, String name, String group, String invokeTarget, String jobParams,
+                      String cron, Boolean concurrent, Boolean enabled, String remark) {
+        require(code, "code");
+        require(name, "name");
+        require(cron, "cron");
+        require(invokeTarget, "invokeTarget");
+        try {
+            var job = new JobEntity(code.trim(), name.trim(),
+                    group == null || group.isBlank() ? "DEFAULT" : group.trim(),
+                    invokeTarget.trim(), jobParams, cron.trim(),
+                    concurrent == null || concurrent, enabled == null || enabled, remark);
+            persistAndFlush(job);
+            return job.toModel();
+        } catch (RuntimeException e) {
+            if (isConstraint(e)) throw new IllegalArgumentException("job code already exists", e);
+            throw new IllegalStateException("Could not create job", e);
+        }
     }
 
-    public Job update(long id, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
-        var fields = new ArrayList<String>(); var values = new ArrayList<Object>();
-        if (name != null && !name.isBlank()) { fields.add("name = ?"); values.add(name.trim()); }
-        if (group != null && !group.isBlank()) { fields.add("job_group = ?"); values.add(group.trim()); }
-        if (invokeTarget != null && !invokeTarget.isBlank()) { fields.add("invoke_target = ?"); values.add(invokeTarget.trim()); }
-        if (jobParams != null) { fields.add("job_params = ?"); values.add(jobParams); }
-        if (cron != null && !cron.isBlank()) { fields.add("cron = ?"); values.add(cron.trim()); }
-        if (concurrent != null) { fields.add("concurrent = ?"); values.add(concurrent); }
-        if (enabled != null) { fields.add("enabled = ?"); values.add(enabled); }
-        if (remark != null) { fields.add("remark = ?"); values.add(remark); }
-        try (var c = dataSource.getConnection()) {
-            if (!fields.isEmpty()) {
-                try (var p = c.prepareStatement("UPDATE sys_job SET " + String.join(", ", fields) + " WHERE id = ?")) {
-                    for (int i = 0; i < values.size(); i++) p.setObject(i + 1, values.get(i));
-                    p.setLong(values.size() + 1, id); if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("job not found");
-                }
-            }
-            return find(c, id);
-        } catch (java.util.NoSuchElementException e) { throw e; }
-        catch (Exception e) { throw new IllegalStateException("Could not update job", e); }
+    @Transactional
+    public Job update(long id, String name, String group, String invokeTarget, String jobParams,
+                      String cron, Boolean concurrent, Boolean enabled, String remark) {
+        JobEntity job = find("id = ?1", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+        if (job == null) throw new java.util.NoSuchElementException("job not found");
+        job.update(name, group, invokeTarget, jobParams, cron, concurrent, enabled, remark);
+        return job.toModel();
     }
 
+    /** 运行状态写入失败不改变任务执行结果。 */
+    @Transactional
     public void markRun(long id, String status) {
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement("UPDATE sys_job SET last_status = ?, last_run_at = CURRENT_TIMESTAMP WHERE id = ?")) {
-            p.setString(1, status); p.setLong(2, id); p.executeUpdate();
-        } catch (Exception ignored) { }
+        try {
+            JobEntity job = find("id = ?1", id).firstResult();
+            if (job != null) job.markRun(status, Instant.now());
+        } catch (RuntimeException ignored) {
+            // 运行状态只用于诊断，持久化异常不能改变调度结果。
+        }
     }
 
+    @Transactional
     public void delete(long id) {
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement("DELETE FROM sys_job WHERE id = ?")) {
-            p.setLong(1, id); if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("job not found");
-        } catch (java.util.NoSuchElementException e) { throw e; }
-        catch (Exception e) { throw new IllegalStateException("Could not delete job", e); }
+        JobEntity job = find("id = ?1", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+        if (job == null) throw new java.util.NoSuchElementException("job not found");
+        delete(job);
     }
 
+    @Transactional
     public Job findById(long id) {
-        try (var c = dataSource.getConnection()) { return find(c, id); }
-        catch (java.util.NoSuchElementException e) { throw e; }
-        catch (Exception e) { throw new IllegalStateException("Could not find job", e); }
+        JobEntity job = find("id = ?1", id).firstResult();
+        if (job == null) throw new java.util.NoSuchElementException("job not found");
+        return job.toModel();
     }
 
-    private static String select(String suffix) { return "SELECT id, code, name, job_group, invoke_target, job_params, cron, concurrent, enabled, remark, last_status, last_run_at FROM sys_job " + suffix; }
-    private static Job find(java.sql.Connection c, long id) throws Exception {
-        try (var p = c.prepareStatement(select("WHERE id = ?"))) { p.setLong(1, id); try (var rs = p.executeQuery()) { if (!rs.next()) throw new java.util.NoSuchElementException("job not found"); return read(rs); } }
+    private static void require(String value, String field) {
+        if (value == null || value.isBlank()) throw new IllegalArgumentException(field + " is required");
     }
-    private static Job read(ResultSet rs) throws Exception {
-        var timestamp = rs.getTimestamp("last_run_at");
-        return new Job(rs.getLong("id"), rs.getString("code"), rs.getString("name"), rs.getString("job_group"), rs.getString("invoke_target"), rs.getString("job_params"), rs.getString("cron"), rs.getBoolean("concurrent"), rs.getBoolean("enabled"), rs.getString("remark"), rs.getString("last_status"), timestamp == null ? null : timestamp.toInstant());
+
+    private static boolean isConstraint(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            String name = current.getClass().getSimpleName().toLowerCase(java.util.Locale.ROOT);
+            String message = String.valueOf(current.getMessage()).toLowerCase(java.util.Locale.ROOT);
+            if (name.contains("constraint") || message.contains("duplicate") || message.contains("unique")) return true;
+        }
+        return false;
     }
-    private static void require(String value, String field) { if (value == null || value.isBlank()) throw new IllegalArgumentException(field + " is required"); }
 }
