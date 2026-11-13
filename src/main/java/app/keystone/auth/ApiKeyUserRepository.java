@@ -2,6 +2,7 @@ package app.keystone.auth;
 
 import io.quarkus.elytron.security.common.BcryptUtil;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
+import io.quarkus.hibernate.orm.panache.PanacheQuery;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 import jakarta.persistence.LockModeType;
@@ -71,6 +72,32 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
             user.replaceRoles(replacement);
             user.bumpPermissionVersion();
         }
+        return user.toUser();
+    }
+
+    /** 在事务内按筛选条件和数据范围分页读取用户。 */
+    @Transactional
+    public UserRepository.Page listUsers(int page, int size, String username, String displayName,
+                                         Long deptId, Boolean enabled, DataScopeService.Scope scope,
+                                         long subjectId) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(100, Math.max(1, size));
+        var query = userQuery(username, displayName, deptId, enabled, scope, subjectId);
+        long total = query.count();
+        var users = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize))
+                .list().stream().map(ApiKeyUserEntity::toUser).toList();
+        return new UserRepository.Page(users, safePage, safeSize, total);
+    }
+
+    /** 在事务内按主体数据范围读取单个用户。 */
+    @Transactional
+    public User findUser(long userId, DataScopeService.Scope scope, long subjectId) {
+        var parameters = new java.util.ArrayList<Object>();
+        parameters.add(userId);
+        var scoped = new StringBuilder("id = ?1");
+        appendScope(scoped, parameters, scope, subjectId);
+        ApiKeyUserEntity user = find(scoped.toString(), parameters.toArray()).firstResult();
+        if (user == null) throw new java.util.NoSuchElementException("user not found");
         return user.toUser();
     }
 
@@ -205,6 +232,32 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         parameters.add(userId);
         appendScope(query, parameters, scope, subjectId);
         return find(query.toString(), parameters.toArray()).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    }
+
+    private PanacheQuery<ApiKeyUserEntity> userQuery(String username, String displayName, Long deptId,
+                                                       Boolean enabled, DataScopeService.Scope scope,
+                                                       long subjectId) {
+        var query = new StringBuilder("1 = 1");
+        var parameters = new java.util.ArrayList<Object>();
+        if (username != null && !username.isBlank()) {
+            parameters.add("%" + username.trim() + "%");
+            query.append(" and username like ?").append(parameters.size());
+        }
+        if (displayName != null && !displayName.isBlank()) {
+            parameters.add("%" + displayName.trim() + "%");
+            query.append(" and displayName like ?").append(parameters.size());
+        }
+        if (deptId != null) {
+            parameters.add(deptId);
+            query.append(" and deptId = ?").append(parameters.size());
+        }
+        if (enabled != null) {
+            parameters.add(enabled);
+            query.append(" and enabled = ?").append(parameters.size());
+        }
+        appendScope(query, parameters, scope, subjectId);
+        query.append(" order by id");
+        return find(query.toString(), parameters.toArray());
     }
 
     private static void appendScope(StringBuilder query, List<Object> parameters,

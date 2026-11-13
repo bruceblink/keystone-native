@@ -5,16 +5,11 @@ import io.quarkus.elytron.security.common.BcryptUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
-import javax.sql.DataSource;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 
 @ApplicationScoped
 public class UserRepository {
-    @Inject DataSource dataSource;
     @Inject app.keystone.auth.ApiKeyUserRepository ormUsers;
     @Inject PasswordPolicy passwordPolicy;
     @ConfigProperty(name = "keystone.security.login.account-lock-base-seconds", defaultValue = "60")
@@ -47,30 +42,22 @@ public class UserRepository {
     }
 
     public User findPublic(long id, DataScopeService.Scope scope, long subjectId) {
-        try (var c = dataSource.getConnection()) { return find(c, id, scope, subjectId).orElseThrow(); }
-        catch (java.util.NoSuchElementException e) { throw e; }
-        catch (Exception e) { throw new IllegalStateException("Could not find user", e); }
+        try {
+            return ormUsers.findUser(id, scope, subjectId);
+        } catch (java.util.NoSuchElementException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not find user", e);
+        }
     }
 
     public Page list(int page, int size, String username, String displayName, Long deptId, Boolean enabled,
                      DataScopeService.Scope scope, long subjectId) {
-        int safePage = Math.max(1, page), safeSize = Math.min(100, Math.max(1, size));
-        long offset = (long) (safePage - 1) * safeSize;
-        String filters = appendScope(filters(username, displayName, deptId, enabled), scope, "u");
-        String countSql = "SELECT COUNT(*) FROM sys_user u" + filters;
-        String listSql = "SELECT u.id, u.username, u.display_name, u.dept_id, u.post_id, u.enabled, u.email, u.phone_number, u.sex, u.avatar, u.login_ip, u.login_at, u.remark, COALESCE(GROUP_CONCAT(DISTINCT r.code ORDER BY r.code SEPARATOR ','), '') roles FROM sys_user u LEFT JOIN sys_user_role ur ON ur.user_id = u.id LEFT JOIN sys_role r ON r.id = ur.role_id" + filters + " GROUP BY u.id ORDER BY u.id LIMIT ? OFFSET ?";
-        try (var c = dataSource.getConnection(); var count = c.prepareStatement(countSql); var p = c.prepareStatement(listSql)) {
-            int index = bindFilters(count, 1, username, displayName, deptId, enabled);
-            index = bindScope(count, index, scope, subjectId);
-            int listIndex = bindFilters(p, 1, username, displayName, deptId, enabled);
-            listIndex = bindScope(p, listIndex, scope, subjectId);
-            long total;
-            try (var rs = count.executeQuery()) { rs.next(); total = rs.getLong(1); }
-            p.setInt(listIndex, safeSize); p.setLong(listIndex + 1, offset);
-            var items = new ArrayList<User>();
-            try (var rows = p.executeQuery()) { while (rows.next()) items.add(toUser(rows)); }
-            return new Page(items, safePage, safeSize, total);
-        } catch (Exception e) { throw new IllegalStateException("Could not list users", e); }
+        try {
+            return ormUsers.listUsers(page, size, username, displayName, deptId, enabled, scope, subjectId);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not list users", e);
+        }
     }
 
     public User create(String username, String password, String displayName, Long deptId, List<String> roleCodes) {
@@ -132,24 +119,6 @@ public class UserRepository {
         }
     }
 
-    private Optional<User> find(Connection c, long id) throws Exception {
-        return find(c, id, DataScopeService.Scope.unrestricted(), id);
-    }
-
-    private Optional<User> find(Connection c, long id, DataScopeService.Scope scope, long subjectId) throws Exception {
-        String sql = appendScope("SELECT u.id, u.username, u.display_name, u.dept_id, u.post_id, u.enabled, u.email, u.phone_number, u.sex, u.avatar, u.login_ip, u.login_at, u.remark, COALESCE(GROUP_CONCAT(DISTINCT r.code ORDER BY r.code SEPARATOR ','), '') roles FROM sys_user u LEFT JOIN sys_user_role ur ON ur.user_id = u.id LEFT JOIN sys_role r ON r.id = ur.role_id WHERE u.id = ?", scope, "u") + " GROUP BY u.id";
-        try (var p = c.prepareStatement(sql)) {
-            p.setLong(1, id);
-            bindScope(p, 2, scope, subjectId);
-            try (var rs = p.executeQuery()) { return rs.next() ? Optional.of(toUser(rs)) : Optional.empty(); }
-        }
-    }
-
-    private static User toUser(ResultSet rs) throws Exception {
-        var loginAt = rs.getTimestamp("login_at");
-        return new User(rs.getLong("id"), rs.getString("username"), rs.getString("display_name"), nullableLong(rs, "dept_id"), nullableLong(rs, "post_id"), rs.getBoolean("enabled"), rs.getString("email"), rs.getString("phone_number"), nullableInt(rs, "sex"), rs.getString("avatar"), rs.getString("login_ip"), loginAt == null ? null : loginAt.toInstant(), rs.getString("remark"), splitRoles(rs.getString("roles")));
-    }
-
     /** 计算第 N 次失败的锁定秒数；结果不会超过部署配置的上限。 */
     public static long calculateLockDelaySeconds(long baseSeconds, long maxSeconds, int attempts) {
         if (baseSeconds <= 0 || maxSeconds < baseSeconds || maxSeconds > 86_400 || attempts < 5) {
@@ -185,36 +154,6 @@ public class UserRepository {
             throw new IllegalStateException("Could not read user permission version", e);
         }
     }
-    private static List<String> splitRoles(String value) { return value == null || value.isBlank() ? List.of("USER") : List.of(value.split(",")); }
-    private static String filters(String username, String displayName, Long deptId, Boolean enabled) { var parts = new ArrayList<String>(); if (username != null && !username.isBlank()) parts.add("u.username LIKE ?"); if (displayName != null && !displayName.isBlank()) parts.add("u.display_name LIKE ?"); if (deptId != null) parts.add("u.dept_id = ?"); if (enabled != null) parts.add("u.enabled = ?"); return parts.isEmpty() ? "" : " WHERE " + String.join(" AND ", parts); }
-    /** 把范围条件追加到查询和删除语句，空范围使用恒假条件。 */
-    private static String appendScope(String existing, DataScopeService.Scope scope, String alias) {
-        String predicate = scopePredicate(scope, alias);
-        if (predicate.isBlank()) return existing;
-        return existing.isBlank() ? " WHERE " + predicate : existing + " AND " + predicate;
-    }
-
-    private static String scopePredicate(DataScopeService.Scope scope, String alias) {
-        if (scope.all()) return "";
-        var clauses = new ArrayList<String>();
-        String id = alias.isBlank() ? "id" : alias + ".id";
-        String department = alias.isBlank() ? "dept_id" : alias + ".dept_id";
-        if (scope.self()) clauses.add(id + " = ?");
-        if (!scope.departments().isEmpty()) clauses.add(department + " IN (" + "?,".repeat(scope.departments().size()).replaceAll(",$", "") + ")");
-        return clauses.isEmpty() ? "1 = 0" : "(" + String.join(" OR ", clauses) + ")";
-    }
-
-    /** 按 scopePredicate 的固定顺序绑定主体 ID 和部门 ID，保持查询参数与条件一致。 */
-    private static int bindScope(java.sql.PreparedStatement p, int index, DataScopeService.Scope scope, long subjectId) throws Exception {
-        if (scope.all()) return index;
-        if (scope.self()) p.setLong(index++, subjectId);
-        for (Long department : scope.departments()) p.setLong(index++, department);
-        return index;
-    }
-    private static int bindFilters(java.sql.PreparedStatement p, int index, String username, String displayName, Long deptId, Boolean enabled) throws Exception { if (username != null && !username.isBlank()) p.setString(index++, "%" + username.trim() + "%"); if (displayName != null && !displayName.isBlank()) p.setString(index++, "%" + displayName.trim() + "%"); if (deptId != null) p.setLong(index++, deptId); if (enabled != null) p.setBoolean(index++, enabled); return index; }
-    private static Long nullableLong(ResultSet rs, String column) throws Exception { long value = rs.getLong(column); return rs.wasNull() ? null : value; }
-    private static Integer nullableInt(ResultSet rs, String column) throws Exception { int value = rs.getInt(column); return rs.wasNull() ? null : value; }
-
     private static boolean isUniqueConstraint(Throwable error) {
         for (Throwable current = error; current != null; current = current.getCause()) {
             String name = current.getClass().getSimpleName().toLowerCase(java.util.Locale.ROOT);
