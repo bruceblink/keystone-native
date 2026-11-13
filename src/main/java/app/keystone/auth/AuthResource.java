@@ -193,7 +193,7 @@ public class AuthResource {
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("MFA state is unavailable")).build(); }
     }
 
-    @POST @Path("/logout") @RequiresPermission("session:logout")
+    @POST @Path("/logout") @RequiresPermission("session:revoke")
     public Response logout() {
         if (identity.isAnonymous() || !(identity.getPrincipal() instanceof JsonWebToken jwt)) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("authentication is required")).build();
         Object sessionId = JwtClaims.get(jwt, "sid");
