@@ -6,6 +6,9 @@ import jakarta.transaction.Transactional;
 import jakarta.persistence.LockModeType;
 
 import java.util.Set;
+import java.util.Optional;
+import java.time.Instant;
+import app.keystone.user.UserRepository;
 
 /** 通过 ORM 读取 API Key 认证主体和签发权限。 */
 @ApplicationScoped
@@ -17,7 +20,20 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
     }
 
     @Transactional
-    Set<String> permissions(long userId) {
+    public Optional<UserRepository.AuthUser> findAuthUser(long userId) {
+        ApiKeyUserEntity user = findEnabled(userId);
+        return user == null ? Optional.empty() : Optional.of(user.toAuthUser());
+    }
+
+    @Transactional
+    public Optional<UserRepository.AuthUser> findAuthUserByUsername(String username) {
+        if (username == null || username.isBlank()) return Optional.empty();
+        ApiKeyUserEntity user = find("username = ?1 and enabled = true", username).firstResult();
+        return user == null ? Optional.empty() : Optional.of(user.toAuthUser());
+    }
+
+    @Transactional
+    public Set<String> permissions(long userId) {
         ApiKeyUserEntity user = findEnabled(userId);
         return user == null ? Set.of() : user.permissions();
     }
@@ -35,9 +51,15 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
     }
 
     @Transactional
-    long permissionVersion(long userId) {
+    public long permissionVersion(long userId) {
         ApiKeyUserEntity user = findEnabled(userId);
         return user == null ? -1 : user.permissionVersion();
+    }
+
+    @Transactional
+    public void markLogin(long userId, String ipAddress) {
+        ApiKeyUserEntity user = findById(userId);
+        if (user != null) user.markLogin(ipAddress, Instant.now());
     }
 
     ApiKeyUserEntity findEnabledEntity(long userId) {

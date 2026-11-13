@@ -93,6 +93,12 @@ public class ApiKeyUserEntity {
         return loginIp;
     }
 
+    /** 更新登录元数据；调用方必须在事务内持有该实体。 */
+    void markLogin(String ipAddress, java.time.Instant at) {
+        loginIp = ipAddress;
+        loginAt = at;
+    }
+
     long permissionVersion() {
         return permissionVersion;
     }
