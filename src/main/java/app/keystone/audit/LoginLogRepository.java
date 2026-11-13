@@ -1,40 +1,61 @@
 package app.keystone.audit;
 
+import io.quarkus.hibernate.orm.panache.PanacheRepository;
 import jakarta.enterprise.context.ApplicationScoped;
-import jakarta.inject.Inject;
-import javax.sql.DataSource;
-import java.util.ArrayList;
+import jakarta.transaction.Transactional;
 
+import java.util.List;
+
+/** 使用 Panache 保存和查询登录日志。 */
 @ApplicationScoped
-public class LoginLogRepository {
-    @Inject DataSource dataSource;
-
+public class LoginLogRepository implements PanacheRepository<LoginLogEntity> {
+    /** 登录日志写入失败不影响认证主流程。 */
+    @Transactional
     public void record(String username, String status, String ipAddress, String message, String userAgent) {
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement("INSERT INTO sys_login_log(username, status, ip_address, message, user_agent) VALUES (?, ?, ?, ?, ?)")) {
-            p.setString(1, username == null || username.isBlank() ? "unknown" : username); p.setString(2, status); p.setString(3, ipAddress); p.setString(4, message); p.setString(5, userAgent); p.executeUpdate();
-        } catch (Exception ignored) { }
+        try {
+            persist(new LoginLogEntity(username == null || username.isBlank() ? "unknown" : username,
+                    status, ipAddress, message, userAgent));
+        } catch (RuntimeException ignored) {
+            // 日志写入失败不能改变登录响应；调用方通过运行指标观察持久化异常。
+        }
     }
 
+    @Transactional
     public Page list(int page, int size, String username, String status) {
-        int safePage = Math.max(1, page), safeSize = Math.min(100, Math.max(1, size)); long offset = (long) (safePage - 1) * safeSize;
-        String filter = filter(username, status);
-        try (var c = dataSource.getConnection(); var count = c.prepareStatement("SELECT COUNT(*) FROM sys_login_log" + filter); var p = c.prepareStatement("SELECT id, username, status, ip_address, message, user_agent, login_at FROM sys_login_log" + filter + " ORDER BY id DESC LIMIT ? OFFSET ?")) {
-            int index = bind(count, 1, username, status); bind(p, 1, username, status); long total;
-            try (var rs = count.executeQuery()) { rs.next(); total = rs.getLong(1); }
-            p.setInt(index, safeSize); p.setLong(index + 1, offset); var items = new ArrayList<LoginLog>();
-            try (var rs = p.executeQuery()) { while (rs.next()) items.add(read(rs)); }
-            return new Page(items, safePage, safeSize, total);
-        } catch (Exception e) { throw new IllegalStateException("Could not list login logs", e); }
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(100, Math.max(1, size));
+        var query = findQuery(username, status);
+        long total = query.count();
+        List<LoginLog> items = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize))
+                .list().stream().map(LoginLogEntity::toModel).toList();
+        return new Page(items, safePage, safeSize, total);
     }
 
-    public int delete(java.util.List<Long> ids) {
+    @Transactional
+    public int delete(List<Long> ids) {
         if (ids == null || ids.isEmpty()) return 0;
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement("DELETE FROM sys_login_log WHERE id = ?")) { for (Long id : ids) { p.setLong(1, id); p.addBatch(); } int total = 0; for (int value : p.executeBatch()) if (value > 0) total += value; return total; }
-        catch (Exception e) { throw new IllegalStateException("Could not delete login logs", e); }
+        int total = 0;
+        for (Long id : ids) {
+            if (id != null && delete("id", id) > 0) total++;
+        }
+        return total;
     }
 
-    private static String filter(String username, String status) { var parts = new ArrayList<String>(); if (username != null && !username.isBlank()) parts.add("username LIKE ?"); if (status != null && !status.isBlank()) parts.add("status = ?"); return parts.isEmpty() ? "" : " WHERE " + String.join(" AND ", parts); }
-    private static int bind(java.sql.PreparedStatement p, int index, String username, String status) throws Exception { if (username != null && !username.isBlank()) p.setString(index++, "%" + username.trim() + "%"); if (status != null && !status.isBlank()) p.setString(index++, status.trim()); return index; }
-    private static LoginLog read(java.sql.ResultSet rs) throws Exception { var timestamp = rs.getTimestamp("login_at"); return new LoginLog(rs.getLong("id"), rs.getString("username"), rs.getString("status"), rs.getString("ip_address"), rs.getString("message"), rs.getString("user_agent"), timestamp == null ? null : timestamp.toInstant()); }
-    public record Page(java.util.List<LoginLog> items, int page, int size, long total) {}
+    private io.quarkus.hibernate.orm.panache.PanacheQuery<LoginLogEntity> findQuery(String username, String status) {
+        var query = new StringBuilder("1 = 1");
+        var parameters = new java.util.ArrayList<Object>();
+        if (username != null && !username.isBlank()) {
+            parameters.add("%" + username.trim() + "%");
+            query.append(" and username like ?").append(parameters.size());
+        }
+        if (status != null && !status.isBlank()) {
+            parameters.add(status.trim());
+            query.append(" and status = ?").append(parameters.size());
+        }
+        query.append(" order by id desc");
+        return find(query.toString(), parameters.toArray());
+    }
+
+    public record Page(List<LoginLog> items, int page, int size, long total) {
+    }
 }
