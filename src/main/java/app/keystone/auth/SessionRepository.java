@@ -198,8 +198,8 @@ public class SessionRepository {
     }
 
     @Transactional
-    public void revokeById(long sessionId) {
-        RefreshTokenEntity token = tokens.findById(sessionId);
+    public void revokeById(String sessionId) {
+        RefreshTokenEntity token = tokens.findById(app.keystone.identity.UuidValues.parse(sessionId));
         if (token == null) throw new java.util.NoSuchElementException("session not found");
         Instant now = Instant.now();
         AuthSessionEntity session = token.sessionId() == null ? null : sessions.findForUpdate(token.sessionId());
@@ -256,7 +256,7 @@ public class SessionRepository {
                                  String sessionId, Instant refreshExpiresAt, String clientId, String approvedScope) {
     }
 
-    public record OnlineSession(long sessionId, String userId, String username, String displayName,
+    public record OnlineSession(String sessionId, String userId, String username, String displayName,
                                 String ipAddress, Instant createdAt, Instant expiresAt, Instant accessExpiresAt) {
     }
 }

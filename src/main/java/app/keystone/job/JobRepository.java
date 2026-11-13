@@ -1,6 +1,6 @@
 package app.keystone.job;
 
-import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
@@ -10,7 +10,7 @@ import java.util.List;
 
 /** 使用 ORM 管理计划任务，数据库结构由 Flyway 管理。 */
 @ApplicationScoped
-public class JobRepository implements PanacheRepository<JobEntity> {
+public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util.UUID> {
     @Transactional
     public List<Job> list() {
         return find("order by id").list().stream().map(JobEntity::toModel).toList();
@@ -42,9 +42,9 @@ public class JobRepository implements PanacheRepository<JobEntity> {
     }
 
     @Transactional
-    public Job update(long id, String name, String group, String invokeTarget, String jobParams,
+    public Job update(String id, String name, String group, String invokeTarget, String jobParams,
                       String cron, Boolean concurrent, Boolean enabled, String remark) {
-        JobEntity job = find("id = ?1", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+        JobEntity job = find("id = ?1", parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (job == null) throw new java.util.NoSuchElementException("job not found");
         job.update(name, group, invokeTarget, jobParams, cron, concurrent, enabled, remark);
         return job.toModel();
@@ -52,9 +52,9 @@ public class JobRepository implements PanacheRepository<JobEntity> {
 
     /** 运行状态写入失败不改变任务执行结果。 */
     @Transactional
-    public void markRun(long id, String status) {
+    public void markRun(String id, String status) {
         try {
-            JobEntity job = find("id = ?1", id).firstResult();
+            JobEntity job = find("id = ?1", parse(id)).firstResult();
             if (job != null) job.markRun(status, Instant.now());
         } catch (RuntimeException ignored) {
             // 运行状态只用于诊断，持久化异常不能改变调度结果。
@@ -62,21 +62,25 @@ public class JobRepository implements PanacheRepository<JobEntity> {
     }
 
     @Transactional
-    public void delete(long id) {
-        JobEntity job = find("id = ?1", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    public void delete(String id) {
+        JobEntity job = find("id = ?1", parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (job == null) throw new java.util.NoSuchElementException("job not found");
         delete(job);
     }
 
     @Transactional
-    public Job findById(long id) {
-        JobEntity job = find("id = ?1", id).firstResult();
+    public Job findById(String id) {
+        JobEntity job = find("id = ?1", parse(id)).firstResult();
         if (job == null) throw new java.util.NoSuchElementException("job not found");
         return job.toModel();
     }
 
     private static void require(String value, String field) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException(field + " is required");
+    }
+
+    private static java.util.UUID parse(String value) {
+        return app.keystone.identity.UuidValues.parse(value);
     }
 
     private static boolean isConstraint(Throwable error) {

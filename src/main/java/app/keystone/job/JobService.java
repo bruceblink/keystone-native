@@ -26,7 +26,7 @@ public class JobService {
     @Inject JobRepository jobs;
     @Inject JobInvocationService invocations;
     @Inject JobLogRepository jobLogs;
-    private final Map<Long, ReentrantLock> locks = new ConcurrentHashMap<>();
+    private final Map<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     void onStart(@Observes StartupEvent ignored) {
         for (Job job : jobs.enabled()) schedule(job);
@@ -43,7 +43,7 @@ public class JobService {
 
     public List<Job> jobs() { return jobs.list(); }
 
-    public Job update(long id, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
+    public Job update(String id, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
         Job current = jobs.findById(id);
         if (cron != null && !cron.isBlank()) validateCron(cron);
         String target = invokeTarget == null || invokeTarget.isBlank() ? current.invokeTarget() : invokeTarget;
@@ -57,13 +57,13 @@ public class JobService {
         return job;
     }
 
-    public void delete(long id) { unschedule(id); jobs.delete(id); locks.remove(id); }
+    public void delete(String id) { unschedule(id); jobs.delete(id); locks.remove(id); }
 
-    public void trigger(long id) { run(jobs.findById(id), MANUAL_TRIGGER); }
+    public void trigger(String id) { run(jobs.findById(id), MANUAL_TRIGGER); }
 
     public List<JobInvocationService.JobTarget> targets() { return invocations.targets(); }
 
-    public JobLogRepository.Page logs(Long jobId, int page, int size) { return jobLogs.list(jobId, page, size); }
+    public JobLogRepository.Page logs(String jobId, int page, int size) { return jobLogs.list(jobId, page, size); }
 
     private void schedule(Job job) {
         String schedulerId = schedulerId(job.id());
@@ -71,12 +71,12 @@ public class JobService {
         scheduler.newJob(schedulerId).setCron(job.cron()).setDescription(job.name()).setTask((ScheduledExecution execution) -> run(job.id(), execution)).schedule();
     }
 
-    private void unschedule(long id) {
+    private void unschedule(String id) {
         String idValue = schedulerId(id);
         if (scheduler.getScheduledJob(idValue) != null) scheduler.unscheduleJob(idValue);
     }
 
-    private void run(long id, ScheduledExecution execution) {
+    private void run(String id, ScheduledExecution execution) {
         try { run(jobs.findById(id), AUTO_TRIGGER); }
         catch (Exception e) { LOG.errorf(e, "Keystone job %d failed", id); }
     }
@@ -115,7 +115,7 @@ public class JobService {
         if (failure != null && triggerType == MANUAL_TRIGGER) throw failure;
     }
 
-    private static String schedulerId(long id) { return "keystone-job-" + id; }
+    private static String schedulerId(String id) { return "keystone-job-" + id; }
     private static String trim(String value, int max) { if (value == null) return ""; return value.length() <= max ? value : value.substring(0, max); }
     private static String stackTrace(Exception e) { var out = new java.io.StringWriter(); e.printStackTrace(new java.io.PrintWriter(out)); return out.toString(); }
     private static void validateCron(String cron) {

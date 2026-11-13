@@ -1,7 +1,7 @@
 package app.keystone.audit;
 
 import io.quarkus.hibernate.orm.panache.PanacheQuery;
-import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
@@ -11,7 +11,7 @@ import java.util.List;
 
 /** 使用 Panache 管理操作日志，避免业务代码直接依赖 JDBC 和手写 SQL。 */
 @ApplicationScoped
-public class OperationLogRepository implements PanacheRepository<OperationLogEntity> {
+public class OperationLogRepository implements PanacheRepositoryBase<OperationLogEntity, java.util.UUID> {
 
     /** 审计记录失败不应阻断主业务，同时使用独立事务避免跟随调用方回滚。 */
     @Transactional(Transactional.TxType.REQUIRES_NEW)
@@ -61,9 +61,10 @@ public class OperationLogRepository implements PanacheRepository<OperationLogEnt
 
     /** 使用参数化 HQL 批量删除指定记录。 */
     @Transactional
-    public int delete(List<Long> ids) {
+    public int delete(List<String> ids) {
         if (ids == null || ids.isEmpty()) return 0;
-        return (int) delete("id in ?1", ids);
+        var values = ids.stream().filter(java.util.Objects::nonNull).map(app.keystone.identity.UuidValues::parse).toList();
+        return values.isEmpty() ? 0 : (int) delete("id in ?1", values);
     }
 
     public record Page(List<OperationLog> items, int page, int size, long total) {

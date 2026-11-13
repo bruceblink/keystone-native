@@ -20,12 +20,12 @@ public class JobLogRepository implements PanacheRepository<JobLogEntity> {
     }
 
     @Transactional
-    public Page list(Long jobId, int page, int size) {
+    public Page list(String jobId, int page, int size) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(100, Math.max(1, size));
         PanacheQuery<JobLogEntity> query = jobId == null
                 ? find("order by id desc")
-                : find("jobId = ?1 order by id desc", jobId);
+                : find("jobId = ?1 order by id desc", app.keystone.identity.UuidValues.parse(jobId));
         long total = query.count();
         List<JobLog> items = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize))
                 .list().stream().map(JobLogEntity::toModel).toList();

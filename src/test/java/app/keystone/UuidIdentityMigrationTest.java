@@ -50,4 +50,21 @@ class UuidIdentityMigrationTest {
         assertTrue(sql.contains("BIN_TO_UUID"));
         assertTrue(sql.contains("INSERT IGNORE INTO sys_uuid_content_migration"));
     }
+
+    @Test
+    void jobLogAndAuditMigrationUsesBinaryIdsAndGuardedReplay() throws Exception {
+        String sql = Files.readString(Path.of("src/main/resources/db/migration/V49__job_log_audit_identity_uuid.sql"));
+        assertTrue(sql.contains("sys_uuid_job_log_migration"));
+        assertTrue(sql.contains("@uuid_job_log_should_rebuild"));
+        assertTrue(sql.contains("sys_job"));
+        assertTrue(sql.contains("sys_job_log"));
+        assertTrue(sql.contains("sys_login_log"));
+        assertTrue(sql.contains("sys_operation_log"));
+        assertTrue(sql.contains("sys_security_event"));
+        assertTrue(sql.contains("sys_refresh_token_event"));
+        assertTrue(sql.contains("id BINARY(16)"));
+        assertTrue(sql.contains("token_id BINARY(16)"));
+        assertTrue(sql.contains("UUID_TO_BIN"));
+        assertTrue(sql.contains("INSERT IGNORE INTO sys_uuid_job_log_migration"));
+    }
 }

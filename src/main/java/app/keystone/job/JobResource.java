@@ -20,8 +20,8 @@ public class JobResource {
     @GET @RequiresPermission("job:read") public ApiResponse<List<Job>> list() { return ApiResponse.ok(service.jobs()); }
 
     @GET @Path("/{id}") @RequiresPermission("job:read")
-    public Response get(@PathParam("id") long id) {
-        try { return Response.ok(ApiResponse.ok(service.jobs().stream().filter(j -> j.id() == id).findFirst().orElseThrow())).build(); }
+    public Response get(@PathParam("id") String id) {
+        try { return Response.ok(ApiResponse.ok(service.jobs().stream().filter(j -> j.id().equals(id)).findFirst().orElseThrow())).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
@@ -29,7 +29,7 @@ public class JobResource {
     public ApiResponse<List<JobInvocationService.JobTarget>> targets() { return ApiResponse.ok(service.targets()); }
 
     @GET @Path("/logs") @RequiresPermission("job:read")
-    public ApiResponse<JobLogRepository.Page> logs(@QueryParam("jobId") Long jobId, @QueryParam("page") Integer page, @QueryParam("size") Integer size) {
+    public ApiResponse<JobLogRepository.Page> logs(@QueryParam("jobId") String jobId, @QueryParam("page") Integer page, @QueryParam("size") Integer size) {
         return ApiResponse.ok(service.logs(jobId, page == null ? 1 : page, size == null ? 20 : size));
     }
 
@@ -44,7 +44,7 @@ public class JobResource {
     }
 
     @PUT @Path("/{id}") @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("job:update")
-    public Response update(@PathParam("id") long id, JobRequest request) {
+    public Response update(@PathParam("id") String id, JobRequest request) {
         if (request == null) return bad("request body is required");
         try {
             var job = service.update(id, request.name(), request.group(), request.invokeTarget(), request.jobParams(), request.cron(), request.concurrent(), request.enabled(), request.remark());
@@ -55,7 +55,7 @@ public class JobResource {
     }
 
     @PUT @Path("/{id}/status") @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("job:update-status")
-    public Response status(@PathParam("id") long id, StatusRequest request) {
+    public Response status(@PathParam("id") String id, StatusRequest request) {
         if (request == null || request.enabled() == null) return bad("enabled is required");
         try {
             var job = service.update(id, null, null, null, null, null, null, request.enabled(), null);
@@ -65,17 +65,17 @@ public class JobResource {
     }
 
     @POST @Path("/{id}/trigger") @RequiresPermission("job:run")
-    public Response trigger(@PathParam("id") long id) { return run(id); }
+    public Response trigger(@PathParam("id") String id) { return run(id); }
 
     @POST @Path("/{id}/run") @RequiresPermission("job:run")
-    public Response run(@PathParam("id") long id) {
+    public Response run(@PathParam("id") String id) {
         try { service.trigger(id); logs.record(actor(), "TRIGGER", "job", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("triggered", true))).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
     @DELETE @Path("/{id}") @RequiresPermission("job:delete")
-    public Response delete(@PathParam("id") long id) {
+    public Response delete(@PathParam("id") String id) {
         try { service.delete(id); logs.record(actor(), "DELETE", "job", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }

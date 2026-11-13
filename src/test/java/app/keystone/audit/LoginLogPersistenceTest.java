@@ -13,7 +13,7 @@ class LoginLogPersistenceTest {
     @Test
     void repositoryUsesPanacheWithoutManualJdbc() throws Exception {
         String source = Files.readString(Path.of("src/main/java/app/keystone/audit/LoginLogRepository.java"));
-        assertTrue(source.contains("PanacheRepository<LoginLogEntity>"));
+        assertTrue(source.contains("PanacheRepositoryBase<LoginLogEntity"));
         assertTrue(source.contains("@Transactional"));
         assertFalse(source.contains("DataSource"));
         assertFalse(source.contains("prepareStatement"));

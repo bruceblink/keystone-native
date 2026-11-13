@@ -10,14 +10,18 @@ import jakarta.persistence.Convert;
 import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** 映射刷新令牌轮换明细；数据库只保存令牌摘要，不保存明文令牌。 */
 @Entity
 @Table(name = "sys_refresh_token")
 public class RefreshTokenEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
     @Convert(converter = UuidBinaryConverter.class)
@@ -62,6 +66,7 @@ public class RefreshTokenEntity {
     RefreshTokenEntity(String userId, String sessionId, String refreshFamilyId, String clientId,
                        String tokenHash, Instant expiresAt, Instant idleExpiresAt,
                        Instant accessExpiresAt, String accessTokenId) {
+        this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.userId = userId;
         this.sessionId = sessionId;
         this.refreshFamilyId = refreshFamilyId;
@@ -73,7 +78,7 @@ public class RefreshTokenEntity {
         this.accessTokenId = accessTokenId;
     }
 
-    Long id() { return id; }
+    String id() { return id == null ? null : id.toString(); }
     String userId() { return userId; }
     String sessionId() { return sessionId; }
     String refreshFamilyId() { return refreshFamilyId; }

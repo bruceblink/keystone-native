@@ -1,6 +1,6 @@
 package app.keystone.auth;
 
-import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.LockModeType;
 
@@ -9,7 +9,7 @@ import java.util.List;
 
 /** 使用 Panache 查询和锁定刷新令牌轮换明细。 */
 @ApplicationScoped
-public class RefreshTokenRepository implements PanacheRepository<RefreshTokenEntity> {
+public class RefreshTokenRepository implements PanacheRepositoryBase<RefreshTokenEntity, java.util.UUID> {
     RefreshTokenEntity findForUpdateByHash(String tokenHash) {
         return find("tokenHash", tokenHash).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
     }

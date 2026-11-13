@@ -8,17 +8,22 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** 映射计划任务执行记录；数据库表结构由 Flyway 管理。 */
 @Entity
 @Table(name = "sys_job_log")
 public class JobLogEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
-    @Column(name = "job_id")
-    private Long jobId;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(name = "job_id", columnDefinition = "BINARY(16)")
+    private UUID jobId;
 
     @Column(name = "job_code", nullable = false, length = 64)
     private String jobCode;
@@ -66,7 +71,7 @@ public class JobLogEntity {
     }
 
     JobLogEntity(JobLog log) {
-        jobId = log.jobId();
+        jobId = log.jobId() == null ? null : UUID.fromString(app.keystone.identity.UuidValues.requireCanonical(log.jobId()));
         jobCode = log.jobCode();
         jobName = log.jobName();
         jobGroup = log.jobGroup();
@@ -83,7 +88,7 @@ public class JobLogEntity {
     }
 
     JobLog toModel() {
-        return new JobLog(id, jobId, jobCode, jobName, jobGroup, invokeTarget, jobParams, cron,
+        return new JobLog(id == null ? null : id.toString(), jobId == null ? null : jobId.toString(), jobCode, jobName, jobGroup, invokeTarget, jobParams, cron,
                 triggerType, status, jobMessage, exceptionInfo, startedAt, finishedAt, durationMs, createdAt);
     }
 }

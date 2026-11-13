@@ -8,14 +8,18 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** ORM 映射登录日志；数据库表结构由 Flyway 管理。 */
 @Entity
 @Table(name = "sys_login_log")
 public class LoginLogEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(nullable = false, length = 128)
     private String username;
@@ -39,6 +43,7 @@ public class LoginLogEntity {
     }
 
     LoginLogEntity(String username, String status, String ipAddress, String message, String userAgent) {
+        this.id = java.util.UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.username = username;
         this.status = status;
         this.ipAddress = ipAddress;
@@ -47,6 +52,6 @@ public class LoginLogEntity {
     }
 
     LoginLog toModel() {
-        return new LoginLog(id, username, status, ipAddress, message, userAgent, loginAt);
+        return new LoginLog(id == null ? null : id.toString(), username, status, ipAddress, message, userAgent, loginAt);
     }
 }

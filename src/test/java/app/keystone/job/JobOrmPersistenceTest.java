@@ -14,7 +14,7 @@ class JobOrmPersistenceTest {
     void repositoriesUsePanacheWithoutManualJdbc() throws Exception {
         String jobs = Files.readString(Path.of("src/main/java/app/keystone/job/JobRepository.java"));
         String logs = Files.readString(Path.of("src/main/java/app/keystone/job/JobLogRepository.java"));
-        assertTrue(jobs.contains("PanacheRepository<JobEntity>"));
+        assertTrue(jobs.contains("PanacheRepositoryBase<JobEntity"));
         assertTrue(logs.contains("PanacheRepository<JobLogEntity>"));
         assertTrue(jobs.contains("@Transactional"));
         assertTrue(logs.contains("@Transactional"));

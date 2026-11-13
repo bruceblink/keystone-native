@@ -8,14 +8,18 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** 映射计划任务；数据库表结构由 Flyway 管理。 */
 @Entity
 @Table(name = "sys_job")
 public class JobEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(nullable = false, unique = true, length = 64)
     private String code;
@@ -55,6 +59,7 @@ public class JobEntity {
 
     JobEntity(String code, String name, String jobGroup, String invokeTarget, String jobParams,
               String cron, boolean concurrent, boolean enabled, String remark) {
+        this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.code = code;
         this.name = name;
         this.jobGroup = jobGroup;
@@ -84,7 +89,7 @@ public class JobEntity {
     }
 
     Job toModel() {
-        return new Job(id, code, name, jobGroup, invokeTarget, jobParams, cron, concurrent,
+        return new Job(id == null ? null : id.toString(), code, name, jobGroup, invokeTarget, jobParams, cron, concurrent,
                 enabled, remark, lastStatus, lastRunAt);
     }
 }

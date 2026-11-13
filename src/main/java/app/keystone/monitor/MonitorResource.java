@@ -28,7 +28,7 @@ public class MonitorResource {
     }
 
     @DELETE @Path("/onlineUser/{sessionId}") @RequiresPermission("session:revoke") @RequiresMfaStepUp
-    public Response logout(@PathParam("sessionId") long sessionId) {
+    public Response logout(@PathParam("sessionId") String sessionId) {
         try { sessions.revokeById(sessionId); return Response.ok(ApiResponse.ok(Map.of("loggedOut", true))).build(); }
         catch (java.util.NoSuchElementException e) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("session not found")).build(); }
     }

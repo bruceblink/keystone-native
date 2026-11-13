@@ -8,14 +8,18 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** ORM 映射安全边界事件；表结构仍由 Flyway 迁移管理。 */
 @Entity
 @Table(name = "sys_security_event")
 public class SecurityEventEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(name = "event_type", nullable = false, length = 32)
     private String eventType;
@@ -52,6 +56,7 @@ public class SecurityEventEntity {
 
     SecurityEventEntity(String eventType, String actor, String credentialType, String credentialId,
                         String sourceIp, String resource, String action, String outcome, String detail) {
+        this.id = java.util.UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.eventType = eventType;
         this.actor = actor;
         this.credentialType = credentialType;
@@ -63,8 +68,8 @@ public class SecurityEventEntity {
         this.detail = detail;
     }
 
-    public Long getId() {
-        return id;
+    public String getId() {
+        return id == null ? null : id.toString();
     }
 
     public Instant getCreatedAt() {

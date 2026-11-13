@@ -1,6 +1,6 @@
 package app.keystone.audit;
 
-import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 
@@ -8,7 +8,7 @@ import java.util.List;
 
 /** 使用 Panache 保存和查询登录日志。 */
 @ApplicationScoped
-public class LoginLogRepository implements PanacheRepository<LoginLogEntity> {
+public class LoginLogRepository implements PanacheRepositoryBase<LoginLogEntity, java.util.UUID> {
     /** 登录日志写入失败不影响认证主流程。 */
     @Transactional
     public void record(String username, String status, String ipAddress, String message, String userAgent) {
@@ -32,11 +32,11 @@ public class LoginLogRepository implements PanacheRepository<LoginLogEntity> {
     }
 
     @Transactional
-    public int delete(List<Long> ids) {
+    public int delete(List<String> ids) {
         if (ids == null || ids.isEmpty()) return 0;
         int total = 0;
-        for (Long id : ids) {
-            if (id != null && delete("id", id) > 0) total++;
+        for (String id : ids) {
+            if (id != null && delete("id", app.keystone.identity.UuidValues.parse(id)) > 0) total++;
         }
         return total;
     }

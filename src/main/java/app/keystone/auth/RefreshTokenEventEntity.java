@@ -8,17 +8,22 @@ import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 
 import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** 保存刷新令牌安全事件，事件写入失败会回滚所属认证事务。 */
 @Entity
 @Table(name = "sys_refresh_token_event")
 public class RefreshTokenEventEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
-    @Column(name = "token_id")
-    private Long tokenId;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(name = "token_id", columnDefinition = "BINARY(16)")
+    private UUID tokenId;
 
     @Column(name = "user_id", columnDefinition = "BINARY(16)", length = 16)
     @jakarta.persistence.Convert(converter = app.keystone.identity.UuidBinaryConverter.class)
@@ -42,9 +47,10 @@ public class RefreshTokenEventEntity {
     protected RefreshTokenEventEntity() {
     }
 
-    RefreshTokenEventEntity(Long tokenId, String userId, String refreshFamilyId, String eventType,
+    RefreshTokenEventEntity(String tokenId, String userId, String refreshFamilyId, String eventType,
                             String clientId, String detail) {
-        this.tokenId = tokenId;
+        this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
+        this.tokenId = tokenId == null ? null : app.keystone.identity.UuidValues.parse(tokenId);
         this.userId = userId;
         this.refreshFamilyId = refreshFamilyId;
         this.eventType = eventType;

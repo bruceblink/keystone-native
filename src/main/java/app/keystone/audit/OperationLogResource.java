@@ -20,7 +20,7 @@ public class OperationLogResource {
     @jakarta.ws.rs.DELETE @RequiresPermission("audit:read")
     public ApiResponse<java.util.Map<String, Integer>> delete(@QueryParam("ids") String ids) {
         if (ids == null || ids.isBlank()) throw new jakarta.ws.rs.BadRequestException("ids is required");
-        try { var values = java.util.Arrays.stream(ids.split(",")).map(String::trim).map(Long::valueOf).toList(); return ApiResponse.ok(java.util.Map.of("deleted", logs.delete(values))); }
-        catch (NumberFormatException e) { throw new jakarta.ws.rs.BadRequestException("ids must be comma separated numbers"); }
+        try { var values = java.util.Arrays.stream(ids.split(",")).map(String::trim).toList(); values.forEach(app.keystone.identity.UuidValues::requireCanonical); return ApiResponse.ok(java.util.Map.of("deleted", logs.delete(values))); }
+        catch (IllegalArgumentException e) { throw new jakarta.ws.rs.BadRequestException("ids must be comma separated UUIDs"); }
     }
 }
