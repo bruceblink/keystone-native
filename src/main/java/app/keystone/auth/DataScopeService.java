@@ -29,7 +29,7 @@ public class DataScopeService {
             for (ApiKeyRoleEntity role : user.roles()) {
                 if (!role.enabled()) continue;
                 switch (normalizeScope(role.dataScope())) {
-                    case "ALL" -> all = true;
+                    case DataScopePolicy.ALL, DataScopePolicy.TENANT -> all = true;
                     case "SELF" -> self = true;
                     case "DEPARTMENT" -> addIfPresent(allowedDepartments, ownDepartment);
                     case "DEPARTMENT_AND_CHILDREN" -> allowedDepartments.addAll(descendants(ownDepartment));
@@ -66,7 +66,9 @@ public class DataScopeService {
     }
 
     private static String normalizeScope(String value) {
-        return value == null || value.isBlank() ? "ALL" : value.trim().toUpperCase(java.util.Locale.ROOT);
+        String normalized = value == null || value.isBlank() ? DataScopePolicy.ALL : DataScopePolicy.normalize(value);
+        if (!DataScopePolicy.registered(normalized)) throw new IllegalStateException("Unsupported data scope");
+        return normalized;
     }
 
     private static void addIfPresent(Set<String> target, String value) {
