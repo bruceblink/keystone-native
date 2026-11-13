@@ -93,14 +93,15 @@ public class UserRepository {
     public User create(String username, String password, String displayName, Long deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar, String remark, List<String> roleCodes) {
         if (username == null || username.isBlank() || password == null || password.isBlank() || displayName == null || displayName.isBlank()) throw new IllegalArgumentException("username, password and displayName are required");
         passwordPolicy.validate(username, password);
-        try (var c = dataSource.getConnection()) {
-            c.setAutoCommit(false);
-            try (var p = c.prepareStatement("INSERT INTO sys_user(username, password_hash, display_name, dept_id, post_id, email, phone_number, sex, avatar, remark) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)", java.sql.Statement.RETURN_GENERATED_KEYS)) {
-                p.setString(1, username.trim()); p.setString(2, BcryptUtil.bcryptHash(password)); p.setString(3, displayName.trim()); setLong(p, 4, deptId); setLong(p, 5, postId); p.setString(6, email); p.setString(7, phoneNumber); setInt(p, 8, sex); p.setString(9, avatar); p.setString(10, remark); p.executeUpdate();
-                try (var keys = p.getGeneratedKeys()) { keys.next(); long id = keys.getLong(1); replaceRoles(c, id, roleCodes); c.commit(); return find(c, id).orElseThrow(); }
-            } catch (Exception e) { c.rollback(); throw e; }
-        } catch (java.sql.SQLIntegrityConstraintViolationException e) { throw new IllegalArgumentException("username already exists", e); }
-        catch (Exception e) { throw new IllegalStateException("Could not create user", e); }
+        try {
+            return ormUsers.createUser(username.trim(), BcryptUtil.bcryptHash(password), displayName.trim(),
+                    deptId, postId, email, phoneNumber, sex, avatar, remark, roleCodes);
+        } catch (IllegalArgumentException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            if (isUniqueConstraint(e)) throw new IllegalArgumentException("username already exists", e);
+            throw new IllegalStateException("Could not create user", e);
+        }
     }
 
     public User update(long id, String password, String displayName, Long deptId, Boolean enabled, List<String> roleCodes) {
@@ -293,6 +294,15 @@ public class UserRepository {
     private static void setLong(java.sql.PreparedStatement p, int index, Long value) throws Exception { if (value == null) p.setNull(index, java.sql.Types.BIGINT); else p.setLong(index, value); }
     private static void setInt(java.sql.PreparedStatement p, int index, Integer value) throws Exception { if (value == null) p.setNull(index, java.sql.Types.TINYINT); else p.setInt(index, value); }
     private static String emptyToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
+
+    private static boolean isUniqueConstraint(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            String name = current.getClass().getSimpleName().toLowerCase(java.util.Locale.ROOT);
+            String message = String.valueOf(current.getMessage()).toLowerCase(java.util.Locale.ROOT);
+            if (name.contains("constraint") || message.contains("duplicate") || message.contains("unique")) return true;
+        }
+        return false;
+    }
 
     public record AuthUser(long id, String username, String displayName, List<String> roles, boolean mustChangePassword,
                            Long deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar,

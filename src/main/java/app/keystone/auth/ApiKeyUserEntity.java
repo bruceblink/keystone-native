@@ -92,6 +92,25 @@ public class ApiKeyUserEntity {
     protected ApiKeyUserEntity() {
     }
 
+    /** 创建用户实体；调用方必须在同一事务内绑定已经校验过的启用角色。 */
+    ApiKeyUserEntity(String username, String passwordHash, String displayName, Long deptId, Long postId,
+                     String email, String phoneNumber, Integer sex, String avatar, String remark) {
+        this.username = username;
+        this.passwordHash = passwordHash;
+        this.displayName = displayName;
+        this.deptId = deptId;
+        this.postId = postId;
+        this.email = email;
+        this.phoneNumber = phoneNumber;
+        this.sex = sex;
+        this.avatar = avatar;
+        this.remark = remark;
+        this.enabled = true;
+        this.failedLoginCount = 0;
+        this.credentialVersion = 1;
+        this.permissionVersion = 1;
+    }
+
     String username() {
         return username;
     }
@@ -162,6 +181,12 @@ public class ApiKeyUserEntity {
                 .flatMap(role -> role.permissions().stream())
                 .map(ApiKeyPermissionEntity::code)
                 .collect(Collectors.toUnmodifiableSet());
+    }
+
+    /** 替换用户角色集合；调用方必须在事务内传入已加载的启用角色。 */
+    void replaceRoles(Set<ApiKeyRoleEntity> replacement) {
+        roles.clear();
+        roles.addAll(replacement);
     }
 
     UserRepository.AuthUser toAuthUser() {

@@ -9,6 +9,9 @@ import jakarta.persistence.LockModeType;
 import java.util.Set;
 import java.util.Optional;
 import java.time.Instant;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.Locale;
 import app.keystone.user.User;
 import app.keystone.user.UserRepository;
 import app.keystone.user.PasswordPolicy;
@@ -16,6 +19,7 @@ import app.keystone.user.PasswordPolicy;
 /** 通过 ORM 读取 API Key 认证主体和签发权限。 */
 @ApplicationScoped
 public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEntity, Long> {
+    @jakarta.inject.Inject ApiKeyRoleRepository roles;
 
     ApiKeyUserEntity findEnabled(long userId) {
         ApiKeyUserEntity user = find("id = ?1 and enabled = true", userId).firstResult();
@@ -33,6 +37,19 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         if (username == null || username.isBlank()) return Optional.empty();
         ApiKeyUserEntity user = find("username = ?1 and enabled = true", username).firstResult();
         return user == null ? Optional.empty() : Optional.of(user.toAuthUser());
+    }
+
+    /** 在一个 ORM 事务中创建用户并绑定启用角色。 */
+    @Transactional
+    public User createUser(String username, String passwordHash, String displayName, Long deptId, Long postId,
+                           String email, String phoneNumber, Integer sex, String avatar, String remark,
+                           List<String> roleCodes) {
+        var resolvedRoles = resolveRoles(roleCodes);
+        var user = new ApiKeyUserEntity(username, passwordHash, displayName, deptId, postId,
+                email, phoneNumber, sex, avatar, remark);
+        persistAndFlush(user);
+        user.replaceRoles(resolvedRoles);
+        return user.toUser();
     }
 
     /**
@@ -119,5 +136,20 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
 
     java.util.Set<String> permissions(ApiKeyUserEntity user) {
         return user == null ? java.util.Set.of() : user.permissions();
+    }
+
+    private Set<ApiKeyRoleEntity> resolveRoles(List<String> roleCodes) {
+        var normalized = new LinkedHashSet<String>();
+        for (String code : roleCodes == null ? List.<String>of("USER") : roleCodes) {
+            if (code != null && !code.isBlank()) normalized.add(code.trim());
+        }
+        if (normalized.isEmpty()) normalized.add("USER");
+        var found = roles.findEnabledByCodes(List.copyOf(normalized));
+        if (found.size() != normalized.size()) {
+            var foundCodes = found.stream().map(ApiKeyRoleEntity::code).collect(java.util.stream.Collectors.toSet());
+            var unknown = normalized.stream().filter(code -> !foundCodes.contains(code)).findFirst().orElse("unknown");
+            throw new IllegalArgumentException("unknown role: " + unknown);
+        }
+        return new LinkedHashSet<>(found);
     }
 }
