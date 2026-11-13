@@ -2,13 +2,13 @@
 
 跨项目统一架构见 [`02-auth-authorization-parity-architecture.md`](02-auth-authorization-parity-architecture.md)。本文件同时记录 Native 本地实施任务和与 Keystone Phoenix 的跨项目验收要求。项目采用一次性重构，不保留旧接口、旧权限格式、旧响应封装或旧整数主键。
 
-更新日期：2026-11-14。当前代码基线为 `27c0de5`。`73d1bb9` 完成 71 项规范权限目录和生产授权调用点迁移；`31388f2` 完成用户、角色、部门及认证直接关系的 MySQL UUID 主键迁移，删除 compat/Legacy 路由；`c3b96f7` 完成岗位、菜单及直接关系的 MySQL UUID 主键迁移；`68e8c8a` 完成公告、配置、字典及直接关系的 MySQL UUID 主键迁移；`698da41` 完成任务、任务日志、登录/操作/安全日志及刷新令牌关联 ID 的 MySQL UUID 主键迁移；`a2b0c2a` 统一错误响应结构；`27c0de5` 完成全量测试夹具清理和任务日志 warning 修复。已验证 `compileJava`、UUID 迁移静态检查和全量测试 127 项通过；本地 MySQL 8.4 的 Flyway V46-V49 已成功执行。主线已无 `is_admin` 字段，Phoenix 历史测试夹具仍待清理。
+更新日期：2026-11-14。当前代码基线为 `a775ea3`。`73d1bb9` 完成 71 项规范权限目录和生产授权调用点迁移；`31388f2` 完成用户、角色、部门及认证直接关系的 MySQL UUID 主键迁移，删除 compat/Legacy 路由；`c3b96f7` 完成岗位、菜单及直接关系的 MySQL UUID 主键迁移；`68e8c8a` 完成公告、配置、字典及直接关系的 MySQL UUID 主键迁移；`698da41` 完成任务、任务日志、登录/操作/安全日志及刷新令牌关联 ID 的 MySQL UUID 主键迁移；`a2b0c2a` 统一错误响应结构；`27c0de5` 完成全量测试夹具清理和任务日志 warning 修复；`a775ea3` 将会话、刷新令牌族、服务主体、API Key 和 MFA 身份统一为 `BINARY(16)`，并将业务 ID 生成统一为 UUIDv7。已验证 `compileJava`、UUID 迁移静态检查和 `./gradlew clean test` 的 129 项测试通过；本地 MySQL 8.4 的 Flyway V46-V50 已成功执行。主线已无 `is_admin` 字段，Phoenix 集成测试仍待清理。
 
 ## 跨项目统一主线
 
 Native 与 Phoenix 分别实现，但必须遵守统一架构中的 Principal、权限、数据范围、令牌字段、错误分类和审计约定。两个项目只使用 `resource:action` 权限，角色只绑定权限目录 ID。
 
-主键迁移先于后续业务实现：用户、角色、部门、菜单、权限、会话、令牌族、API Key、MFA 请求和安全事件统一使用 UUID。新业务实体使用 UUIDv7；权限目录和固定种子使用固定命名空间的 UUIDv5。外部接口使用规范小写连字符 UUID 字符串；Native 的 MySQL 使用 `BINARY(16)`，写入和按 ID 过滤使用参数侧 `UUID_TO_BIN(?, 0)`，文本结果使用 `BIN_TO_UUID(id, 0)`，不在过滤列上调用 `BIN_TO_UUID`。Phoenix 的 PostgreSQL 使用原生 `uuid` 类型。
+主键迁移先于后续业务实现：用户、角色、部门、菜单、权限、会话、令牌族、API Key、MFA 请求和安全事件统一使用 UUID。新业务实体使用 UUIDv7；权限目录和固定种子使用固定命名空间的 UUIDv5。外部接口使用规范小写连字符 UUID 字符串；Native 的 MySQL 使用 `BINARY(16)`，写入和按 ID 过滤使用参数侧 `UUID_TO_BIN(?, 0)`，文本结果使用 `BIN_TO_UUID(id, 0)`，不在过滤列上调用 `BIN_TO_UUID`。Phoenix 的 PostgreSQL 使用原生 `uuid` 类型。V50 在 clean-break 边界内按依赖逆序重建认证、MFA、服务主体和 API Key 表，删除旧文本身份并建立 `BINARY(16)` 外键；生产执行前必须完成备份。迁移成功后重跑只读取完成标记，不重复删除表。ORM 的 UUID 参数使用二进制绑定，原生 SQL 的写入和读取分别使用 `UUID_TO_BIN(..., 0)` 与 `BIN_TO_UUID(..., 0)`。
 
 跨项目实施顺序为：公共接口冻结、UUID 主键迁移、角色授权重建、Phoenix API Key、Phoenix MFA/JWK、资源范围矩阵、接口统一和运行验收。每个阶段必须分别完成迁移、重复迁移、定向测试、全量测试、真实 HTTP 和数据库运行检查；静态编译不能替代运行证据。旧接口和旧字段直接删除，不增加兼容适配层。
 
