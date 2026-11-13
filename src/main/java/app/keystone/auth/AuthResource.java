@@ -63,7 +63,7 @@ public class AuthResource {
         if (preparation.challenge() != null) {
             loginLogs.record(u.username(), "MFA_REQUIRED", clientAddress, "MFA challenge issued", userAgent);
             return Response.status(Response.Status.UNAUTHORIZED)
-                    .entity(new ApiResponse<>(false, new MfaRequired(preparation.challenge().challengeId(), preparation.challenge().clientId(), preparation.challenge().expiresAt()), "MFA_REQUIRED"))
+                    .entity(new ApiResponse<>(false, new MfaRequired(preparation.challenge().challengeId(), preparation.challenge().clientId(), preparation.challenge().expiresAt()), "MFA_REQUIRED", "invalid_credential"))
                     .build();
         }
         java.util.Optional<SessionRepository.CreatedSession> refresh;

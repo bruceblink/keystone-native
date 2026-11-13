@@ -1,5 +1,6 @@
 package app.keystone.auth;
 
+import app.keystone.ApiResponse;
 import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Priorities;
@@ -25,19 +26,19 @@ public class AccessSessionFilter implements ContainerRequestFilter {
         String accessTokenId = jwt.getClaim("jti");
         // JWT 已经通过签名校验后仍必须绑定到活动会话，缺少 jti 时直接拒绝。
         if (accessTokenId == null || accessTokenId.isBlank()) {
-            context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access token session identifier is required").build());
+            context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "access token session identifier is required"));
             return;
         }
         String userId = claimUuid(claim(jwt, "userId"));
         long permissionVersion = claimLong(claim(jwt, "permission_version"));
         if (userId == null || permissionVersion < 0) {
-            context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access token permission version is required").build());
+            context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "access token permission version is required"));
             return;
         }
         try {
-            if (!sessions.isAccessTokenActive(accessTokenId, userId, permissionVersion)) context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access session is no longer active").build());
+            if (!sessions.isAccessTokenActive(accessTokenId, userId, permissionVersion)) context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "session_revoked", "access session is no longer active"));
         } catch (IllegalStateException e) {
-            context.abortWith(Response.status(Response.Status.SERVICE_UNAVAILABLE).entity("authentication state is unavailable").build());
+            context.abortWith(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), "authorization_unavailable", "authentication state is unavailable"));
         }
     }
 

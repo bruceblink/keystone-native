@@ -1,5 +1,6 @@
 package app.keystone.auth;
 
+import app.keystone.ApiResponse;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
@@ -18,7 +19,7 @@ public class RejectApiKeyInterceptor {
     @AroundInvoke
     Object check(InvocationContext context) throws Exception {
         if (identity != null && !identity.isAnonymous() && "API_KEY".equals(identity.getAttribute("credentialType"))) {
-            throw new ForbiddenException("human credential is required");
+            throw new ForbiddenException(ApiResponse.response(jakarta.ws.rs.core.Response.Status.FORBIDDEN.getStatusCode(), "permission_denied", "human credential is required"));
         }
         return context.proceed();
     }

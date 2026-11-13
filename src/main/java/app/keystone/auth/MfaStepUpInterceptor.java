@@ -1,5 +1,6 @@
 package app.keystone.auth;
 
+import app.keystone.ApiResponse;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
@@ -34,13 +35,13 @@ public class MfaStepUpInterceptor {
     @AroundInvoke
     Object check(InvocationContext context) throws Exception {
         if (identity == null || identity.isAnonymous()) {
-            throw new NotAuthorizedException("authentication is required");
+            throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "authentication is required"));
         }
         if ("API_KEY".equals(identity.getAttribute("credentialType"))) {
-            throw new ForbiddenException("MFA step-up requires a human session");
+            throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "permission_denied", "MFA step-up requires a human session"));
         }
         if (!(identity.getPrincipal() instanceof JsonWebToken jwt)) {
-            throw new NotAuthorizedException("human bearer authentication is required");
+            throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "human bearer authentication is required"));
         }
         Claims claims = Claims.from(jwt);
         try {
@@ -48,13 +49,12 @@ public class MfaStepUpInterceptor {
                     .orElseThrow(() -> new NotAuthorizedException("authentication subject is unavailable"));
             if (!status.required()) return context.proceed();
             if (!status.enabled() || !sessions.hasRecentStepUp(claims.sessionId(), claims.userId(), claims.clientId(), STEP_UP_AGE, REQUIRED_ASSURANCE)) {
-                throw new ForbiddenException("recent MFA step-up is required");
+                throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "permission_denied", "recent MFA step-up is required"));
             }
         } catch (NotAuthorizedException | ForbiddenException e) {
             throw e;
         } catch (IllegalStateException e) {
-            throw new ServiceUnavailableException(Response.status(Response.Status.SERVICE_UNAVAILABLE)
-                    .entity("MFA state is unavailable").build(), e);
+            throw new ServiceUnavailableException(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), "authorization_unavailable", "MFA state is unavailable"), e);
         }
         return context.proceed();
     }
@@ -66,14 +66,14 @@ public class MfaStepUpInterceptor {
 
     record Claims(String userId, String sessionId, String clientId) {
         static Claims from(JsonWebToken jwt) {
-            if (jwt == null) throw new NotAuthorizedException("human bearer authentication is required");
+            if (jwt == null) throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "human bearer authentication is required"));
             String userId = claimUuid(jwt, "userId");
             String sessionId = claimText(jwt, "sid");
             String clientId = claimText(jwt, "client_id");
             if (userId == null || sessionId == null || sessionId.isBlank() || clientId == null || clientId.isBlank()
                     || !sessionId.matches("[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
                     || !clientId.matches("[a-z0-9][a-z0-9._-]{0,63}")) {
-                throw new NotAuthorizedException("authentication session is incomplete");
+                throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "authentication session is incomplete"));
             }
             return new Claims(userId, sessionId, clientId);
         }

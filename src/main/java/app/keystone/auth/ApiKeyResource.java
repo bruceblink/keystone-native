@@ -46,7 +46,9 @@ public class ApiKeyResource {
     }
     private UserRepository.AuthUser owner() {
         var user = users.findAuthUserByUsername(identity.getPrincipal().getName());
-        if (user.isEmpty() || "API_KEY".equals(identity.getAttribute("credentialType"))) throw new NotAuthorizedException("API key identity cannot manage API keys");
+        if (user.isEmpty() || "API_KEY".equals(identity.getAttribute("credentialType"))) {
+            throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "permission_denied", "API key identity cannot manage API keys"));
+        }
         return user.get();
     }
     public record Request(String name, List<String> scopes, Instant expiresAt) {}

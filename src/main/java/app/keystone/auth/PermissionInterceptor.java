@@ -1,5 +1,6 @@
 package app.keystone.auth;
 
+import app.keystone.ApiResponse;
 import app.keystone.audit.SecurityEventRepository;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.vertx.ext.web.RoutingContext;
@@ -28,16 +29,16 @@ public class PermissionInterceptor {
     Object check(InvocationContext context) throws Exception {
         RequiresPermission requirement = context.getMethod().getAnnotation(RequiresPermission.class);
         if (requirement == null) requirement = context.getTarget().getClass().getAnnotation(RequiresPermission.class);
-        if (identity == null || identity.isAnonymous()) throw new NotAuthorizedException("authentication is required");
-        if (requirement == null || !PermissionCatalog.contains(requirement.value())) throw new ForbiddenException("permission denied");
+        if (identity == null || identity.isAnonymous()) throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "authentication is required"));
+        if (requirement == null || !PermissionCatalog.contains(requirement.value())) throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "permission_denied", "permission denied"));
         try {
             if (!authorization.allowed(identity, requirement.value())) {
                 recordDenied(requirement.value(), "permission denied");
-                throw new ForbiddenException("permission denied");
+                throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "permission_denied", "permission denied"));
             }
         } catch (IllegalStateException e) {
             recordDenied(requirement.value(), "authorization state is unavailable");
-            throw new ServiceUnavailableException(Response.status(Response.Status.SERVICE_UNAVAILABLE).entity("authorization state is unavailable").build(), e);
+            throw new ServiceUnavailableException(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), "authorization_unavailable", "authorization state is unavailable"), e);
         }
         return context.proceed();
     }
