@@ -33,6 +33,21 @@ public class ApiKeyUserEntity {
     @Column(name = "must_change_password", nullable = false)
     private boolean mustChangePassword;
 
+    @Column(name = "password_hash", nullable = false, length = 255)
+    private String passwordHash;
+
+    @Column(name = "failed_login_count", nullable = false)
+    private int failedLoginCount;
+
+    @Column(name = "locked_until")
+    private java.time.Instant lockedUntil;
+
+    @Column(name = "credential_version", nullable = false)
+    private long credentialVersion;
+
+    @Column(name = "last_password_changed_at")
+    private java.time.Instant lastPasswordChangedAt;
+
     @Column(name = "dept_id")
     private Long deptId;
 
@@ -101,6 +116,30 @@ public class ApiKeyUserEntity {
 
     long permissionVersion() {
         return permissionVersion;
+    }
+
+    String passwordHash() {
+        return passwordHash;
+    }
+
+    int failedLoginCount() {
+        return failedLoginCount;
+    }
+
+    java.time.Instant lockedUntil() {
+        return lockedUntil;
+    }
+
+    /** 记录一次错误密码尝试；调用方必须在用户行写锁事务内调用。 */
+    void recordFailedLogin(int attempts, java.time.Instant newLockedUntil) {
+        failedLoginCount = attempts;
+        lockedUntil = newLockedUntil;
+    }
+
+    /** 成功认证后清除失败次数和临时锁定时间。 */
+    void clearFailedLogins() {
+        failedLoginCount = 0;
+        lockedUntil = null;
     }
 
     Set<String> permissions() {

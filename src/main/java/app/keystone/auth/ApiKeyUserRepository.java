@@ -1,5 +1,6 @@
 package app.keystone.auth;
 
+import io.quarkus.elytron.security.common.BcryptUtil;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
@@ -30,6 +31,35 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         if (username == null || username.isBlank()) return Optional.empty();
         ApiKeyUserEntity user = find("username = ?1 and enabled = true", username).firstResult();
         return user == null ? Optional.empty() : Optional.of(user.toAuthUser());
+    }
+
+    /**
+     * 在同一事务中锁定用户、校验密码并更新失败锁定状态。
+     * 用户行写锁保证并发失败请求不会覆盖失败计数。
+     */
+    @Transactional
+    public Optional<UserRepository.AuthUser> authenticate(String username, String password,
+                                                          long accountLockBaseSeconds,
+                                                          long accountLockMaxSeconds) {
+        UserRepository.validateLockConfiguration(accountLockBaseSeconds, accountLockMaxSeconds);
+        if (username == null || username.isBlank()) return Optional.empty();
+        ApiKeyUserEntity user = find("username = ?1 and enabled = true", username)
+                .withLock(LockModeType.PESSIMISTIC_WRITE)
+                .firstResult();
+        if (user == null) return Optional.empty();
+
+        java.time.Instant now = java.time.Instant.now();
+        if (user.lockedUntil() != null && user.lockedUntil().isAfter(now)) return Optional.empty();
+        if (password == null || !BcryptUtil.matches(password, user.passwordHash())) {
+            int attempts = user.failedLoginCount() + 1;
+            java.time.Instant lockedUntil = attempts >= 5
+                    ? now.plusSeconds(UserRepository.calculateLockDelaySeconds(accountLockBaseSeconds, accountLockMaxSeconds, attempts))
+                    : null;
+            user.recordFailedLogin(attempts, lockedUntil);
+            return Optional.empty();
+        }
+        user.clearFailedLogins();
+        return Optional.of(user.toAuthUser());
     }
 
     @Transactional

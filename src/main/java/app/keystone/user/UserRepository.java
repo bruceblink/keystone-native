@@ -8,8 +8,6 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.ResultSet;
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -25,23 +23,11 @@ public class UserRepository {
     long accountLockMaxSeconds;
 
     public Optional<AuthUser> authenticate(String username, String password) {
-        String sql = "SELECT id, password_hash, locked_until FROM sys_user WHERE username = ? AND enabled = true";
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement(sql)) {
-            c.setAutoCommit(false);
-            p.setString(1, username);
-            long userId;
-            try (ResultSet rs = p.executeQuery()) {
-                if (!rs.next()) { c.rollback(); return Optional.empty(); }
-                var lockedUntil = rs.getTimestamp("locked_until");
-                if (lockedUntil != null && lockedUntil.toInstant().isAfter(java.time.Instant.now())) { c.rollback(); return Optional.empty(); }
-                if (password == null || !BcryptUtil.matches(password, rs.getString("password_hash"))) { recordFailedLogin(c, rs.getLong("id")); c.commit(); return Optional.empty(); }
-                userId = rs.getLong("id");
-            }
-            clearFailedLogins(c, userId);
-            var user = findAuthUser(c, userId);
-            c.commit();
-            return user;
-        } catch (Exception e) { throw new IllegalStateException("Could not authenticate user", e); }
+        try {
+            return ormUsers.authenticate(username, password, accountLockBaseSeconds, accountLockMaxSeconds);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not authenticate user", e);
+        }
     }
 
     public Optional<AuthUser> findAuthUser(long id) {
@@ -206,33 +192,8 @@ public class UserRepository {
 
     private static List<String> roles(Connection c, long userId) throws Exception { try (var p = c.prepareStatement("SELECT r.code FROM sys_role r JOIN sys_user_role ur ON ur.role_id = r.id WHERE ur.user_id = ? AND r.enabled = true ORDER BY r.code")) { p.setLong(1, userId); try (var rs = p.executeQuery()) { var result = new ArrayList<String>(); while (rs.next()) result.add(rs.getString(1)); return result; } } }
 
-    /** 在同一数据库连接内锁定失败计数行，并按失败次数计算有上限的指数锁定时间。 */
-    private void recordFailedLogin(Connection c, long userId) throws Exception {
-        validateLockConfiguration();
-        int attempts;
-        try (var find = c.prepareStatement("SELECT failed_login_count FROM sys_user WHERE id = ? FOR UPDATE")) {
-            find.setLong(1, userId);
-            try (var rs = find.executeQuery()) {
-                if (!rs.next()) return;
-                attempts = rs.getInt(1) + 1;
-            }
-        }
-        Timestamp lockedUntil = null;
-        if (attempts >= 5) lockedUntil = Timestamp.from(Instant.now().plusSeconds(lockDelaySeconds(attempts)));
-        try (var update = c.prepareStatement("UPDATE sys_user SET failed_login_count = ?, locked_until = ? WHERE id = ?")) {
-            update.setInt(1, attempts);
-            if (lockedUntil == null) update.setNull(2, java.sql.Types.TIMESTAMP); else update.setTimestamp(2, lockedUntil);
-            update.setLong(3, userId);
-            update.executeUpdate();
-        }
-    }
-
-    private long lockDelaySeconds(int attempts) {
-        return calculateLockDelaySeconds(accountLockBaseSeconds, accountLockMaxSeconds, attempts);
-    }
-
     /** 计算第 N 次失败的锁定秒数；结果不会超过部署配置的上限。 */
-    static long calculateLockDelaySeconds(long baseSeconds, long maxSeconds, int attempts) {
+    public static long calculateLockDelaySeconds(long baseSeconds, long maxSeconds, int attempts) {
         if (baseSeconds <= 0 || maxSeconds < baseSeconds || maxSeconds > 86_400 || attempts < 5) {
             throw new IllegalArgumentException("account lock backoff parameters are invalid");
         }
@@ -244,8 +205,9 @@ public class UserRepository {
         return Math.min(delay, maxSeconds);
     }
 
-    private void validateLockConfiguration() {
-        if (accountLockBaseSeconds <= 0 || accountLockMaxSeconds < accountLockBaseSeconds || accountLockMaxSeconds > 86_400) {
+    /** 校验账户锁定退避配置，避免运行中出现溢出或无限锁定。 */
+    public static void validateLockConfiguration(long baseSeconds, long maxSeconds) {
+        if (baseSeconds <= 0 || maxSeconds < baseSeconds || maxSeconds > 86_400) {
             throw new IllegalStateException("account lock backoff configuration is invalid");
         }
     }
@@ -259,7 +221,6 @@ public class UserRepository {
             }
         }
     }
-    private static void clearFailedLogins(Connection c, long userId) throws Exception { try (var p = c.prepareStatement("UPDATE sys_user SET failed_login_count = 0, locked_until = NULL WHERE id = ?")) { p.setLong(1, userId); p.executeUpdate(); } }
     public List<String> permissions(long userId) {
         try {
             return ormUsers.permissions(userId).stream().sorted().toList();
