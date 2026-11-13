@@ -8,7 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
+import app.keystone.identity.UuidValues;
 
 /** 保存和消费 MFA 认证请求。 */
 @ApplicationScoped
@@ -28,7 +28,7 @@ public class MfaChallengeRepository {
         String checkedSessionId = normalizeSessionId(sessionId);
         String checkedContextHash = normalizeContextHash(contextHash);
         Instant checkedExpiry = requireExpiry(expiresAt);
-        String id = UUID.randomUUID().toString();
+        String id = UuidValues.v7();
         repository.persistAndFlush(new AuthChallengeEntity(id, userId, checkedPurpose.value(), checkedClientId,
                 checkedSessionId, checkedContextHash, checkedExpiry));
         return new Challenge(id, userId, checkedPurpose, checkedClientId, checkedSessionId, checkedExpiry, 0, null);
@@ -76,7 +76,7 @@ public class MfaChallengeRepository {
     /** 消费已经在同一事务中锁定并重新核验过的认证请求。 */
     boolean consumeLocked(Challenge challenge) {
         if (challenge == null) throw new IllegalArgumentException("challenge is required");
-        AuthChallengeEntity entity = repository.findById(challenge.id());
+        AuthChallengeEntity entity = repository.findById(UuidValues.parse(challenge.id()));
         if (entity == null || entity.userId() != challenge.userId()) return false;
         return entity.consume(Instant.now(), DEFAULT_MAX_ATTEMPTS);
     }
@@ -93,7 +93,7 @@ public class MfaChallengeRepository {
     public boolean recordFailure(String challengeId, String userId, String clientId, Purpose purpose, String sessionId) {
         var challenge = lockActiveForUpdate(challengeId, userId, clientId, purpose, sessionId);
         if (challenge.isEmpty()) return false;
-        AuthChallengeEntity entity = repository.findById(challenge.get().id());
+        AuthChallengeEntity entity = repository.findById(UuidValues.parse(challenge.get().id()));
         return entity != null && entity.recordFailure(Instant.now(), DEFAULT_MAX_ATTEMPTS);
     }
 
@@ -124,7 +124,7 @@ public class MfaChallengeRepository {
     private static String normalizeChallengeId(String value) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("challengeId is required");
         try {
-            return UUID.fromString(value.trim()).toString();
+            return UuidValues.requireCanonical(value.trim());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("challengeId must be a UUID");
         }
@@ -139,9 +139,11 @@ public class MfaChallengeRepository {
 
     private static String normalizeSessionId(String value) {
         if (value == null || value.isBlank()) return null;
-        String normalized = value.trim();
-        if (normalized.length() > 36 || !normalized.matches("[A-Za-z0-9-]+")) throw new IllegalArgumentException("invalid sessionId");
-        return normalized;
+        try {
+            return UuidValues.requireCanonical(value.trim());
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("sessionId must be a UUID", e);
+        }
     }
 
     private static String normalizeContextHash(String value) {

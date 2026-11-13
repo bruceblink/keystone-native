@@ -8,20 +8,25 @@ import jakarta.persistence.Convert;
 import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** 映射一次性恢复码哈希和消费状态；数据库不保存恢复码明文。 */
 @Entity
 @Table(name = "sys_mfa_recovery_code")
 public class MfaRecoveryCodeEntity {
     @Id
-    @Column(nullable = false, length = 36)
-    private String id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
     @Convert(converter = UuidBinaryConverter.class)
     private String userId;
 
-    @Column(name = "batch_id", nullable = false, length = 36)
+    @Column(name = "batch_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
     private String batchId;
 
     @Column(name = "code_hash", nullable = false, length = 64)
@@ -37,14 +42,14 @@ public class MfaRecoveryCodeEntity {
     }
 
     MfaRecoveryCodeEntity(String id, String userId, String batchId, String codeHash) {
-        this.id = id;
+        this.id = app.keystone.identity.UuidValues.parse(id);
         this.userId = userId;
         this.batchId = batchId;
         this.codeHash = codeHash;
     }
 
     String id() {
-        return id;
+        return id == null ? null : id.toString();
     }
 
     String userId() {

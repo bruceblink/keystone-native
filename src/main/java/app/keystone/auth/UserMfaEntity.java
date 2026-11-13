@@ -9,14 +9,18 @@ import jakarta.persistence.Convert;
 import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** 映射用户 TOTP 状态和密文；实体不解密也不返回明文密钥。 */
 @Entity
 @Table(name = "sys_user_mfa")
 public class UserMfaEntity {
     @Id
-    @Column(nullable = false, length = 36)
-    private String id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
     @Convert(converter = UuidBinaryConverter.class)
@@ -64,7 +68,7 @@ public class UserMfaEntity {
 
     UserMfaEntity(String id, String userId, String mfaType, byte[] secretCiphertext, byte[] secretNonce,
                   int keyVersion) {
-        this.id = id;
+        this.id = app.keystone.identity.UuidValues.parse(id);
         this.userId = userId;
         this.mfaType = mfaType;
         this.secretCiphertext = secretCiphertext;
@@ -73,7 +77,7 @@ public class UserMfaEntity {
     }
 
     String id() {
-        return id;
+        return id == null ? null : id.toString();
     }
 
     String userId() {

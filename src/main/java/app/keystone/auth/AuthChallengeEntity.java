@@ -8,14 +8,18 @@ import jakarta.persistence.Convert;
 import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** 映射 MFA 认证请求的状态；上下文摘要只在实体内部保存，不返回给接口调用方。 */
 @Entity
 @Table(name = "sys_auth_challenge")
 public class AuthChallengeEntity {
     @Id
-    @Column(nullable = false, length = 36)
-    private String id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
     @Convert(converter = UuidBinaryConverter.class)
@@ -27,7 +31,8 @@ public class AuthChallengeEntity {
     @Column(name = "client_id", nullable = false, length = 128)
     private String clientId;
 
-    @Column(name = "session_id", length = 36)
+    @Column(name = "session_id", columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
     private String sessionId;
 
     @Column(name = "context_hash", length = 64)
@@ -50,7 +55,7 @@ public class AuthChallengeEntity {
 
     AuthChallengeEntity(String id, String userId, String purpose, String clientId, String sessionId,
                         String contextHash, Instant expiresAt) {
-        this.id = id;
+        this.id = app.keystone.identity.UuidValues.parse(id);
         this.userId = userId;
         this.purpose = purpose;
         this.clientId = clientId;
@@ -60,7 +65,7 @@ public class AuthChallengeEntity {
     }
 
     String id() {
-        return id;
+        return id == null ? null : id.toString();
     }
 
     String userId() {

@@ -6,6 +6,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 
 /** 验证 UUID 核心迁移包含二进制边界和成功重跑保护。 */
 class UuidIdentityMigrationTest {
@@ -66,5 +67,37 @@ class UuidIdentityMigrationTest {
         assertTrue(sql.contains("token_id BINARY(16)"));
         assertTrue(sql.contains("UUID_TO_BIN"));
         assertTrue(sql.contains("INSERT IGNORE INTO sys_uuid_job_log_migration"));
+    }
+
+    @Test
+    void authIdentityMigrationUsesBinaryUuidIdsAndGuardedReplay() throws Exception {
+        String sql = Files.readString(Path.of("src/main/resources/db/migration/V50__auth_identity_binary_uuid.sql"));
+        assertTrue(sql.contains("sys_uuid_auth_identity_migration"));
+        assertTrue(sql.contains("@uuid_auth_should_rebuild"));
+        assertTrue(sql.contains("sys_auth_session"));
+        assertTrue(sql.contains("sys_refresh_token"));
+        assertTrue(sql.contains("sys_service_subject"));
+        assertTrue(sql.contains("sys_api_key"));
+        assertTrue(sql.contains("sys_user_mfa"));
+        assertTrue(sql.contains("sys_mfa_recovery_code"));
+        assertTrue(sql.contains("sys_auth_challenge"));
+        assertTrue(sql.contains("session_id BINARY(16)"));
+        assertTrue(sql.contains("refresh_family_id BINARY(16)"));
+        assertTrue(sql.contains("UUID_TO_BIN"));
+        assertTrue(sql.contains("BIN_TO_UUID"));
+        assertTrue(sql.contains("INSERT IGNORE INTO sys_uuid_auth_identity_migration"));
+    }
+
+    @Test
+    void authenticationBusinessIdsUseUuidV7Generator() throws Exception {
+        try (var files = Files.walk(Path.of("src/main/java/app/keystone/auth"))) {
+            files.filter(path -> path.toString().endsWith(".java")).forEach(path -> {
+                try {
+                    assertFalse(Files.readString(path).contains("UUID.randomUUID()"), path.toString());
+                } catch (java.io.IOException e) {
+                    throw new IllegalStateException("Could not inspect " + path, e);
+                }
+            });
+        }
     }
 }

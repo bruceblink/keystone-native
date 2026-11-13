@@ -18,7 +18,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
-import java.util.UUID;
+import app.keystone.identity.UuidValues;
 
 /** 使用 Panache 管理 API Key 主记录，密钥明文只在签发结果中返回一次。 */
 @ApplicationScoped
@@ -43,7 +43,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         String secret = random(32);
         String prefix = random(8);
         String value = "ks_live_" + prefix + "_" + secret;
-        String id = UUID.randomUUID().toString();
+        String id = UuidValues.v7();
         String subjectId = ensureSubject(userId);
         persistAndFlush(new ApiKeyEntity(id, userId, subjectId, userId, name.trim(), prefix, hash(value),
                 String.join(" ", normalizedScopes), expiresAt));
@@ -59,7 +59,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
                 hash(value), now).firstResult();
         if (key == null) return null;
         if (key.subjectId() == null) return null;
-        ServiceSubjectEntity subject = subjects.findById(key.subjectId());
+        ServiceSubjectEntity subject = subjects.findById(UuidValues.parse(key.subjectId()));
         if (subject == null || !subject.enabled()) return null;
         ApiKeyUserEntity user = users.findEnabled(key.userId());
         if (user == null) return null;
@@ -72,7 +72,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         long interval = lastUsedUpdateIntervalSeconds();
         Instant now = Instant.now();
         update("lastUsedAt = ?1 where id = ?2 and (lastUsedAt is null or lastUsedAt <= ?3)",
-                now, keyId, now.minusSeconds(interval));
+                now, UuidValues.parse(keyId), now.minusSeconds(interval));
     }
 
     private long lastUsedUpdateIntervalSeconds() {
@@ -87,7 +87,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         Instant now = Instant.now();
         long updated = update("revokedAt = coalesce(revokedAt, ?1), revokedReason = coalesce(revokedReason, ?2) "
                         + "where id = ?3 and userId = ?4",
-                now, "revoked by owner", id, userId);
+                now, "revoked by owner", UuidValues.parse(id), userId);
         if (updated == 0) throw new NoSuchElementException("API key not found");
     }
 
@@ -101,7 +101,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
     /** 锁定旧记录后写入新密钥并撤销旧密钥，整个轮换过程由一个事务完成。 */
     @Transactional
     public IssuedApiKey rotate(String userId, String id) {
-        ApiKeyEntity current = find("id = ?1 and userId = ?2", id, userId)
+        ApiKeyEntity current = find("id = ?1 and userId = ?2", UuidValues.parse(id), userId)
                 .withLock(LockModeType.PESSIMISTIC_WRITE)
                 .firstResult();
         if (current == null) throw new NoSuchElementException("API key not found");
@@ -110,7 +110,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         String secret = random(32);
         String prefix = random(8);
         String value = "ks_live_" + prefix + "_" + secret;
-        String replacementId = UUID.randomUUID().toString();
+        String replacementId = UuidValues.v7();
         List<String> scopes = split(current.scopes());
         persistAndFlush(new ApiKeyEntity(replacementId, userId, current.subjectId(), userId, current.name(), prefix,
                 hash(value), String.join(" ", scopes), current.expiresAt()));
@@ -123,7 +123,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         String code = "user:" + userId;
         ServiceSubjectEntity existing = subjects.findByCode(code);
         if (existing != null) return existing.id();
-        String id = UUID.randomUUID().toString();
+        String id = UuidValues.v7();
         subjects.persistAndFlush(new ServiceSubjectEntity(id, code, "User API keys: " + userId, userId));
         return id;
     }

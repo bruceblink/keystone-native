@@ -15,7 +15,7 @@ import java.util.Base64;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-import java.util.UUID;
+import app.keystone.identity.UuidValues;
 
 /** 使用 ORM 管理会话、刷新令牌和令牌事件；所有状态变化在一个数据库事务内完成。 */
 @ApplicationScoped
@@ -66,9 +66,9 @@ public class SessionRepository {
         }
 
         String token = randomToken();
-        String accessTokenId = UUID.randomUUID().toString();
-        String sessionId = UUID.randomUUID().toString();
-        String familyId = UUID.randomUUID().toString();
+        String accessTokenId = UuidValues.v7();
+        String sessionId = UuidValues.v7();
+        String familyId = UuidValues.v7();
         String approvedScope = String.join(" ", users.permissions(user));
         AuthSessionEntity session = new AuthSessionEntity(sessionId, userId, boundClientId, approvedScope,
                 familyId, refreshExpiry, now.plus(IDLE_LIFETIME), now);
@@ -117,7 +117,7 @@ public class SessionRepository {
 
         current.revoke(now);
         String replacement = randomToken();
-        String accessTokenId = UUID.randomUUID().toString();
+        String accessTokenId = UuidValues.v7();
         Instant nextIdle = now.plus(IDLE_LIFETIME);
         if (nextIdle.isAfter(current.expiresAt())) nextIdle = current.expiresAt();
         tokens.persist(new RefreshTokenEntity(current.userId(), current.sessionId(), current.refreshFamilyId(),
@@ -164,7 +164,7 @@ public class SessionRepository {
         Instant now = Instant.now();
         RefreshTokenEntity token = tokens.findByAccessToken(accessTokenId, now);
         if (token == null || token.sessionId() == null) return false;
-        AuthSessionEntity session = sessions.findById(token.sessionId());
+        AuthSessionEntity session = sessions.findById(UuidValues.parse(token.sessionId()));
         return session != null && session.activeAt(now);
     }
 
@@ -175,11 +175,11 @@ public class SessionRepository {
         RefreshTokenEntity token = tokens.findByAccessTokenAndVersion(accessTokenId, userId, now);
         if (token == null || token.sessionId() == null) return false;
         ApiKeyUserEntity user = users.findEnabledEntity(userId);
-        AuthSessionEntity session = sessions.findById(token.sessionId());
+        AuthSessionEntity session = sessions.findById(UuidValues.parse(token.sessionId()));
         return user != null && session != null && session.activeAt(now) && user.permissionVersion() == permissionVersion;
     }
 
-    /** 返回仍有效的令牌记录；sessionId 保持旧接口的 long 令牌 ID 语义。 */
+    /** 返回仍有效的令牌记录；会话和令牌标识均使用规范 UUID 字符串。 */
     public List<OnlineSession> activeSessions(String username, String ipAddress) {
         Instant now = Instant.now();
         List<OnlineSession> result = new ArrayList<>();

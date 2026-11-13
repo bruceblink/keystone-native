@@ -6,12 +6,14 @@ import jakarta.persistence.LockModeType;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
+import app.keystone.identity.UuidValues;
 
 /** 使用 Panache 查询和锁定独立会话状态。 */
 @ApplicationScoped
-public class AuthSessionRepository implements PanacheRepositoryBase<AuthSessionEntity, String> {
+public class AuthSessionRepository implements PanacheRepositoryBase<AuthSessionEntity, UUID> {
     AuthSessionEntity findForUpdate(String id) {
-        return find("id", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+        return find("id", UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
     }
 
     List<AuthSessionEntity> findActiveForUser(String userId, Instant now) {

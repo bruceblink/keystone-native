@@ -27,10 +27,12 @@ public class RefreshTokenEntity {
     @Convert(converter = UuidBinaryConverter.class)
     private String userId;
 
-    @Column(name = "session_id", length = 36)
+    @Column(name = "session_id", columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
     private String sessionId;
 
-    @Column(name = "refresh_family_id", length = 36)
+    @Column(name = "refresh_family_id", columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
     private String refreshFamilyId;
 
     @Column(name = "client_id", length = 128)
@@ -48,7 +50,8 @@ public class RefreshTokenEntity {
     @Column(name = "access_expires_at")
     private Instant accessExpiresAt;
 
-    @Column(name = "access_token_id", unique = true, length = 36)
+    @Column(name = "access_token_id", columnDefinition = "BINARY(16)", unique = true, length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
     private String accessTokenId;
 
     @Column(name = "revoked_at")

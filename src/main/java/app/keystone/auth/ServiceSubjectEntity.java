@@ -8,14 +8,18 @@ import jakarta.persistence.Convert;
 import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** 映射 API Key 使用的服务主体；服务主体表结构由 Flyway 管理。 */
 @Entity
 @Table(name = "sys_service_subject")
 public class ServiceSubjectEntity {
     @Id
-    @Column(nullable = false, length = 36)
-    private String id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(nullable = false, length = 128)
     private String code;
@@ -37,7 +41,7 @@ public class ServiceSubjectEntity {
     }
 
     ServiceSubjectEntity(String id, String code, String name, String ownerUserId) {
-        this.id = id;
+        this.id = app.keystone.identity.UuidValues.parse(id);
         this.code = code;
         this.name = name;
         this.ownerUserId = ownerUserId;
@@ -45,7 +49,7 @@ public class ServiceSubjectEntity {
     }
 
     String id() {
-        return id;
+        return id == null ? null : id.toString();
     }
 
     boolean enabled() {

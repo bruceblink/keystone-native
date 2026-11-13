@@ -10,7 +10,7 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
-import java.util.UUID;
+import app.keystone.identity.UuidValues;
 
 /**
  * 编排管理员 TOTP 的 enrollment、登录验证请求和策略状态。
@@ -55,7 +55,7 @@ public class MfaService {
         if (status.enabled()) throw new IllegalStateException("MFA is already enabled");
         // 在写入待验证密文前检查恢复码 pepper，避免完成 enrollment 后无法生成恢复码。
         recoveryCodes.generateBatch();
-        String mfaId = UUID.randomUUID().toString();
+        String mfaId = UuidValues.v7();
         String secret = totp.generateSecret();
         var encrypted = secrets.encrypt(userId, mfaId, secrets.currentKeyVersion(), secret);
         if (!mfa.replacePendingEnrollment(userId, mfaId, encrypted)) throw new IllegalStateException("MFA enrollment could not be started");
@@ -200,7 +200,7 @@ public class MfaService {
     private static String requiredSessionId(String value) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("sessionId is required");
         String normalized = value.trim();
-        try { return UUID.fromString(normalized).toString(); }
+        try { return UuidValues.requireCanonical(normalized); }
         catch (IllegalArgumentException e) { throw new IllegalArgumentException("sessionId must be a UUID", e); }
     }
 

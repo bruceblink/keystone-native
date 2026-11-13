@@ -47,7 +47,7 @@ public class MfaSessionRepository {
         }
 
         Instant now = Instant.now();
-        AuthSessionEntity session = sessions.findById(boundSessionId);
+        AuthSessionEntity session = sessions.findById(app.keystone.identity.UuidValues.parse(boundSessionId));
         return session != null
                 && userId.equals(session.userId())
                 && session.clientId().equals(boundClientId)

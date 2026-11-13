@@ -12,7 +12,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
-import java.util.UUID;
+import app.keystone.identity.UuidValues;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -50,7 +50,7 @@ public class MfaRecoveryCodeService {
             String code = format(HEX.formatHex(bytes));
             if (seen.add(code)) codes.add(code);
         }
-        return new RecoveryCodeBatch(UUID.randomUUID().toString(), List.copyOf(codes));
+        return new RecoveryCodeBatch(UuidValues.v7(), List.copyOf(codes));
     }
 
     /** 规范化并使用部署级 pepper 计算 HMAC-SHA-256 摘要。 */

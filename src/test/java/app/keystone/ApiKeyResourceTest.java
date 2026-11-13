@@ -1,5 +1,7 @@
 package app.keystone;
 
+import app.keystone.identity.UuidValues;
+
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
@@ -145,7 +147,7 @@ class ApiKeyResourceTest extends AuthTestFixture {
 
     private void expire(String id) throws Exception {
         try (var connection = dataSource.getConnection(); var statement = connection.prepareStatement("UPDATE sys_api_key SET expires_at = CURRENT_TIMESTAMP - INTERVAL 1 SECOND WHERE id = ?")) {
-            statement.setString(1, id);
+            statement.setBytes(1, UuidValues.toBytes(id));
             statement.executeUpdate();
         }
     }

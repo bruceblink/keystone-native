@@ -29,7 +29,8 @@ public class RefreshTokenEventEntity {
     @jakarta.persistence.Convert(converter = app.keystone.identity.UuidBinaryConverter.class)
     private String userId;
 
-    @Column(name = "refresh_family_id", length = 36)
+    @Column(name = "refresh_family_id", columnDefinition = "BINARY(16)", length = 16)
+    @jakarta.persistence.Convert(converter = app.keystone.identity.UuidBinaryConverter.class)
     private String refreshFamilyId;
 
     @Column(name = "event_type", nullable = false, length = 32)

@@ -5,10 +5,12 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.LockModeType;
 
 import java.time.Instant;
+import java.util.UUID;
+import app.keystone.identity.UuidValues;
 
 /** 使用 Panache 读取和锁定 MFA 认证请求。 */
 @ApplicationScoped
-public class AuthChallengeOrmRepository implements PanacheRepositoryBase<AuthChallengeEntity, String> {
+public class AuthChallengeOrmRepository implements PanacheRepositoryBase<AuthChallengeEntity, UUID> {
     AuthChallengeEntity findActive(String id, String userId, String clientId, String purpose,
                                     String sessionId, Instant now, int maxAttempts) {
         return activeQuery(id, userId, clientId, purpose, sessionId, now, maxAttempts)
@@ -40,7 +42,7 @@ public class AuthChallengeOrmRepository implements PanacheRepositoryBase<AuthCha
         parameters.add(now);
         parameters.add(maxAttempts);
         if (id != null) {
-            parameters.add(id);
+            parameters.add(UuidValues.parse(id));
             query.append(" and id = ?").append(parameters.size());
         }
         if (sessionId == null) {

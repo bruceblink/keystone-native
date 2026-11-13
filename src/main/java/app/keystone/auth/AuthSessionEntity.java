@@ -8,14 +8,18 @@ import jakarta.persistence.Convert;
 import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** 映射独立会话状态；刷新令牌只保存轮换明细，表结构由 Flyway 管理。 */
 @Entity
 @Table(name = "sys_auth_session")
 public class AuthSessionEntity {
     @Id
-    @Column(nullable = false, length = 36)
-    private String id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
     @Convert(converter = UuidBinaryConverter.class)
@@ -27,7 +31,8 @@ public class AuthSessionEntity {
     @Column(name = "approved_scope", columnDefinition = "TEXT")
     private String approvedScope;
 
-    @Column(name = "refresh_family_id", nullable = false, length = 36)
+    @Column(name = "refresh_family_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
     private String refreshFamilyId;
 
     @Column(name = "refresh_expires_at", nullable = false)
@@ -59,7 +64,7 @@ public class AuthSessionEntity {
 
     AuthSessionEntity(String id, String userId, String clientId, String approvedScope,
                       String refreshFamilyId, Instant refreshExpiresAt, Instant idleExpiresAt, Instant lastSeenAt) {
-        this.id = id;
+        this.id = app.keystone.identity.UuidValues.parse(id);
         this.userId = userId;
         this.clientId = clientId;
         this.approvedScope = approvedScope;
@@ -69,7 +74,7 @@ public class AuthSessionEntity {
         this.lastSeenAt = lastSeenAt;
     }
 
-    String id() { return id; }
+    String id() { return id == null ? null : id.toString(); }
     String userId() { return userId; }
     String clientId() { return clientId; }
     String approvedScope() { return approvedScope; }

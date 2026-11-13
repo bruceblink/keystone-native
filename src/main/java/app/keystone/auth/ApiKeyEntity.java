@@ -8,20 +8,25 @@ import jakarta.persistence.Convert;
 import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
+import java.util.UUID;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 /** 映射 API Key 主记录；密钥明文只在签发结果中出现，不写入实体。 */
 @Entity
 @Table(name = "sys_api_key")
 public class ApiKeyEntity {
     @Id
-    @Column(nullable = false, length = 36)
-    private String id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
-    @Column(name = "user_id", nullable = false)
+    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
     @Convert(converter = UuidBinaryConverter.class)
     private String userId;
 
-    @Column(name = "subject_id", length = 36)
+    @Column(name = "subject_id", columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
     private String subjectId;
 
     @Column(name = "created_by")
@@ -52,7 +57,8 @@ public class ApiKeyEntity {
     @Column(name = "last_used_ip", length = 64)
     private String lastUsedIp;
 
-    @Column(name = "rotated_to", length = 36)
+    @Column(name = "rotated_to", columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
     private String rotatedTo;
 
     @Column(name = "revoked_reason", length = 255)
@@ -66,7 +72,7 @@ public class ApiKeyEntity {
 
     ApiKeyEntity(String id, String userId, String subjectId, String createdBy, String name,
                  String keyPrefix, String keyHash, String scopes, Instant expiresAt) {
-        this.id = id;
+        this.id = app.keystone.identity.UuidValues.parse(id);
         this.userId = userId;
         this.subjectId = subjectId;
         this.createdBy = createdBy;
@@ -78,7 +84,7 @@ public class ApiKeyEntity {
     }
 
     String id() {
-        return id;
+        return id == null ? null : id.toString();
     }
 
     String userId() {

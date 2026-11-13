@@ -7,7 +7,7 @@ import jakarta.transaction.Transactional;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
+import app.keystone.identity.UuidValues;
 
 /** 保存和更新用户 TOTP 状态、认证请求和一次性恢复码。 */
 @ApplicationScoped
@@ -39,7 +39,7 @@ public class MfaRepository {
         requireEncrypted(encrypted);
         try {
             if (users.findAnyForUpdate(userId) == null) return false;
-            UserMfaEntity byId = mfaRecords.findById(boundMfaId);
+            UserMfaEntity byId = mfaRecords.findById(UuidValues.parse(boundMfaId));
             if (byId != null && byId.userId() != userId) return false;
             UserMfaEntity existing = mfaRecords.findByUserForUpdate(userId);
             if (existing != null && existing.enabled()) return false;
@@ -212,7 +212,7 @@ public class MfaRepository {
     private void replaceRecoveryCodesLocked(String userId, String batchId, List<String> hashes) {
         recoveryCodes.deleteByUser(userId);
         for (String hash : hashes) {
-            recoveryCodes.persist(new MfaRecoveryCodeEntity(UUID.randomUUID().toString(), userId, batchId, hash));
+            recoveryCodes.persist(new MfaRecoveryCodeEntity(app.keystone.identity.UuidValues.v7(), userId, batchId, hash));
         }
     }
 
@@ -230,7 +230,7 @@ public class MfaRepository {
     private static String normalizeMfaId(String value) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException("mfaId is required");
         try {
-            return UUID.fromString(value.trim()).toString();
+            return UuidValues.requireCanonical(value.trim());
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("mfaId must be a UUID", e);
         }
