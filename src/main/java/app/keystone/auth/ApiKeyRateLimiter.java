@@ -68,12 +68,14 @@ public class ApiKeyRateLimiter {
     }
 
     private void increment(java.sql.Connection c, String key) throws Exception {
-        String sql = "INSERT INTO sys_api_key_rate_limit(scope_key, window_started_at, attempt_count, blocked_until) "
-                + "VALUES (?, CURRENT_TIMESTAMP, 1, IF(1 >= ?, TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP), NULL)) "
-                + "ON DUPLICATE KEY UPDATE "
-                + "attempt_count = IF(window_started_at < TIMESTAMPADD(SECOND, -?, CURRENT_TIMESTAMP), 1, attempt_count + 1), "
-                + "window_started_at = IF(window_started_at < TIMESTAMPADD(SECOND, -?, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, window_started_at), "
-                + "blocked_until = IF(attempt_count >= ?, TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP), NULL)";
+        String sql = """
+                INSERT INTO sys_api_key_rate_limit(scope_key, window_started_at, attempt_count, blocked_until)
+                VALUES (?, CURRENT_TIMESTAMP, 1, IF(1 >= ?, TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP), NULL))
+                ON DUPLICATE KEY UPDATE
+                attempt_count = IF(window_started_at < TIMESTAMPADD(SECOND, -?, CURRENT_TIMESTAMP), 1, attempt_count + 1),
+                window_started_at = IF(window_started_at < TIMESTAMPADD(SECOND, -?, CURRENT_TIMESTAMP), CURRENT_TIMESTAMP, window_started_at),
+                blocked_until = IF(attempt_count >= ?, TIMESTAMPADD(SECOND, ?, CURRENT_TIMESTAMP), NULL)
+                """;
         try (var update = c.prepareStatement(sql)) {
             update.setString(1, key);
             update.setInt(2, maxFailures);
