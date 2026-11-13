@@ -45,9 +45,10 @@ public class ApiKeyRateLimiter {
     public void clear(String value, String ipAddress) {
         validate(value, ipAddress);
         validateConfig();
-        try (var c = dataSource.getConnection(); var p = c.prepareStatement("DELETE FROM sys_api_key_rate_limit WHERE scope_key IN (?, ?)")) {
+        try (var c = dataSource.getConnection(); var p = c.prepareStatement("DELETE FROM sys_api_key_rate_limit WHERE scope_key = ?")) {
             var dimensions = keys(value, ipAddress);
-            p.setString(1, dimensions.get(0)); p.setString(2, dimensions.get(1)); p.executeUpdate();
+            // 成功认证只清理当前凭据桶；来源地址桶必须保留，避免一个有效 key 清空其他调用方的失败记录。
+            p.setString(1, dimensions.get(1)); p.executeUpdate();
         } catch (Exception e) { throw new IllegalStateException("Could not clear API key rate limit", e); }
     }
 
