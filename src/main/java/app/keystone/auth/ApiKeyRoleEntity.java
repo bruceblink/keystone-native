@@ -22,6 +22,9 @@ public class ApiKeyRoleEntity {
     @Column(nullable = false)
     private boolean enabled;
 
+    @Column(nullable = false, length = 64)
+    private String code;
+
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
             name = "sys_role_permission",
@@ -34,6 +37,10 @@ public class ApiKeyRoleEntity {
 
     boolean enabled() {
         return enabled;
+    }
+
+    String code() {
+        return code;
     }
 
     Set<ApiKeyPermissionEntity> permissions() {

@@ -12,6 +12,7 @@ import jakarta.persistence.Table;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
+import app.keystone.user.UserRepository;
 
 /** 映射 API Key 认证和签发所需的用户状态及权限关系。 */
 @Entity
@@ -25,6 +26,42 @@ public class ApiKeyUserEntity {
 
     @Column(nullable = false)
     private boolean enabled;
+
+    @Column(name = "display_name", nullable = false, length = 128)
+    private String displayName;
+
+    @Column(name = "must_change_password", nullable = false)
+    private boolean mustChangePassword;
+
+    @Column(name = "dept_id")
+    private Long deptId;
+
+    @Column(name = "post_id")
+    private Long postId;
+
+    @Column(length = 128)
+    private String email;
+
+    @Column(name = "phone_number", length = 32)
+    private String phoneNumber;
+
+    @Column
+    private Integer sex;
+
+    @Column(length = 512)
+    private String avatar;
+
+    @Column(name = "login_ip", length = 64)
+    private String loginIp;
+
+    @Column(name = "login_at")
+    private java.time.Instant loginAt;
+
+    @Column(name = "permission_version", nullable = false)
+    private long permissionVersion;
+
+    @Column(length = 500)
+    private String remark;
 
     @ManyToMany(fetch = FetchType.LAZY)
     @JoinTable(
@@ -44,11 +81,34 @@ public class ApiKeyUserEntity {
         return enabled;
     }
 
+    long id() {
+        return id;
+    }
+
+    String displayName() {
+        return displayName;
+    }
+
+    String loginIp() {
+        return loginIp;
+    }
+
+    long permissionVersion() {
+        return permissionVersion;
+    }
+
     Set<String> permissions() {
         return roles.stream()
                 .filter(ApiKeyRoleEntity::enabled)
                 .flatMap(role -> role.permissions().stream())
                 .map(ApiKeyPermissionEntity::code)
                 .collect(Collectors.toUnmodifiableSet());
+    }
+
+    UserRepository.AuthUser toAuthUser() {
+        var roleCodes = roles.stream().filter(ApiKeyRoleEntity::enabled).map(ApiKeyRoleEntity::code).sorted().toList();
+        return new UserRepository.AuthUser(id, username, displayName,
+                roleCodes.isEmpty() ? java.util.List.of("USER") : roleCodes,
+                mustChangePassword, deptId, postId, email, phoneNumber, sex, avatar, loginIp, loginAt, remark);
     }
 }

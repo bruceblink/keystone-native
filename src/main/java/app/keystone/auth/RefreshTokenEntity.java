@@ -1,0 +1,98 @@
+package app.keystone.auth;
+
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+
+import java.time.Instant;
+
+/** 映射刷新令牌轮换明细；数据库只保存令牌摘要，不保存明文令牌。 */
+@Entity
+@Table(name = "sys_refresh_token")
+public class RefreshTokenEntity {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+
+    @Column(name = "user_id", nullable = false)
+    private long userId;
+
+    @Column(name = "session_id", length = 36)
+    private String sessionId;
+
+    @Column(name = "refresh_family_id", length = 36)
+    private String refreshFamilyId;
+
+    @Column(name = "client_id", length = 128)
+    private String clientId;
+
+    @Column(name = "token_hash", nullable = false, unique = true, length = 64)
+    private String tokenHash;
+
+    @Column(name = "expires_at", nullable = false)
+    private Instant expiresAt;
+
+    @Column(name = "idle_expires_at")
+    private Instant idleExpiresAt;
+
+    @Column(name = "access_expires_at")
+    private Instant accessExpiresAt;
+
+    @Column(name = "access_token_id", unique = true, length = 36)
+    private String accessTokenId;
+
+    @Column(name = "revoked_at")
+    private Instant revokedAt;
+
+    @Column(name = "reused_at")
+    private Instant reusedAt;
+
+    @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
+    private Instant createdAt;
+
+    protected RefreshTokenEntity() {
+    }
+
+    RefreshTokenEntity(long userId, String sessionId, String refreshFamilyId, String clientId,
+                       String tokenHash, Instant expiresAt, Instant idleExpiresAt,
+                       Instant accessExpiresAt, String accessTokenId) {
+        this.userId = userId;
+        this.sessionId = sessionId;
+        this.refreshFamilyId = refreshFamilyId;
+        this.clientId = clientId;
+        this.tokenHash = tokenHash;
+        this.expiresAt = expiresAt;
+        this.idleExpiresAt = idleExpiresAt;
+        this.accessExpiresAt = accessExpiresAt;
+        this.accessTokenId = accessTokenId;
+    }
+
+    Long id() { return id; }
+    long userId() { return userId; }
+    String sessionId() { return sessionId; }
+    String refreshFamilyId() { return refreshFamilyId; }
+    String clientId() { return clientId; }
+    Instant expiresAt() { return expiresAt; }
+    Instant idleExpiresAt() { return idleExpiresAt; }
+    Instant accessExpiresAt() { return accessExpiresAt; }
+    String accessTokenId() { return accessTokenId; }
+    Instant revokedAt() { return revokedAt; }
+    Instant reusedAt() { return reusedAt; }
+
+    boolean activeAt(Instant now) {
+        return revokedAt == null && expiresAt != null && expiresAt.isAfter(now)
+                && idleExpiresAt != null && idleExpiresAt.isAfter(now);
+    }
+
+    void revoke(Instant at) {
+        if (revokedAt == null) revokedAt = at;
+    }
+
+    void markReused(Instant at) {
+        if (reusedAt == null) reusedAt = at;
+        revoke(at);
+    }
+}
