@@ -34,8 +34,9 @@ public class ApiKeyIdentityProvider implements IdentityProvider<ApiKeyAuthentica
                 recordEvent(request, "FAILURE", "invalid API key");
                 throw new AuthenticationFailedException("invalid API key");
             }
-            rateLimiter.clear(request.value(), request.clientAddress());
-            securityEvents.record("API_KEY_AUTH", principal.username(), "API_KEY", request.clientAddress(), "authentication", "api-key", "SUCCESS", null);
+            try { rateLimiter.clear(request.value(), request.clientAddress()); }
+            catch (IllegalStateException e) { recordEvent(request, principal.username(), principal.keyId(), "RATE_LIMIT_CLEAR_FAILED", "API key rate-limit cleanup failed"); }
+            recordEvent(request, principal.username(), principal.keyId(), "SUCCESS", null);
             var builder = QuarkusSecurityIdentity.builder()
                     .setPrincipal(new ApiKeyPrincipal(principal.username(), principal.keyId()))
                     .addAttribute("credentialType", "API_KEY")
@@ -50,7 +51,11 @@ public class ApiKeyIdentityProvider implements IdentityProvider<ApiKeyAuthentica
     }
 
     private void recordEvent(ApiKeyAuthenticationRequest request, String outcome, String detail) {
-        try { securityEvents.record("API_KEY_AUTH", null, "API_KEY", request.clientAddress(), "authentication", "api-key", outcome, detail); }
+        recordEvent(request, null, null, outcome, detail);
+    }
+
+    private void recordEvent(ApiKeyAuthenticationRequest request, String actor, String credentialId, String outcome, String detail) {
+        try { securityEvents.record("API_KEY_AUTH", actor, "API_KEY", credentialId, request.clientAddress(), "authentication", "api-key", outcome, detail); }
         catch (IllegalStateException ignored) { }
     }
 
