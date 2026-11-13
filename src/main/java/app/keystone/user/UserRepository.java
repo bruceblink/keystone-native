@@ -52,19 +52,6 @@ public class UserRepository {
         catch (Exception e) { throw new IllegalStateException("Could not find user", e); }
     }
 
-    public Optional<AuthUser> findAuthUser(Connection c, long id) throws Exception {
-        String sql = "SELECT id, username, display_name, must_change_password, dept_id, post_id, email, phone_number, sex, avatar, login_ip, login_at, remark FROM sys_user WHERE id = ? AND enabled = true";
-        try (var p = c.prepareStatement(sql)) {
-            p.setLong(1, id);
-            try (var rs = p.executeQuery()) {
-                if (!rs.next()) return Optional.empty();
-                Long dept = nullableLong(rs, "dept_id"); Long post = nullableLong(rs, "post_id");
-                var loginAt = rs.getTimestamp("login_at");
-                return Optional.of(new AuthUser(rs.getLong("id"), rs.getString("username"), rs.getString("display_name"), roles(c, id), rs.getBoolean("must_change_password"), dept, post, rs.getString("email"), rs.getString("phone_number"), nullableInt(rs, "sex"), rs.getString("avatar"), rs.getString("login_ip"), loginAt == null ? null : loginAt.toInstant(), rs.getString("remark")));
-            }
-        }
-    }
-
     public Page list(int page, int size, String username, String displayName, Long deptId, Boolean enabled,
                      DataScopeService.Scope scope, long subjectId) {
         int safePage = Math.max(1, page), safeSize = Math.min(100, Math.max(1, size));
@@ -105,58 +92,18 @@ public class UserRepository {
     }
 
     public User update(long id, String password, String displayName, Long deptId, Boolean enabled, List<String> roleCodes) {
-        if (password != null && !password.isBlank() && displayName == null && deptId == null && enabled == null && roleCodes == null) {
-            try {
-                return ormUsers.updatePassword(id, password, passwordPolicy);
-            } catch (IllegalArgumentException | java.util.NoSuchElementException e) {
-                throw e;
-            } catch (RuntimeException e) {
-                throw new IllegalStateException("Could not update user password", e);
-            }
-        }
         return updateExtended(id, password, displayName, deptId != null, deptId, null, null, null, null, null, null, enabled, roleCodes);
     }
 
     public User updateExtended(long id, String password, String displayName, boolean updateDept, Long deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
-        if (password != null && !password.isBlank() && !updateDept && (displayName == null || displayName.isBlank())
-                && postId == null && email == null && phoneNumber == null && sex == null && avatar == null
-                && remark == null && enabled == null && roleCodes == null) {
-            try {
-                return ormUsers.updatePassword(id, password, passwordPolicy);
-            } catch (IllegalArgumentException | java.util.NoSuchElementException e) {
-                throw e;
-            } catch (RuntimeException e) {
-                throw new IllegalStateException("Could not update user password", e);
-            }
+        try {
+            return ormUsers.updateUser(id, password, displayName, updateDept, deptId, postId,
+                    email, phoneNumber, sex, avatar, remark, enabled, roleCodes, passwordPolicy);
+        } catch (IllegalArgumentException | java.util.NoSuchElementException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not update user", e);
         }
-        try (var c = dataSource.getConnection()) {
-            c.setAutoCommit(false);
-            try {
-                var fields = new ArrayList<String>(); var values = new ArrayList<Object>();
-                if (password != null && !password.isBlank()) {
-                    String username = username(c, id);
-                    passwordPolicy.validate(username, password);
-                    fields.add("password_hash = ?"); values.add(BcryptUtil.bcryptHash(password)); fields.add("must_change_password = false"); fields.add("failed_login_count = 0"); fields.add("locked_until = NULL"); fields.add("credential_version = credential_version + 1"); fields.add("last_password_changed_at = CURRENT_TIMESTAMP");
-                }
-                if (displayName != null && !displayName.isBlank()) { fields.add("display_name = ?"); values.add(displayName.trim()); }
-                if (updateDept) { fields.add("dept_id = ?"); values.add(deptId); }
-                if (postId != null) { fields.add("post_id = ?"); values.add(postId); }
-                if (email != null) { fields.add("email = ?"); values.add(emptyToNull(email)); }
-                if (phoneNumber != null) { fields.add("phone_number = ?"); values.add(emptyToNull(phoneNumber)); }
-                if (sex != null) { fields.add("sex = ?"); values.add(sex); }
-                if (avatar != null) { fields.add("avatar = ?"); values.add(emptyToNull(avatar)); }
-                if (remark != null) { fields.add("remark = ?"); values.add(emptyToNull(remark)); }
-                if (enabled != null) { fields.add("enabled = ?"); values.add(enabled); }
-                if (!fields.isEmpty()) {
-                    var sql = "UPDATE sys_user SET " + String.join(", ", fields) + " WHERE id = ?";
-                    try (var p = c.prepareStatement(sql)) { for (int i = 0; i < values.size(); i++) p.setObject(i + 1, values.get(i)); p.setLong(values.size() + 1, id); if (p.executeUpdate() == 0) throw new java.util.NoSuchElementException("user not found"); }
-                }
-                if (roleCodes != null) replaceRoles(c, id, roleCodes);
-                c.commit(); return find(c, id).orElseThrow();
-            } catch (Exception e) { c.rollback(); throw e; }
-        } catch (IllegalArgumentException e) { throw e; }
-        catch (java.util.NoSuchElementException e) { throw e; }
-        catch (Exception e) { throw new IllegalStateException("Could not update user", e); }
     }
 
     public void markLogin(long id, String ip) {
@@ -211,8 +158,6 @@ public class UserRepository {
         return new User(rs.getLong("id"), rs.getString("username"), rs.getString("display_name"), nullableLong(rs, "dept_id"), nullableLong(rs, "post_id"), rs.getBoolean("enabled"), rs.getString("email"), rs.getString("phone_number"), nullableInt(rs, "sex"), rs.getString("avatar"), rs.getString("login_ip"), loginAt == null ? null : loginAt.toInstant(), rs.getString("remark"), splitRoles(rs.getString("roles")));
     }
 
-    private static List<String> roles(Connection c, long userId) throws Exception { try (var p = c.prepareStatement("SELECT r.code FROM sys_role r JOIN sys_user_role ur ON ur.role_id = r.id WHERE ur.user_id = ? AND r.enabled = true ORDER BY r.code")) { p.setLong(1, userId); try (var rs = p.executeQuery()) { var result = new ArrayList<String>(); while (rs.next()) result.add(rs.getString(1)); return result; } } }
-
     /** 计算第 N 次失败的锁定秒数；结果不会超过部署配置的上限。 */
     public static long calculateLockDelaySeconds(long baseSeconds, long maxSeconds, int attempts) {
         if (baseSeconds <= 0 || maxSeconds < baseSeconds || maxSeconds > 86_400 || attempts < 5) {
@@ -233,15 +178,6 @@ public class UserRepository {
         }
     }
 
-    private static String username(Connection c, long userId) throws Exception {
-        try (var p = c.prepareStatement("SELECT username FROM sys_user WHERE id = ?")) {
-            p.setLong(1, userId);
-            try (var rs = p.executeQuery()) {
-                if (!rs.next()) throw new java.util.NoSuchElementException("user not found");
-                return rs.getString(1);
-            }
-        }
-    }
     public List<String> permissions(long userId) {
         try {
             return ormUsers.permissions(userId).stream().sorted().toList();
@@ -258,11 +194,6 @@ public class UserRepository {
         }
     }
     private static List<String> splitRoles(String value) { return value == null || value.isBlank() ? List.of("USER") : List.of(value.split(",")); }
-    private static void replaceRoles(Connection c, long userId, List<String> roleCodes) throws Exception { var codes = roleCodes == null || roleCodes.isEmpty() ? List.of("USER") : roleCodes.stream().filter(java.util.Objects::nonNull).map(String::trim).filter(s -> !s.isBlank()).distinct().toList(); try (var d = c.prepareStatement("DELETE FROM sys_user_role WHERE user_id = ?")) { d.setLong(1, userId); d.executeUpdate(); } try (var p = c.prepareStatement("INSERT INTO sys_user_role(user_id, role_id) SELECT ?, id FROM sys_role WHERE code = ? AND enabled = true")) { for (String code : codes) { p.setLong(1, userId); p.setString(2, code); if (p.executeUpdate() == 0) throw new IllegalArgumentException("unknown role: " + code); } } bumpPermissionVersion(c, userId); }
-
-    /** 角色集合变化后递增版本，旧 JWT 会在下一个请求被拒绝。 */
-    private static void bumpPermissionVersion(Connection c, long userId) throws Exception { try (var p = c.prepareStatement("UPDATE sys_user SET permission_version = permission_version + 1 WHERE id = ?")) { p.setLong(1, userId); p.executeUpdate(); } }
-
     private static String filters(String username, String displayName, Long deptId, Boolean enabled) { var parts = new ArrayList<String>(); if (username != null && !username.isBlank()) parts.add("u.username LIKE ?"); if (displayName != null && !displayName.isBlank()) parts.add("u.display_name LIKE ?"); if (deptId != null) parts.add("u.dept_id = ?"); if (enabled != null) parts.add("u.enabled = ?"); return parts.isEmpty() ? "" : " WHERE " + String.join(" AND ", parts); }
     /** 把范围条件追加到查询和删除语句，空范围使用恒假条件。 */
     private static String appendScope(String existing, DataScopeService.Scope scope, String alias) {
@@ -291,9 +222,6 @@ public class UserRepository {
     private static int bindFilters(java.sql.PreparedStatement p, int index, String username, String displayName, Long deptId, Boolean enabled) throws Exception { if (username != null && !username.isBlank()) p.setString(index++, "%" + username.trim() + "%"); if (displayName != null && !displayName.isBlank()) p.setString(index++, "%" + displayName.trim() + "%"); if (deptId != null) p.setLong(index++, deptId); if (enabled != null) p.setBoolean(index++, enabled); return index; }
     private static Long nullableLong(ResultSet rs, String column) throws Exception { long value = rs.getLong(column); return rs.wasNull() ? null : value; }
     private static Integer nullableInt(ResultSet rs, String column) throws Exception { int value = rs.getInt(column); return rs.wasNull() ? null : value; }
-    private static void setLong(java.sql.PreparedStatement p, int index, Long value) throws Exception { if (value == null) p.setNull(index, java.sql.Types.BIGINT); else p.setLong(index, value); }
-    private static void setInt(java.sql.PreparedStatement p, int index, Integer value) throws Exception { if (value == null) p.setNull(index, java.sql.Types.TINYINT); else p.setInt(index, value); }
-    private static String emptyToNull(String value) { return value == null || value.isBlank() ? null : value.trim(); }
 
     private static boolean isUniqueConstraint(Throwable error) {
         for (Throwable current = error; current != null; current = current.getCause()) {

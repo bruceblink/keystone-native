@@ -189,6 +189,30 @@ public class ApiKeyUserEntity {
         roles.addAll(replacement);
     }
 
+    /** 更新用户资料字段；调用方必须在用户行写锁事务内调用。 */
+    void updateProfile(String newDisplayName, boolean updateDept, Long newDeptId, Long newPostId,
+                       String newEmail, String newPhoneNumber, Integer newSex, String newAvatar,
+                       String newRemark, Boolean newEnabled) {
+        if (newDisplayName != null && !newDisplayName.isBlank()) displayName = newDisplayName.trim();
+        if (updateDept) deptId = newDeptId;
+        if (newPostId != null) postId = newPostId;
+        if (newEmail != null) email = emptyToNull(newEmail);
+        if (newPhoneNumber != null) phoneNumber = emptyToNull(newPhoneNumber);
+        if (newSex != null) sex = newSex;
+        if (newAvatar != null) avatar = emptyToNull(newAvatar);
+        if (newRemark != null) remark = emptyToNull(newRemark);
+        if (newEnabled != null) enabled = newEnabled;
+    }
+
+    /** 角色集合发生写入时递增权限版本，使旧访问令牌立即失效。 */
+    void bumpPermissionVersion() {
+        permissionVersion++;
+    }
+
+    private static String emptyToNull(String value) {
+        return value == null || value.isBlank() ? null : value.trim();
+    }
+
     UserRepository.AuthUser toAuthUser() {
         var roleCodes = roles.stream().filter(ApiKeyRoleEntity::enabled).map(ApiKeyRoleEntity::code).sorted().toList();
         return new UserRepository.AuthUser(id, username, displayName,

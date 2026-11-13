@@ -52,6 +52,28 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         return user.toUser();
     }
 
+    /** 在一条用户写锁事务中完成资料、密码和角色更新。 */
+    @Transactional
+    public User updateUser(long userId, String password, String displayName, boolean updateDept, Long deptId,
+                           Long postId, String email, String phoneNumber, Integer sex, String avatar,
+                           String remark, Boolean enabled, List<String> roleCodes, PasswordPolicy passwordPolicy) {
+        ApiKeyUserEntity user = find("id = ?1", userId)
+                .withLock(LockModeType.PESSIMISTIC_WRITE)
+                .firstResult();
+        if (user == null) throw new java.util.NoSuchElementException("user not found");
+        Set<ApiKeyRoleEntity> replacement = roleCodes == null ? null : resolveRoles(roleCodes);
+        if (password != null && !password.isBlank()) {
+            passwordPolicy.validate(user.username(), password);
+            user.changePassword(BcryptUtil.bcryptHash(password), Instant.now());
+        }
+        user.updateProfile(displayName, updateDept, deptId, postId, email, phoneNumber, sex, avatar, remark, enabled);
+        if (replacement != null) {
+            user.replaceRoles(replacement);
+            user.bumpPermissionVersion();
+        }
+        return user.toUser();
+    }
+
     /**
      * 在同一事务中锁定用户、校验密码并更新失败锁定状态。
      * 用户行写锁保证并发失败请求不会覆盖失败计数。

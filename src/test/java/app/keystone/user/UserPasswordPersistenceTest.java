@@ -13,10 +13,10 @@ class UserPasswordPersistenceTest {
     @Test
     void passwordOnlyUpdatesDelegateToOrm() throws Exception {
         String source = Files.readString(Path.of("src/main/java/app/keystone/user/UserRepository.java"));
-        int start = source.indexOf("public User update(long id");
-        int end = source.indexOf("\n    public User updateExtended", start);
+        int start = source.indexOf("public User updateExtended");
+        int end = source.indexOf("\n    public void markLogin", start);
         String method = source.substring(start, end);
-        assertTrue(method.contains("ormUsers.updatePassword(id, password, passwordPolicy)"));
+        assertTrue(method.contains("ormUsers.updateUser"));
         assertFalse(method.contains("password_hash = ?"));
     }
 
