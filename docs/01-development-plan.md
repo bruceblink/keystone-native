@@ -1,4 +1,14 @@
-# Keystone Native 鉴权与授权产品计划
+# Keystone Native 鉴权与授权开发计划
+
+跨项目统一架构见 [`02-auth-authorization-parity-architecture.md`](02-auth-authorization-parity-architecture.md)。本文件同时记录 Native 本地实施任务和与 Keystone Phoenix 的跨项目验收要求。
+
+## 跨项目统一主线
+
+Native 与 Phoenix 分别实现，但必须遵守统一架构中的 Principal、权限、数据范围、令牌字段、错误分类和审计约定。Phoenix 现有三段权限只作为兼容输入，新代码统一使用 `resource:action`。
+
+主键迁移先于后续业务实现：用户、角色、部门、菜单、权限、会话、令牌族、API Key、MFA 请求和安全事件统一使用 UUID。新业务实体使用 UUIDv7；权限目录和固定种子使用固定命名空间的 UUIDv5。外部接口使用规范小写连字符 UUID 字符串；Native 的 MySQL 使用 `BINARY(16)`，写入和按 ID 过滤使用参数侧 `UUID_TO_BIN(?, 0)`，文本结果使用 `BIN_TO_UUID(id, 0)`，不在过滤列上调用 `BIN_TO_UUID`。Phoenix 的 PostgreSQL 使用原生 `uuid` 类型。
+
+跨项目实施顺序为：公共接口冻结、UUID 主键迁移、角色授权收紧、Phoenix API Key、Phoenix MFA/JWK、资源范围矩阵、接口差异收口和运行验收。每个阶段必须分别完成迁移、重复迁移、定向测试、全量测试、真实 HTTP 和数据库运行检查；静态编译不能替代运行证据。
 
 ## 术语与边界
 
