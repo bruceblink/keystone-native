@@ -19,7 +19,7 @@ public class DepartmentRepository {
         return ormDepartments.listDepartments(scope);
     }
 
-    public Department create(String code, String name, Long parentId, Integer sortOrder) {
+    public Department create(String code, String name, String parentId, Integer sortOrder) {
         if (code == null || code.isBlank() || name == null || name.isBlank()) {
             throw new IllegalArgumentException("code and name are required");
         }
@@ -33,8 +33,8 @@ public class DepartmentRepository {
         }
     }
 
-    public Department update(long id, String name, Long parentId, Integer sortOrder, Boolean enabled) {
-        if (parentId != null && parentId == id) throw new IllegalArgumentException("department cannot be its own parent");
+    public Department update(String id, String name, String parentId, Integer sortOrder, Boolean enabled) {
+        if (parentId != null && parentId.equals(id)) throw new IllegalArgumentException("department cannot be its own parent");
         try {
             return ormDepartments.updateDepartment(id, name, parentId, sortOrder, enabled);
         } catch (java.util.NoSuchElementException | IllegalArgumentException e) {
@@ -45,7 +45,7 @@ public class DepartmentRepository {
         }
     }
 
-    public void delete(long id) {
+    public void delete(String id) {
         try {
             ormDepartments.deleteDepartment(id);
         } catch (java.util.NoSuchElementException | IllegalArgumentException e) {

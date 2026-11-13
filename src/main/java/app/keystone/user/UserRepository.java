@@ -25,7 +25,7 @@ public class UserRepository {
         }
     }
 
-    public Optional<AuthUser> findAuthUser(long id) {
+    public Optional<AuthUser> findAuthUser(String id) {
         try {
             return ormUsers.findAuthUser(id);
         } catch (RuntimeException e) {
@@ -41,7 +41,7 @@ public class UserRepository {
         }
     }
 
-    public User findPublic(long id, DataScopeService.Scope scope, long subjectId) {
+    public User findPublic(String id, DataScopeService.Scope scope, String subjectId) {
         try {
             return ormUsers.findUser(id, scope, subjectId);
         } catch (java.util.NoSuchElementException e) {
@@ -51,8 +51,8 @@ public class UserRepository {
         }
     }
 
-    public Page list(int page, int size, String username, String displayName, Long deptId, Boolean enabled,
-                     DataScopeService.Scope scope, long subjectId) {
+    public Page list(int page, int size, String username, String displayName, String deptId, Boolean enabled,
+                     DataScopeService.Scope scope, String subjectId) {
         try {
             return ormUsers.listUsers(page, size, username, displayName, deptId, enabled, scope, subjectId);
         } catch (RuntimeException e) {
@@ -60,11 +60,11 @@ public class UserRepository {
         }
     }
 
-    public User create(String username, String password, String displayName, Long deptId, List<String> roleCodes) {
+    public User create(String username, String password, String displayName, String deptId, List<String> roleCodes) {
         return create(username, password, displayName, deptId, null, null, null, null, null, null, roleCodes);
     }
 
-    public User create(String username, String password, String displayName, Long deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar, String remark, List<String> roleCodes) {
+    public User create(String username, String password, String displayName, String deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar, String remark, List<String> roleCodes) {
         if (username == null || username.isBlank() || password == null || password.isBlank() || displayName == null || displayName.isBlank()) throw new IllegalArgumentException("username, password and displayName are required");
         passwordPolicy.validate(username, password);
         try {
@@ -78,11 +78,11 @@ public class UserRepository {
         }
     }
 
-    public User update(long id, String password, String displayName, Long deptId, Boolean enabled, List<String> roleCodes) {
+    public User update(String id, String password, String displayName, String deptId, Boolean enabled, List<String> roleCodes) {
         return updateExtended(id, password, displayName, deptId != null, deptId, null, null, null, null, null, null, enabled, roleCodes);
     }
 
-    public User updateExtended(long id, String password, String displayName, boolean updateDept, Long deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
+    public User updateExtended(String id, String password, String displayName, boolean updateDept, String deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
         try {
             return ormUsers.updateUser(id, password, displayName, updateDept, deptId, postId,
                     email, phoneNumber, sex, avatar, remark, enabled, roleCodes, passwordPolicy);
@@ -93,7 +93,7 @@ public class UserRepository {
         }
     }
 
-    public void markLogin(long id, String ip) {
+    public void markLogin(String id, String ip) {
         try {
             ormUsers.markLogin(id, ip);
         } catch (RuntimeException e) {
@@ -101,7 +101,7 @@ public class UserRepository {
         }
     }
 
-    public void delete(long id, DataScopeService.Scope scope, long subjectId) {
+    public void delete(String id, DataScopeService.Scope scope, String subjectId) {
         try {
             ormUsers.deleteUser(id, scope, subjectId);
         } catch (java.util.NoSuchElementException e) {
@@ -111,7 +111,7 @@ public class UserRepository {
         }
     }
 
-    public int deleteAll(List<Long> ids, DataScopeService.Scope scope, long subjectId) {
+    public int deleteAll(List<String> ids, DataScopeService.Scope scope, String subjectId) {
         try {
             return ormUsers.deleteUsers(ids, scope, subjectId);
         } catch (RuntimeException e) {
@@ -139,7 +139,7 @@ public class UserRepository {
         }
     }
 
-    public List<String> permissions(long userId) {
+    public List<String> permissions(String userId) {
         try {
             return ormUsers.permissions(userId).stream().sorted().toList();
         } catch (RuntimeException e) {
@@ -147,7 +147,7 @@ public class UserRepository {
         }
     }
     /** 读取当前权限版本，访问令牌校验使用该值判断角色变化。 */
-    public long permissionVersion(long userId) {
+    public long permissionVersion(String userId) {
         try {
             return ormUsers.permissionVersion(userId);
         } catch (RuntimeException e) {
@@ -163,8 +163,8 @@ public class UserRepository {
         return false;
     }
 
-    public record AuthUser(long id, String username, String displayName, List<String> roles, boolean mustChangePassword,
-                           Long deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar,
+    public record AuthUser(String id, String username, String displayName, List<String> roles, boolean mustChangePassword,
+                           String deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar,
                            String loginIp, java.time.Instant loginAt, String remark) {}
     public record Page(List<User> items, int page, int size, long total) {}
 }

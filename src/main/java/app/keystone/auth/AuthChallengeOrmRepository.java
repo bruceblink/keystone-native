@@ -9,19 +9,19 @@ import java.time.Instant;
 /** 使用 Panache 读取和锁定 MFA 认证请求。 */
 @ApplicationScoped
 public class AuthChallengeOrmRepository implements PanacheRepositoryBase<AuthChallengeEntity, String> {
-    AuthChallengeEntity findActive(String id, long userId, String clientId, String purpose,
+    AuthChallengeEntity findActive(String id, String userId, String clientId, String purpose,
                                     String sessionId, Instant now, int maxAttempts) {
         return activeQuery(id, userId, clientId, purpose, sessionId, now, maxAttempts)
                 .firstResult();
     }
 
-    java.util.List<AuthChallengeEntity> listActive(long userId, String clientId, String purpose,
+    java.util.List<AuthChallengeEntity> listActive(String userId, String clientId, String purpose,
                                                    String sessionId, Instant now, int maxAttempts) {
         return activeQuery(null, userId, clientId, purpose, sessionId, now, maxAttempts).list();
     }
 
     /** 在用户行锁之后锁定认证请求，保持 MFA 事务的统一锁顺序。 */
-    AuthChallengeEntity findActiveForUpdate(String id, long userId, String clientId, String purpose,
+    AuthChallengeEntity findActiveForUpdate(String id, String userId, String clientId, String purpose,
                                             String sessionId, Instant now, int maxAttempts) {
         return activeQuery(id, userId, clientId, purpose, sessionId, now, maxAttempts)
                 .withLock(LockModeType.PESSIMISTIC_WRITE)
@@ -29,7 +29,7 @@ public class AuthChallengeOrmRepository implements PanacheRepositoryBase<AuthCha
     }
 
     private io.quarkus.hibernate.orm.panache.PanacheQuery<AuthChallengeEntity> activeQuery(
-            String id, long userId, String clientId, String purpose, String sessionId,
+            String id, String userId, String clientId, String purpose, String sessionId,
             Instant now, int maxAttempts) {
         var query = new StringBuilder("userId = ?1 and clientId = ?2 and purpose = ?3 "
                 + "and consumedAt is null and expiresAt > ?4 and attemptCount < ?5");

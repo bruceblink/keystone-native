@@ -6,6 +6,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Convert;
+import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
 
@@ -17,8 +19,9 @@ public class RefreshTokenEntity {
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(name = "user_id", nullable = false)
-    private long userId;
+    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
+    private String userId;
 
     @Column(name = "session_id", length = 36)
     private String sessionId;
@@ -56,7 +59,7 @@ public class RefreshTokenEntity {
     protected RefreshTokenEntity() {
     }
 
-    RefreshTokenEntity(long userId, String sessionId, String refreshFamilyId, String clientId,
+    RefreshTokenEntity(String userId, String sessionId, String refreshFamilyId, String clientId,
                        String tokenHash, Instant expiresAt, Instant idleExpiresAt,
                        Instant accessExpiresAt, String accessTokenId) {
         this.userId = userId;
@@ -71,7 +74,7 @@ public class RefreshTokenEntity {
     }
 
     Long id() { return id; }
-    long userId() { return userId; }
+    String userId() { return userId; }
     String sessionId() { return sessionId; }
     String refreshFamilyId() { return refreshFamilyId; }
     String clientId() { return clientId; }

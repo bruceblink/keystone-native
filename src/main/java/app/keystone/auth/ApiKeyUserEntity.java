@@ -8,22 +8,26 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
+import jakarta.persistence.Convert;
 
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
 import app.keystone.user.User;
 import app.keystone.user.UserRepository;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import app.keystone.identity.UuidBinaryConverter;
+import java.util.UUID;
 
 /** 映射 API Key 认证和签发所需的用户状态及权限关系。 */
 @Entity
 @Table(name = "sys_user")
 public class ApiKeyUserEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(nullable = false, length = 64)
     private String username;
@@ -59,7 +63,8 @@ public class ApiKeyUserEntity {
     private java.time.Instant mfaGraceUntil;
 
     @Column(name = "dept_id")
-    private Long deptId;
+    @Convert(converter = UuidBinaryConverter.class)
+    private String deptId;
 
     @Column(name = "post_id")
     private Long postId;
@@ -99,8 +104,9 @@ public class ApiKeyUserEntity {
     }
 
     /** 创建用户实体；调用方必须在同一事务内绑定已经校验过的启用角色。 */
-    ApiKeyUserEntity(String username, String passwordHash, String displayName, Long deptId, Long postId,
+    ApiKeyUserEntity(String username, String passwordHash, String displayName, String deptId, Long postId,
                      String email, String phoneNumber, Integer sex, String avatar, String remark) {
+        this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.username = username;
         this.passwordHash = passwordHash;
         this.displayName = displayName;
@@ -125,8 +131,8 @@ public class ApiKeyUserEntity {
         return enabled;
     }
 
-    long id() {
-        return id;
+    String id() {
+        return id == null ? null : id.toString();
     }
 
     String displayName() {
@@ -147,7 +153,7 @@ public class ApiKeyUserEntity {
         return permissionVersion;
     }
 
-    Long departmentId() {
+    String departmentId() {
         return deptId;
     }
 
@@ -228,7 +234,7 @@ public class ApiKeyUserEntity {
     }
 
     /** 更新用户资料字段；调用方必须在用户行写锁事务内调用。 */
-    void updateProfile(String newDisplayName, boolean updateDept, Long newDeptId, Long newPostId,
+    void updateProfile(String newDisplayName, boolean updateDept, String newDeptId, Long newPostId,
                        String newEmail, String newPhoneNumber, Integer newSex, String newAvatar,
                        String newRemark, Boolean newEnabled) {
         if (newDisplayName != null && !newDisplayName.isBlank()) displayName = newDisplayName.trim();
@@ -253,7 +259,7 @@ public class ApiKeyUserEntity {
 
     UserRepository.AuthUser toAuthUser() {
         var roleCodes = roles.stream().filter(ApiKeyRoleEntity::enabled).map(ApiKeyRoleEntity::code).sorted().toList();
-        return new UserRepository.AuthUser(id, username, displayName,
+        return new UserRepository.AuthUser(id(), username, displayName,
                 roleCodes,
                 mustChangePassword, deptId, postId, email, phoneNumber, sex, avatar, loginIp, loginAt, remark);
     }
@@ -261,7 +267,7 @@ public class ApiKeyUserEntity {
     /** 转换为用户管理接口返回的公开字段，不包含密码和凭据版本。 */
     User toUser() {
         var roleCodes = roles.stream().filter(ApiKeyRoleEntity::enabled).map(ApiKeyRoleEntity::code).sorted().toList();
-        return new User(id, username, displayName, deptId, postId, enabled,
+        return new User(id(), username, displayName, deptId, postId, enabled,
                 email, phoneNumber, sex, avatar, loginIp, loginAt, remark,
                 roleCodes);
     }

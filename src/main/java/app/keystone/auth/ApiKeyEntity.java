@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Convert;
+import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
 
@@ -16,13 +18,15 @@ public class ApiKeyEntity {
     private String id;
 
     @Column(name = "user_id", nullable = false)
-    private long userId;
+    @Convert(converter = UuidBinaryConverter.class)
+    private String userId;
 
     @Column(name = "subject_id", length = 36)
     private String subjectId;
 
     @Column(name = "created_by")
-    private Long createdBy;
+    @Convert(converter = UuidBinaryConverter.class)
+    private String createdBy;
 
     @Column(nullable = false, length = 128)
     private String name;
@@ -60,7 +64,7 @@ public class ApiKeyEntity {
     protected ApiKeyEntity() {
     }
 
-    ApiKeyEntity(String id, long userId, String subjectId, long createdBy, String name,
+    ApiKeyEntity(String id, String userId, String subjectId, String createdBy, String name,
                  String keyPrefix, String keyHash, String scopes, Instant expiresAt) {
         this.id = id;
         this.userId = userId;
@@ -77,7 +81,7 @@ public class ApiKeyEntity {
         return id;
     }
 
-    long userId() {
+    String userId() {
         return userId;
     }
 

@@ -183,8 +183,8 @@ public class AuthResource {
 
     /** 管理员只可为已经完成 enrollment 的用户启用或关闭强制 MFA。 */
     @PUT @Path("/mfa/policy/{userId}") @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
-    public Response setMfaPolicy(@PathParam("userId") long userId, MfaPolicyRequest request) {
-        if (request == null || request.required() == null || userId <= 0) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("userId and required are required")).build();
+    public Response setMfaPolicy(@PathParam("userId") String userId, MfaPolicyRequest request) {
+        if (request == null || request.required() == null || userId == null) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("userId and required are required")).build();
         try {
             if (!mfa.setRequired(userId, request.required())) return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("MFA enrollment is required before enabling policy")).build();
             sessions.revokeAll(userId);
@@ -228,17 +228,17 @@ public class AuthResource {
         if (identity == null || identity.isAnonymous() || !(identity.getPrincipal() instanceof JsonWebToken jwt)) throw new jakarta.ws.rs.NotAuthorizedException("authentication is required");
         String sessionId = claimText(jwt, "sid");
         String clientId = claimText(jwt, "client_id");
-        long userId = claimLong(jwt, "userId");
-        if (userId <= 0 || sessionId == null || clientId == null) throw new jakarta.ws.rs.NotAuthorizedException("authentication session is incomplete");
+        String userId = claimUuid(jwt, "userId");
+        if (userId == null || sessionId == null || clientId == null) throw new jakarta.ws.rs.NotAuthorizedException("authentication session is incomplete");
         return new CurrentHumanSession(userId, sessionId, clientId);
     }
 
     private static String claimText(JsonWebToken jwt, String name) { Object value = JwtClaims.get(jwt, name); return value == null ? null : value.toString(); }
-    private static long claimLong(JsonWebToken jwt, String name) { Object value = JwtClaims.get(jwt, name); if (value instanceof Number number) return number.longValue(); try { return Long.parseLong(String.valueOf(value)); } catch (Exception e) { return -1; } }
+    private static String claimUuid(JsonWebToken jwt, String name) { Object value = JwtClaims.get(jwt, name); if (!(value instanceof String text)) return null; try { return app.keystone.identity.UuidValues.requireCanonical(text); } catch (IllegalArgumentException e) { return null; } }
     /** 签发失败时撤销刚创建或刚轮换的会话，避免令牌不可用但刷新状态仍保持活动。 */
     private Response tokenUnavailable(String sessionId) {
         try { sessions.revokeSession(sessionId); } catch (IllegalStateException ignored) { }
         return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("token service is unavailable")).build();
     }
-    private record CurrentHumanSession(long userId, String sessionId, String clientId) {}
+    private record CurrentHumanSession(String userId, String sessionId, String clientId) {}
 }

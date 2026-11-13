@@ -33,7 +33,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
     long lastUsedUpdateIntervalSeconds;
 
     @Transactional
-    public IssuedApiKey issue(long userId, String name, List<String> scopes, Instant expiresAt) {
+    public IssuedApiKey issue(String userId, String name, List<String> scopes, Instant expiresAt) {
         validateIssue(name, expiresAt);
         List<String> normalizedScopes = normalizeScopes(scopes);
         if (normalizedScopes.isEmpty()) throw new IllegalArgumentException("at least one scope is required");
@@ -83,7 +83,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
     }
 
     @Transactional
-    public void revoke(long userId, String id) {
+    public void revoke(String userId, String id) {
         Instant now = Instant.now();
         long updated = update("revokedAt = coalesce(revokedAt, ?1), revokedReason = coalesce(revokedReason, ?2) "
                         + "where id = ?3 and userId = ?4",
@@ -91,7 +91,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         if (updated == 0) throw new NoSuchElementException("API key not found");
     }
 
-    public List<ApiKeyMetadata> list(long userId) {
+    public List<ApiKeyMetadata> list(String userId) {
         return find("userId", Sort.by("createdAt", Sort.Direction.Descending), userId)
                 .list().stream()
                 .map(this::metadata)
@@ -100,7 +100,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
 
     /** 锁定旧记录后写入新密钥并撤销旧密钥，整个轮换过程由一个事务完成。 */
     @Transactional
-    public IssuedApiKey rotate(long userId, String id) {
+    public IssuedApiKey rotate(String userId, String id) {
         ApiKeyEntity current = find("id = ?1 and userId = ?2", id, userId)
                 .withLock(LockModeType.PESSIMISTIC_WRITE)
                 .firstResult();
@@ -119,7 +119,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         return new IssuedApiKey(replacementId, current.name(), prefix, value, scopes, current.expiresAt());
     }
 
-    private String ensureSubject(long userId) {
+    private String ensureSubject(String userId) {
         String code = "user:" + userId;
         ServiceSubjectEntity existing = subjects.findByCode(code);
         if (existing != null) return existing.id();
@@ -181,7 +181,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
                                Instant expiresAt) {
     }
 
-    public record Principal(String keyId, String subjectId, long userId, String username, List<String> scopes) {
+    public record Principal(String keyId, String subjectId, String userId, String username, List<String> scopes) {
     }
 
     public record ApiKeyMetadata(String id, String name, String prefix, List<String> scopes, Instant expiresAt,

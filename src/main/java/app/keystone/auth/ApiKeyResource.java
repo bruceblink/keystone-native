@@ -24,7 +24,7 @@ public class ApiKeyResource {
         if (request == null || request.name() == null || request.name().isBlank()) return Response.status(400).entity(ApiResponse.error("name is required")).build();
         var user = users.findAuthUserByUsername(identity.getPrincipal().getName());
         if (user.isEmpty()) return Response.status(403).entity(ApiResponse.error("API key identity cannot issue API keys")).build();
-        long userId = user.get().id();
+        String userId = user.get().id();
         var value = keys.issue(userId, request.name(), request.scopes(), request.expiresAt());
         logs.record(identity.getPrincipal().getName(), "CREATE", "api-key", value.id(), value.prefix());
         return Response.status(201).entity(ApiResponse.ok(value)).build();

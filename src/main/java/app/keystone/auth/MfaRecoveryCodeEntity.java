@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Convert;
+import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
 
@@ -15,8 +17,9 @@ public class MfaRecoveryCodeEntity {
     @Column(nullable = false, length = 36)
     private String id;
 
-    @Column(name = "user_id", nullable = false)
-    private long userId;
+    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
+    private String userId;
 
     @Column(name = "batch_id", nullable = false, length = 36)
     private String batchId;
@@ -33,7 +36,7 @@ public class MfaRecoveryCodeEntity {
     protected MfaRecoveryCodeEntity() {
     }
 
-    MfaRecoveryCodeEntity(String id, long userId, String batchId, String codeHash) {
+    MfaRecoveryCodeEntity(String id, String userId, String batchId, String codeHash) {
         this.id = id;
         this.userId = userId;
         this.batchId = batchId;
@@ -44,7 +47,7 @@ public class MfaRecoveryCodeEntity {
         return id;
     }
 
-    long userId() {
+    String userId() {
         return userId;
     }
 

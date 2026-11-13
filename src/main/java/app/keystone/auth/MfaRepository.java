@@ -22,9 +22,9 @@ public class MfaRepository {
 
     /** 读取用户 MFA 策略和当前已保存的 TOTP 状态。 */
     @Transactional
-    public Optional<MfaStatus> findStatus(long userId) {
+    public Optional<MfaStatus> findStatus(String userId) {
         requireUser(userId);
-        ApiKeyUserEntity user = users.findById(userId);
+        ApiKeyUserEntity user = users.findById(app.keystone.identity.UuidValues.parse(userId));
         if (user == null) return Optional.empty();
         UserMfaEntity mfa = mfaRecords.findByUser(userId);
         return Optional.of(new MfaStatus(userId, user.mfaRequired(), mfa == null ? null : mfa.id(),
@@ -33,7 +33,7 @@ public class MfaRepository {
 
     /** 创建或替换尚未启用的 enrollment，先锁定用户行。 */
     @Transactional
-    public boolean replacePendingEnrollment(long userId, String mfaId, MfaSecretCipher.EncryptedSecret encrypted) {
+    public boolean replacePendingEnrollment(String userId, String mfaId, MfaSecretCipher.EncryptedSecret encrypted) {
         requireUser(userId);
         String boundMfaId = normalizeMfaId(mfaId);
         requireEncrypted(encrypted);
@@ -61,7 +61,7 @@ public class MfaRepository {
 
     /** 读取指定用户的 TOTP 密文和验证状态；不返回明文密钥。 */
     @Transactional
-    public Optional<StoredMfa> find(long userId, String mfaId) {
+    public Optional<StoredMfa> find(String userId, String mfaId) {
         requireUser(userId);
         String boundMfaId = normalizeMfaId(mfaId);
         UserMfaEntity stored = mfaRecords.findByUserAndId(userId, boundMfaId);
@@ -70,7 +70,7 @@ public class MfaRepository {
 
     /** 原子接受一个 TOTP 时间步；行锁保护时间步和失败状态。 */
     @Transactional
-    public boolean acceptTotp(long userId, String mfaId, long candidateStep, boolean enrollmentVerification) {
+    public boolean acceptTotp(String userId, String mfaId, long candidateStep, boolean enrollmentVerification) {
         requireUser(userId);
         String boundMfaId = normalizeMfaId(mfaId);
         if (candidateStep < 0) throw new IllegalArgumentException("candidateStep must be non-negative");
@@ -80,7 +80,7 @@ public class MfaRepository {
 
     /** 在一个事务内完成 enrollment，锁顺序为用户、认证请求、MFA 状态和恢复码。 */
     @Transactional
-    public boolean completeEnrollment(long userId, String challengeId, String clientId, String sessionId,
+    public boolean completeEnrollment(String userId, String challengeId, String clientId, String sessionId,
                                       String mfaId, long candidateStep, String batchId, List<String> hashes) {
         requireUser(userId);
         String boundMfaId = normalizeMfaId(mfaId);
@@ -107,7 +107,7 @@ public class MfaRepository {
 
     /** 在一个事务内接受登录 TOTP 并消费对应认证请求。 */
     @Transactional
-    public boolean consumeLoginTotp(long userId, String challengeId, String clientId, String codeSessionId,
+    public boolean consumeLoginTotp(String userId, String challengeId, String clientId, String codeSessionId,
                                     String mfaId, long candidateStep) {
         requireUser(userId);
         String boundMfaId = normalizeMfaId(mfaId);
@@ -117,7 +117,7 @@ public class MfaRepository {
 
     /** 在一个事务内消费登录恢复码并消费对应认证请求。 */
     @Transactional
-    public boolean consumeLoginRecovery(long userId, String challengeId, String clientId, String codeSessionId,
+    public boolean consumeLoginRecovery(String userId, String challengeId, String clientId, String codeSessionId,
                                         String mfaId, String hash) {
         requireUser(userId);
         String boundMfaId = normalizeMfaId(mfaId);
@@ -127,7 +127,7 @@ public class MfaRepository {
 
     /** 统一执行登录因子事务，锁顺序为用户、认证请求、MFA 状态和恢复码。 */
     @Transactional
-    boolean consumeLoginFactor(long userId, String challengeId, String clientId, String sessionId,
+    boolean consumeLoginFactor(String userId, String challengeId, String clientId, String sessionId,
                                String mfaId, Long candidateStep, String recoveryHash) {
         try {
             if (users.findAnyForUpdate(userId) == null) return false;
@@ -154,7 +154,7 @@ public class MfaRepository {
 
     /** 记录一次失败验证；达到阈值时设置短时锁定。 */
     @Transactional
-    public boolean recordFailure(long userId, String mfaId) {
+    public boolean recordFailure(String userId, String mfaId) {
         requireUser(userId);
         String boundMfaId = normalizeMfaId(mfaId);
         UserMfaEntity stored = mfaRecords.findForUpdate(userId, boundMfaId);
@@ -163,7 +163,7 @@ public class MfaRepository {
 
     /** 只有已成功接受 enrollment 时间步的待启用记录才能启用。 */
     @Transactional
-    public boolean enableEnrollment(long userId, String mfaId) {
+    public boolean enableEnrollment(String userId, String mfaId) {
         requireUser(userId);
         String boundMfaId = normalizeMfaId(mfaId);
         UserMfaEntity stored = mfaRecords.findForUpdate(userId, boundMfaId);
@@ -174,7 +174,7 @@ public class MfaRepository {
 
     /** 只有已经完成 enrollment 的用户才能进入强制 MFA 策略。 */
     @Transactional
-    public boolean setRequired(long userId, boolean required) {
+    public boolean setRequired(String userId, boolean required) {
         requireUser(userId);
         ApiKeyUserEntity user = users.findAnyForUpdate(userId);
         if (user == null) return false;
@@ -188,7 +188,7 @@ public class MfaRepository {
 
     /** 在一个事务内替换旧恢复码批次；数据库只保存哈希。 */
     @Transactional
-    public void replaceRecoveryCodes(long userId, String batchId, List<String> hashes) {
+    public void replaceRecoveryCodes(String userId, String batchId, List<String> hashes) {
         requireUser(userId);
         String boundBatchId = normalizeMfaId(batchId);
         validateRecoveryHashes(hashes);
@@ -202,14 +202,14 @@ public class MfaRepository {
 
     /** 使用行锁消费恢复码，同一恢复码只能成功一次。 */
     @Transactional
-    public boolean consumeRecoveryCode(long userId, String hash) {
+    public boolean consumeRecoveryCode(String userId, String hash) {
         requireUser(userId);
         if (hash == null || !hash.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("invalid recovery code hash");
         MfaRecoveryCodeEntity code = recoveryCodes.findForUpdate(userId, hash);
         return code != null && code.consume(Instant.now());
     }
 
-    private void replaceRecoveryCodesLocked(long userId, String batchId, List<String> hashes) {
+    private void replaceRecoveryCodesLocked(String userId, String batchId, List<String> hashes) {
         recoveryCodes.deleteByUser(userId);
         for (String hash : hashes) {
             recoveryCodes.persist(new MfaRecoveryCodeEntity(UUID.randomUUID().toString(), userId, batchId, hash));
@@ -222,8 +222,9 @@ public class MfaRepository {
                 stored.lastAcceptedStep(), stored.lockedUntil());
     }
 
-    private static void requireUser(long userId) {
-        if (userId <= 0) throw new IllegalArgumentException("userId must be positive");
+    private static void requireUser(String userId) {
+        try { app.keystone.identity.UuidValues.requireCanonical(userId); }
+        catch (IllegalArgumentException e) { throw new IllegalArgumentException("userId must be a UUID", e); }
     }
 
     private static String normalizeMfaId(String value) {
@@ -245,11 +246,11 @@ public class MfaRepository {
         }
     }
 
-    public record MfaStatus(long userId, boolean required, String mfaId, boolean enabled) {
+    public record MfaStatus(String userId, boolean required, String mfaId, boolean enabled) {
     }
 
     /** 数据库中的 MFA 记录只携带密文和状态字段。 */
-    public record StoredMfa(String id, long userId, MfaSecretCipher.EncryptedSecret encrypted,
+    public record StoredMfa(String id, String userId, MfaSecretCipher.EncryptedSecret encrypted,
                             boolean enabled, Long lastAcceptedStep, Instant lockedUntil) {
     }
 }

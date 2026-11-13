@@ -50,8 +50,8 @@ public class RoleRepository {
         }
     }
 
-    public Role findById(long id) {
-        return ormRoles.findById(id);
+    public Role findById(String id) {
+        return ormRoles.findRoleById(id);
     }
 
     public Role findByCode(String code) {
@@ -68,7 +68,7 @@ public class RoleRepository {
         }
     }
 
-    public void assignUsers(String code, List<Long> userIds) {
+    public void assignUsers(String code, List<String> userIds) {
         try {
             ormRoles.assignUsers(code, userIds);
         } catch (java.util.NoSuchElementException | IllegalArgumentException e) {
@@ -78,7 +78,7 @@ public class RoleRepository {
         }
     }
 
-    public void revokeUsers(String code, List<Long> userIds) {
+    public void revokeUsers(String code, List<String> userIds) {
         try {
             ormRoles.revokeUsers(code, userIds);
         } catch (java.util.NoSuchElementException | IllegalArgumentException e) {
@@ -88,7 +88,7 @@ public class RoleRepository {
         }
     }
 
-    public List<Long> userIds(String code, boolean allocated) {
+    public List<String> userIds(String code, boolean allocated) {
         return ormRoles.userIds(code, allocated);
     }
 

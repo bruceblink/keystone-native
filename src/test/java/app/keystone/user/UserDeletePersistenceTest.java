@@ -13,8 +13,8 @@ class UserDeletePersistenceTest {
     @Test
     void deletePathsDelegateToOrmRepository() throws Exception {
         String source = Files.readString(Path.of("src/main/java/app/keystone/user/UserRepository.java"));
-        int start = source.indexOf("public void delete(long id");
-        int end = source.indexOf("\n    private static boolean isUniqueConstraint", start);
+        int start = source.indexOf("public void delete(String id");
+        int end = source.indexOf("\n    public List<String> permissions", start);
         String methods = source.substring(start, end);
         assertTrue(methods.contains("ormUsers.deleteUser"));
         assertTrue(methods.contains("ormUsers.deleteUsers"));

@@ -14,12 +14,12 @@ public class AuthSessionRepository implements PanacheRepositoryBase<AuthSessionE
         return find("id", id).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
     }
 
-    List<AuthSessionEntity> findActiveForUser(long userId, Instant now) {
+    List<AuthSessionEntity> findActiveForUser(String userId, Instant now) {
         return find("userId = ?1 and revokedAt is null and refreshExpiresAt > ?2 and idleExpiresAt > ?2",
                 userId, now).withLock(LockModeType.PESSIMISTIC_WRITE).list();
     }
 
-    List<AuthSessionEntity> findByUser(long userId) {
+    List<AuthSessionEntity> findByUser(String userId) {
         return find("userId", userId).list();
     }
 }

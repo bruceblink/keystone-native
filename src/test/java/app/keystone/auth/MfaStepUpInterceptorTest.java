@@ -15,6 +15,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MfaStepUpInterceptorTest {
+    private static final String USER_ID = "00000000-0000-7000-8000-000000000007";
     @Test
     void bindingAndInterceptorAreRegistered() {
         assertTrue(RequiresMfaStepUp.class.isAnnotationPresent(InterceptorBinding.class));
@@ -33,14 +34,14 @@ class MfaStepUpInterceptorTest {
     void mfaManagementRoutesRequireStepUpBoundary() throws Exception {
         assertStepUp(AuthResource.class, "beginMfaEnrollment");
         assertStepUp(AuthResource.class, "verifyMfaEnrollment", AuthResource.MfaCodeRequest.class);
-        assertStepUp(AuthResource.class, "setMfaPolicy", long.class, AuthResource.MfaPolicyRequest.class);
+        assertStepUp(AuthResource.class, "setMfaPolicy", String.class, AuthResource.MfaPolicyRequest.class);
         assertStepUp(AuthResource.class, "rotateRecoveryCodes", AuthResource.CurrentPasswordRequest.class);
     }
 
     @Test
     void claimsRecordKeepsRequiredSessionFields() {
-        var claims = new MfaStepUpInterceptor.Claims(7L, "session-1", "web");
-        assertEquals(7L, claims.userId());
+        var claims = new MfaStepUpInterceptor.Claims(USER_ID, "session-1", "web");
+        assertEquals(USER_ID, claims.userId());
         assertEquals("session-1", claims.sessionId());
         assertEquals("web", claims.clientId());
     }
@@ -48,13 +49,13 @@ class MfaStepUpInterceptorTest {
     @Test
     void rejectsIncompleteOrInvalidJwtSessionClaims() {
         assertThrows(jakarta.ws.rs.NotAuthorizedException.class,
-                () -> MfaStepUpInterceptor.claims(jwt(Map.of("userId", 7L, "client_id", "web"))));
+                () -> MfaStepUpInterceptor.claims(jwt(Map.of("userId", USER_ID, "client_id", "web"))));
         assertThrows(jakarta.ws.rs.NotAuthorizedException.class,
-                () -> MfaStepUpInterceptor.claims(jwt(Map.of("userId", 0L, "sid", "session-1", "client_id", "web"))));
+                () -> MfaStepUpInterceptor.claims(jwt(Map.of("userId", "not-a-uuid", "sid", "session-1", "client_id", "web"))));
         assertThrows(jakarta.ws.rs.NotAuthorizedException.class,
-                () -> MfaStepUpInterceptor.claims(jwt(Map.of("userId", 7L, "sid", "session-1", "client_id", "web;drop"))));
-        var claims = MfaStepUpInterceptor.claims(jwt(Map.of("userId", "7", "sid", "session-1", "client_id", "web")));
-        assertEquals(7L, claims.userId());
+                () -> MfaStepUpInterceptor.claims(jwt(Map.of("userId", USER_ID, "sid", "session-1", "client_id", "web;drop"))));
+        var claims = MfaStepUpInterceptor.claims(jwt(Map.of("userId", USER_ID, "sid", "session-1", "client_id", "web")));
+        assertEquals(USER_ID, claims.userId());
     }
 
     private static void assertStepUp(String name, Class<?> parameter) throws Exception {

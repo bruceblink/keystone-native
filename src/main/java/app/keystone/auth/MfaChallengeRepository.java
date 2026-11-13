@@ -20,7 +20,7 @@ public class MfaChallengeRepository {
 
     /** 创建短期认证请求；上下文摘要只保存在数据库内部。 */
     @Transactional
-    public Challenge create(long userId, Purpose purpose, String clientId, String sessionId,
+    public Challenge create(String userId, Purpose purpose, String clientId, String sessionId,
                             String contextHash, Instant expiresAt) {
         requireUser(userId);
         Purpose checkedPurpose = requirePurpose(purpose);
@@ -36,7 +36,7 @@ public class MfaChallengeRepository {
 
     /** 按主体、客户端、用途和会话读取仍可用的认证请求。 */
     @Transactional
-    public List<Challenge> findActive(long userId, String clientId, Purpose purpose, String sessionId) {
+    public List<Challenge> findActive(String userId, String clientId, Purpose purpose, String sessionId) {
         requireUser(userId);
         String checkedClientId = normalizeClientId(clientId);
         Purpose checkedPurpose = requirePurpose(purpose);
@@ -48,7 +48,7 @@ public class MfaChallengeRepository {
 
     /** 按不透明 ID 和绑定条件读取单个仍可用的认证请求。 */
     @Transactional
-    public Optional<Challenge> findActive(String challengeId, long userId, String clientId,
+    public Optional<Challenge> findActive(String challengeId, String userId, String clientId,
                                           Purpose purpose, String sessionId) {
         requireUser(userId);
         String checkedId = normalizeChallengeId(challengeId);
@@ -61,7 +61,7 @@ public class MfaChallengeRepository {
     }
 
     /** 在调用方事务内锁定仍可消费的认证请求。 */
-    Optional<Challenge> lockActiveForUpdate(String challengeId, long userId, String clientId,
+    Optional<Challenge> lockActiveForUpdate(String challengeId, String userId, String clientId,
                                              Purpose purpose, String sessionId) {
         requireUser(userId);
         String checkedId = normalizeChallengeId(challengeId);
@@ -83,14 +83,14 @@ public class MfaChallengeRepository {
 
     /** 原子消费认证请求；过期、重复消费和失败次数超限都会失败。 */
     @Transactional
-    public boolean consume(String challengeId, long userId, String clientId, Purpose purpose, String sessionId) {
+    public boolean consume(String challengeId, String userId, String clientId, Purpose purpose, String sessionId) {
         var challenge = lockActiveForUpdate(challengeId, userId, clientId, purpose, sessionId);
         return challenge.isPresent() && consumeLocked(challenge.get());
     }
 
     /** 原子增加失败次数；达到上限后不再修改状态。 */
     @Transactional
-    public boolean recordFailure(String challengeId, long userId, String clientId, Purpose purpose, String sessionId) {
+    public boolean recordFailure(String challengeId, String userId, String clientId, Purpose purpose, String sessionId) {
         var challenge = lockActiveForUpdate(challengeId, userId, clientId, purpose, sessionId);
         if (challenge.isEmpty()) return false;
         AuthChallengeEntity entity = repository.findById(challenge.get().id());
@@ -116,8 +116,9 @@ public class MfaChallengeRepository {
         return value;
     }
 
-    private static void requireUser(long value) {
-        if (value <= 0) throw new IllegalArgumentException("userId must be positive");
+    private static void requireUser(String value) {
+        try { app.keystone.identity.UuidValues.requireCanonical(value); }
+        catch (IllegalArgumentException e) { throw new IllegalArgumentException("userId must be a UUID", e); }
     }
 
     private static String normalizeChallengeId(String value) {
@@ -169,7 +170,7 @@ public class MfaChallengeRepository {
         }
     }
 
-    public record Challenge(String id, long userId, Purpose purpose, String clientId, String sessionId,
+    public record Challenge(String id, String userId, Purpose purpose, String clientId, String sessionId,
                             Instant expiresAt, int attemptCount, Instant consumedAt) {
     }
 }

@@ -31,7 +31,7 @@ public class MfaRateLimiter {
 
     /** 在 MFA 验证前检查主体和地址是否处于阻断期。 */
     @Transactional
-    public boolean isBlocked(long userId, String ipAddress) {
+    public boolean isBlocked(String userId, String ipAddress) {
         validateConfig(userId);
         try {
             Instant now = Instant.now();
@@ -47,7 +47,7 @@ public class MfaRateLimiter {
 
     /** 在一个事务中原子增加主体和地址两个维度的失败次数。 */
     @Transactional
-    public void recordFailure(long userId, String ipAddress) {
+    public void recordFailure(String userId, String ipAddress) {
         validateConfig(userId);
         try {
             Instant now = Instant.now();
@@ -60,7 +60,7 @@ public class MfaRateLimiter {
 
     /** MFA 验证成功后只清除主体维度；地址维度保留到窗口结束。 */
     @Transactional
-    public void clear(long userId, String ipAddress) {
+    public void clear(String userId, String ipAddress) {
         validateConfig(userId);
         try {
             repository.deleteByScopeKey(keys(userId, ipAddress).get(0));
@@ -85,15 +85,15 @@ public class MfaRateLimiter {
     }
 
     /** 测试和启动检查使用的配置边界；用户 ID 也必须绑定到已解析的主体。 */
-    private void validateConfig(long userId) {
-        if (userId <= 0) throw new IllegalArgumentException("userId must be positive");
+    private void validateConfig(String userId) {
+        app.keystone.identity.UuidValues.requireCanonical(userId);
         if (maxFailures <= 0 || windowSeconds <= 0 || blockSeconds <= 0) {
             throw new IllegalStateException("MFA rate limit configuration must be positive");
         }
     }
 
     /** 维度键始终经过哈希，调用方不会把主体或来源地址写入数据库。 */
-    static List<String> keys(long userId, String ipAddress) {
+    static List<String> keys(String userId, String ipAddress) {
         return List.of(hash("mfa:user:" + userId), hash("mfa:ip:" + normalizeIp(ipAddress)));
     }
 

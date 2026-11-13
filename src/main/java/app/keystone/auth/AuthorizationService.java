@@ -15,9 +15,9 @@ public class AuthorizationService {
         if ("API_KEY".equals(credentialType)) {
             Object scopes = identity.getAttribute("scopes");
             Object userId = identity.getAttribute("userId");
-            if (!(userId instanceof Number number) || !(scopes instanceof List<?> values) || values.stream().noneMatch(permission::equals)) return false;
+            if (!(userId instanceof String id) || !(scopes instanceof List<?> values) || values.stream().noneMatch(permission::equals)) return false;
             // API Key 权限必须同时满足签发范围和主体当前权限，角色变更会立即收紧结果。
-            return users.hasPermission(number.longValue(), permission);
+            return users.hasPermission(id, permission);
         }
         return users.hasPermissionByUsername(identity.getPrincipal().getName(), permission);
     }

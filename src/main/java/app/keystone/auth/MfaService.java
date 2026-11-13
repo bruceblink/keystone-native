@@ -37,7 +37,7 @@ public class MfaService {
     String issuer;
 
     /** 根据用户策略决定密码成功后是否需要第二因素。 */
-    public LoginPreparation prepareLogin(long userId, String clientId) {
+    public LoginPreparation prepareLogin(String userId, String clientId) {
         String boundClientId = normalizeClientId(clientId);
         var status = status(userId);
         if (!status.required()) return new LoginPreparation(false, null);
@@ -48,7 +48,7 @@ public class MfaService {
     }
 
     /** 为当前人类会话创建待验证 enrollment，并只返回一次 TOTP 配置材料。 */
-    public Enrollment beginEnrollment(long userId, String username, String clientId, String sessionId) {
+    public Enrollment beginEnrollment(String userId, String username, String clientId, String sessionId) {
         String boundClientId = normalizeClientId(clientId);
         String boundSessionId = requiredSessionId(sessionId);
         var status = status(userId);
@@ -65,13 +65,13 @@ public class MfaService {
     }
 
     /** 校验 enrollment TOTP，启用 MFA，并返回只展示一次的恢复码。 */
-    public Optional<EnrollmentResult> verifyEnrollment(long userId, String challengeId, String clientId,
+    public Optional<EnrollmentResult> verifyEnrollment(String userId, String challengeId, String clientId,
                                                         String sessionId, String code) {
         return verifyEnrollment(userId, challengeId, clientId, sessionId, code, null);
     }
 
     /** 带来源地址的 enrollment 校验；主体和地址失败次数同时受限。 */
-    public Optional<EnrollmentResult> verifyEnrollment(long userId, String challengeId, String clientId,
+    public Optional<EnrollmentResult> verifyEnrollment(String userId, String challengeId, String clientId,
                                                         String sessionId, String code, String ipAddress) {
         String boundClientId = normalizeClientId(clientId);
         String boundSessionId = requiredSessionId(sessionId);
@@ -99,12 +99,12 @@ public class MfaService {
     }
 
     /** 校验登录验证请求；成功后调用方才可以创建刷新会话和访问令牌。 */
-    public Optional<LoginVerification> verifyLogin(long userId, String challengeId, String clientId, String code) {
+    public Optional<LoginVerification> verifyLogin(String userId, String challengeId, String clientId, String code) {
         return verifyLogin(userId, challengeId, clientId, code, null);
     }
 
     /** 带来源地址的登录验证请求校验；主体和地址失败次数同时受限。 */
-    public Optional<LoginVerification> verifyLogin(long userId, String challengeId, String clientId, String code, String ipAddress) {
+    public Optional<LoginVerification> verifyLogin(String userId, String challengeId, String clientId, String code, String ipAddress) {
         String boundClientId = normalizeClientId(clientId);
         if (rateLimiter.isBlocked(userId, ipAddress)) return Optional.empty();
         var challenge = challenges.findActive(challengeId, userId, boundClientId,
@@ -141,12 +141,12 @@ public class MfaService {
     }
 
     /** 只有已完成 enrollment 的用户才能进入强制 MFA 策略。 */
-    public boolean setRequired(long userId, boolean required) {
+    public boolean setRequired(String userId, boolean required) {
         return mfa.setRequired(userId, required);
     }
 
     /** 生成新恢复码批次并原子替换旧批次；调用方只应返回本次明文结果。 */
-    public java.util.List<String> rotateRecoveryCodes(long userId) {
+    public java.util.List<String> rotateRecoveryCodes(String userId) {
         var status = status(userId);
         if (!status.enabled()) throw new IllegalStateException("MFA is not enabled");
         var batch = recoveryCodes.generateBatch();
@@ -154,11 +154,11 @@ public class MfaService {
         return batch.codes();
     }
 
-    private MfaRepository.MfaStatus status(long userId) {
+    private MfaRepository.MfaStatus status(String userId) {
         return mfa.findStatus(userId).orElseThrow(() -> new IllegalArgumentException("user not found"));
     }
 
-    private void recordFailure(String challengeId, long userId, String clientId, MfaChallengeRepository.Purpose purpose,
+    private void recordFailure(String challengeId, String userId, String clientId, MfaChallengeRepository.Purpose purpose,
                                String sessionId, String mfaId, String ipAddress) {
         mfa.recordFailure(userId, mfaId);
         challenges.recordFailure(challengeId, userId, clientId, purpose, sessionId);
@@ -166,9 +166,9 @@ public class MfaService {
     }
 
     /** 因子消费已经成功后，限流清理失败只记录主体和结果，不把成功响应改成失败。 */
-    private void clearRateLimitAfterSuccess(long userId, String ipAddress) {
+    private void clearRateLimitAfterSuccess(String userId, String ipAddress) {
         try { rateLimiter.clear(userId, ipAddress); }
-        catch (IllegalStateException e) { LOG.warnf(e, "MFA rate-limit cleanup failed after successful factor userId=%d", userId); }
+        catch (IllegalStateException e) { LOG.warnf(e, "MFA rate-limit cleanup failed after successful factor userId=%s", userId); }
     }
 
     private java.util.OptionalLong matchingStep(String secret, String code) {

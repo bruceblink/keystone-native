@@ -28,9 +28,9 @@ public class AccessSessionFilter implements ContainerRequestFilter {
             context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access token session identifier is required").build());
             return;
         }
-        long userId = claimLong(claim(jwt, "userId"));
+        String userId = claimUuid(claim(jwt, "userId"));
         long permissionVersion = claimLong(claim(jwt, "permission_version"));
-        if (userId <= 0 || permissionVersion < 0) {
+        if (userId == null || permissionVersion < 0) {
             context.abortWith(Response.status(Response.Status.UNAUTHORIZED).entity("access token permission version is required").build());
             return;
         }
@@ -42,6 +42,11 @@ public class AccessSessionFilter implements ContainerRequestFilter {
     }
 
     /** JWT 库可能把整数声明还原为不同 Number 类型，统一转换后再查询数据库。 */
+    private static String claimUuid(Object value) {
+        if (!(value instanceof String text)) return null;
+        try { return app.keystone.identity.UuidValues.requireCanonical(text); }
+        catch (IllegalArgumentException e) { return null; }
+    }
     private static long claimLong(Object value) { return value instanceof Number number ? number.longValue() : value instanceof String text ? parse(text) : -1; }
     private static long parse(String value) { try { return Long.parseLong(value); } catch (NumberFormatException e) { return -1; } }
 

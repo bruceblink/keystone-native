@@ -9,8 +9,8 @@ import static org.hamcrest.Matchers.is;
 @QuarkusTest
 class AuthorizationTest {
     @Test
-    void legacyHealthEndpointRemainsPublic() {
-        given().when().get("/health").then().statusCode(200).body("data.status", is("UP"));
+    void healthEndpointRemainsPublic() {
+        given().when().get("/v1/health").then().statusCode(200).body("data.status", is("UP"));
     }
 
     @Test

@@ -20,8 +20,9 @@ public class RefreshTokenEventEntity {
     @Column(name = "token_id")
     private Long tokenId;
 
-    @Column(name = "user_id")
-    private Long userId;
+    @Column(name = "user_id", columnDefinition = "BINARY(16)", length = 16)
+    @jakarta.persistence.Convert(converter = app.keystone.identity.UuidBinaryConverter.class)
+    private String userId;
 
     @Column(name = "refresh_family_id", length = 36)
     private String refreshFamilyId;
@@ -41,7 +42,7 @@ public class RefreshTokenEventEntity {
     protected RefreshTokenEventEntity() {
     }
 
-    RefreshTokenEventEntity(Long tokenId, long userId, String refreshFamilyId, String eventType,
+    RefreshTokenEventEntity(Long tokenId, String userId, String refreshFamilyId, String eventType,
                             String clientId, String detail) {
         this.tokenId = tokenId;
         this.userId = userId;

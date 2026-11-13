@@ -31,24 +31,24 @@ public class SessionRepository {
     @Inject ApiKeyUserRepository users;
 
     @Transactional
-    public String create(long userId) {
+    public String create(String userId) {
         return createSession(userId, true, DEFAULT_CLIENT_ID)
                 .orElseThrow(() -> new IllegalStateException("account already has an active session"))
                 .refreshToken();
     }
 
     @Transactional
-    public Optional<CreatedSession> create(long userId, boolean forceLogin) {
+    public Optional<CreatedSession> create(String userId, boolean forceLogin) {
         return createSession(userId, forceLogin, DEFAULT_CLIENT_ID);
     }
 
     /** 创建绑定客户端的刷新会话；锁定用户行以串行化同一账户的并发登录。 */
     @Transactional
-    public Optional<CreatedSession> create(long userId, boolean forceLogin, String clientId) {
+    public Optional<CreatedSession> create(String userId, boolean forceLogin, String clientId) {
         return createSession(userId, forceLogin, clientId);
     }
 
-    private Optional<CreatedSession> createSession(long userId, boolean forceLogin, String clientId) {
+    private Optional<CreatedSession> createSession(String userId, boolean forceLogin, String clientId) {
         String boundClientId = normalizeClientId(clientId);
         ApiKeyUserEntity user = users.findForUpdate(userId);
         if (user == null) throw new IllegalStateException("user is unavailable");
@@ -141,7 +141,7 @@ public class SessionRepository {
     }
 
     @Transactional
-    public void revokeAll(long userId) {
+    public void revokeAll(String userId) {
         Instant now = Instant.now();
         ApiKeyUserEntity user = users.findForUpdate(userId);
         if (user == null) return;
@@ -169,8 +169,8 @@ public class SessionRepository {
     }
 
     /** 同时核验主体权限版本，角色变更后立即撤销旧访问令牌。 */
-    public boolean isAccessTokenActive(String accessTokenId, long userId, long permissionVersion) {
-        if (accessTokenId == null || accessTokenId.isBlank() || userId <= 0 || permissionVersion < 0) return false;
+    public boolean isAccessTokenActive(String accessTokenId, String userId, long permissionVersion) {
+        if (accessTokenId == null || accessTokenId.isBlank() || userId == null || permissionVersion < 0) return false;
         Instant now = Instant.now();
         RefreshTokenEntity token = tokens.findByAccessTokenAndVersion(accessTokenId, userId, now);
         if (token == null || token.sessionId() == null) return false;
@@ -211,7 +211,7 @@ public class SessionRepository {
         for (RefreshTokenEntity familyToken : tokens.find("sessionId", token.sessionId()).list()) familyToken.revoke(now);
     }
 
-    private void revokeExpiredTokens(long userId, Instant now) {
+    private void revokeExpiredTokens(String userId, Instant now) {
         for (RefreshTokenEntity token : tokens.findByUser(userId)) {
             if (!token.activeAt(now)) token.revoke(now);
         }
@@ -256,7 +256,7 @@ public class SessionRepository {
                                  String sessionId, Instant refreshExpiresAt, String clientId, String approvedScope) {
     }
 
-    public record OnlineSession(long sessionId, long userId, String username, String displayName,
+    public record OnlineSession(long sessionId, String userId, String username, String displayName,
                                 String ipAddress, Instant createdAt, Instant expiresAt, Instant accessExpiresAt) {
     }
 }

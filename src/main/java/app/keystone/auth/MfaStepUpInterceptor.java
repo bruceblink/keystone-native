@@ -64,13 +64,13 @@ public class MfaStepUpInterceptor {
         return Claims.from(jwt);
     }
 
-    record Claims(long userId, String sessionId, String clientId) {
+    record Claims(String userId, String sessionId, String clientId) {
         static Claims from(JsonWebToken jwt) {
             if (jwt == null) throw new NotAuthorizedException("human bearer authentication is required");
-            long userId = claimLong(jwt, "userId");
+            String userId = claimUuid(jwt, "userId");
             String sessionId = claimText(jwt, "sid");
             String clientId = claimText(jwt, "client_id");
-            if (userId <= 0 || sessionId == null || sessionId.isBlank() || clientId == null || clientId.isBlank()
+            if (userId == null || sessionId == null || sessionId.isBlank() || clientId == null || clientId.isBlank()
                     || !sessionId.matches("[A-Za-z0-9][A-Za-z0-9._:-]{0,63}")
                     || !clientId.matches("[a-z0-9][a-z0-9._-]{0,63}")) {
                 throw new NotAuthorizedException("authentication session is incomplete");
@@ -83,14 +83,11 @@ public class MfaStepUpInterceptor {
             return value == null ? null : value.toString();
         }
 
-        private static long claimLong(JsonWebToken jwt, String name) {
+        private static String claimUuid(JsonWebToken jwt, String name) {
             Object value = JwtClaims.get(jwt, name);
-            if (value instanceof Number number) return number.longValue();
-            try {
-                return Long.parseLong(String.valueOf(value));
-            } catch (RuntimeException e) {
-                return -1;
-            }
+            if (!(value instanceof String text)) return null;
+            try { return app.keystone.identity.UuidValues.requireCanonical(text); }
+            catch (IllegalArgumentException e) { return null; }
         }
     }
 }

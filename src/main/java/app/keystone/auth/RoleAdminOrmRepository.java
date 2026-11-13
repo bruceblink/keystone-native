@@ -12,7 +12,7 @@ import java.util.Set;
 
 /** 使用 ORM 完成角色、权限和角色成员的事务更新。 */
 @ApplicationScoped
-public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleEntity, Long> {
+public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleEntity, java.util.UUID> {
     @jakarta.inject.Inject ApiKeyPermissionRepository permissions;
     @jakarta.inject.Inject ApiKeyUserRepository users;
 
@@ -57,7 +57,7 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
     }
 
     @Transactional
-    public void assignUsers(String code, List<Long> userIds) {
+    public void assignUsers(String code, List<String> userIds) {
         ApiKeyRoleEntity role = find("code", code).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (role == null) throw new java.util.NoSuchElementException("role not found");
         for (ApiKeyUserEntity user : users.findUsersByIdsForUpdate(userIds)) {
@@ -66,7 +66,7 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
     }
 
     @Transactional
-    public void revokeUsers(String code, List<Long> userIds) {
+    public void revokeUsers(String code, List<String> userIds) {
         ApiKeyRoleEntity role = find("code", code).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (role == null) throw new java.util.NoSuchElementException("role not found");
         for (ApiKeyUserEntity user : users.findUsersByIdsForUpdate(userIds)) {
@@ -75,8 +75,8 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
     }
 
     @Transactional
-    public Role findById(long id) {
-        ApiKeyRoleEntity role = findByIdOptional(id);
+    public Role findRoleById(String id) {
+        ApiKeyRoleEntity role = findRoleEntityById(id);
         if (role == null) throw new java.util.NoSuchElementException("role not found");
         return role.toRole();
     }
@@ -89,14 +89,14 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
     }
 
     @Transactional
-    public List<Long> userIds(String code, boolean allocated) {
+    public List<String> userIds(String code, boolean allocated) {
         ApiKeyRoleEntity role = find("code", code).firstResult();
         if (role == null) throw new java.util.NoSuchElementException("role not found");
-        return users.findUserIdsByRole(role.id(), allocated);
+        return users.findUserIdsByRole(role.uuid(), allocated);
     }
 
-    private ApiKeyRoleEntity findByIdOptional(long id) {
-        return find("id", id).firstResult();
+    private ApiKeyRoleEntity findRoleEntityById(String id) {
+        return find("id", app.keystone.identity.UuidValues.parse(id)).firstResult();
     }
 
     private Set<ApiKeyPermissionEntity> resolvePermissions(List<String> permissionCodes) {
@@ -118,6 +118,6 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
     }
 
     private void bumpPermissionVersion(ApiKeyRoleEntity role) {
-        for (ApiKeyUserEntity user : users.findUsersWithRole(role.id())) user.bumpPermissionVersion();
+        for (ApiKeyUserEntity user : users.findUsersWithRole(role.uuid())) user.bumpPermissionVersion();
     }
 }

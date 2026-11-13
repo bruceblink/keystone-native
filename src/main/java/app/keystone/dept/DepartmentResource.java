@@ -37,7 +37,7 @@ public class DepartmentResource {
     }
 
     @PUT @Path("/{id}") @RequiresPermission("department:update")
-    public Response update(@PathParam("id") long id, DepartmentRequest request) {
+    public Response update(@PathParam("id") String id, DepartmentRequest request) {
         if (request == null) return bad("request body is required");
         var scope = dataScopes.forUser(subjectId());
         if (!scope.allowsDepartmentUpdate(id, request.parentId())) return forbidden();
@@ -47,7 +47,7 @@ public class DepartmentResource {
     }
 
     @DELETE @Path("/{id}") @RequiresPermission("department:delete")
-    public Response delete(@PathParam("id") long id) {
+    public Response delete(@PathParam("id") String id) {
         if (!dataScopes.forUser(subjectId()).allowsDepartment(id)) return forbidden();
         try { departments.delete(id); logs.record(actor(), "DELETE", "department", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); }
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }
@@ -57,11 +57,11 @@ public class DepartmentResource {
     private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).build(); }
     private static Response forbidden() { return Response.status(Response.Status.FORBIDDEN).entity(ApiResponse.error("data scope denied")).build(); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("department not found")).build(); }
-    public record DepartmentRequest(String code, String name, Long parentId, Integer sortOrder, Boolean enabled) {}
+    public record DepartmentRequest(String code, String name, String parentId, Integer sortOrder, Boolean enabled) {}
     private String actor() { return identity.getPrincipal().getName(); }
-    private long subjectId() {
+    private String subjectId() {
         Object value = identity.getAttribute("userId");
-        if (value instanceof Number number) return number.longValue();
+        if (value instanceof String id) return id;
         return users.findAuthUserByUsername(identity.getPrincipal().getName()).orElseThrow(() -> new NotAuthorizedException("subject not found")).id();
     }
 }

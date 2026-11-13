@@ -19,7 +19,7 @@ public class RefreshTokenRepository implements PanacheRepository<RefreshTokenEnt
                 accessTokenId, now).firstResult();
     }
 
-    RefreshTokenEntity findByAccessTokenAndVersion(String accessTokenId, long userId, Instant now) {
+    RefreshTokenEntity findByAccessTokenAndVersion(String accessTokenId, String userId, Instant now) {
         return find("accessTokenId = ?1 and userId = ?2 and revokedAt is null and expiresAt > ?3 and accessExpiresAt > ?3 and idleExpiresAt > ?3",
                 accessTokenId, userId, now).firstResult();
     }
@@ -28,7 +28,7 @@ public class RefreshTokenRepository implements PanacheRepository<RefreshTokenEnt
         return find("refreshFamilyId", familyId).list();
     }
 
-    List<RefreshTokenEntity> findByUser(long userId) {
+    List<RefreshTokenEntity> findByUser(String userId) {
         return find("userId", userId).list();
     }
 }

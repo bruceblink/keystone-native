@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Convert;
+import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
 
@@ -15,8 +17,9 @@ public class AuthSessionEntity {
     @Column(nullable = false, length = 36)
     private String id;
 
-    @Column(name = "user_id", nullable = false)
-    private long userId;
+    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
+    private String userId;
 
     @Column(name = "client_id", nullable = false, length = 128)
     private String clientId;
@@ -54,7 +57,7 @@ public class AuthSessionEntity {
     protected AuthSessionEntity() {
     }
 
-    AuthSessionEntity(String id, long userId, String clientId, String approvedScope,
+    AuthSessionEntity(String id, String userId, String clientId, String approvedScope,
                       String refreshFamilyId, Instant refreshExpiresAt, Instant idleExpiresAt, Instant lastSeenAt) {
         this.id = id;
         this.userId = userId;
@@ -67,7 +70,7 @@ public class AuthSessionEntity {
     }
 
     String id() { return id; }
-    long userId() { return userId; }
+    String userId() { return userId; }
     String clientId() { return clientId; }
     String approvedScope() { return approvedScope; }
     String refreshFamilyId() { return refreshFamilyId; }

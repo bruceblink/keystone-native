@@ -70,6 +70,11 @@ public final class UuidValues {
         return value;
     }
 
+    /** 将已经校验的 UUID 字符串转换为 ORM 使用的 UUID 值。 */
+    public static UUID parse(String value) {
+        return UUID.fromString(requireCanonical(value));
+    }
+
     /** 将规范 UUID 字符串转换为 MySQL BINARY(16) 的 16 字节值。 */
     public static byte[] toBytes(String value) {
         return toBytes(UUID.fromString(requireCanonical(value)));

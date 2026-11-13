@@ -19,16 +19,16 @@ import app.keystone.user.PasswordPolicy;
 
 /** 通过 ORM 读取 API Key 认证主体和签发权限。 */
 @ApplicationScoped
-public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEntity, Long> {
+public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEntity, java.util.UUID> {
     @jakarta.inject.Inject ApiKeyRoleRepository roles;
 
-    ApiKeyUserEntity findEnabled(long userId) {
-        ApiKeyUserEntity user = find("id = ?1 and enabled = true", userId).firstResult();
+    ApiKeyUserEntity findEnabled(String userId) {
+        ApiKeyUserEntity user = find("id = ?1 and enabled = true", app.keystone.identity.UuidValues.parse(userId)).firstResult();
         return user != null && user.enabled() ? user : null;
     }
 
     @Transactional
-    public Optional<UserRepository.AuthUser> findAuthUser(long userId) {
+    public Optional<UserRepository.AuthUser> findAuthUser(String userId) {
         ApiKeyUserEntity user = findEnabled(userId);
         return user == null ? Optional.empty() : Optional.of(user.toAuthUser());
     }
@@ -42,7 +42,7 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
 
     /** 在一个 ORM 事务中创建用户并绑定启用角色。 */
     @Transactional
-    public User createUser(String username, String passwordHash, String displayName, Long deptId, Long postId,
+    public User createUser(String username, String passwordHash, String displayName, String deptId, Long postId,
                            String email, String phoneNumber, Integer sex, String avatar, String remark,
                            List<String> roleCodes) {
         var resolvedRoles = resolveRoles(roleCodes);
@@ -55,10 +55,10 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
 
     /** 在一条用户写锁事务中完成资料、密码和角色更新。 */
     @Transactional
-    public User updateUser(long userId, String password, String displayName, boolean updateDept, Long deptId,
+    public User updateUser(String userId, String password, String displayName, boolean updateDept, String deptId,
                            Long postId, String email, String phoneNumber, Integer sex, String avatar,
                            String remark, Boolean enabled, List<String> roleCodes, PasswordPolicy passwordPolicy) {
-        ApiKeyUserEntity user = find("id = ?1", userId)
+        ApiKeyUserEntity user = find("id = ?1", app.keystone.identity.UuidValues.parse(userId))
                 .withLock(LockModeType.PESSIMISTIC_WRITE)
                 .firstResult();
         if (user == null) throw new java.util.NoSuchElementException("user not found");
@@ -78,8 +78,8 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
     /** 在事务内按筛选条件和数据范围分页读取用户。 */
     @Transactional
     public UserRepository.Page listUsers(int page, int size, String username, String displayName,
-                                         Long deptId, Boolean enabled, DataScopeService.Scope scope,
-                                         long subjectId) {
+                                         String deptId, Boolean enabled, DataScopeService.Scope scope,
+                                         String subjectId) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(100, Math.max(1, size));
         var query = userQuery(username, displayName, deptId, enabled, scope, subjectId);
@@ -91,9 +91,9 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
 
     /** 在事务内按主体数据范围读取单个用户。 */
     @Transactional
-    public User findUser(long userId, DataScopeService.Scope scope, long subjectId) {
+    public User findUser(String userId, DataScopeService.Scope scope, String subjectId) {
         var parameters = new java.util.ArrayList<Object>();
-        parameters.add(userId);
+        parameters.add(app.keystone.identity.UuidValues.parse(userId));
         var scoped = new StringBuilder("id = ?1");
         appendScope(scoped, parameters, scope, subjectId);
         ApiKeyUserEntity user = find(scoped.toString(), parameters.toArray()).firstResult();
@@ -103,7 +103,7 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
 
     /** 按数据范围锁定并删除单个用户；是否允许操作由权限和数据范围共同决定。 */
     @Transactional
-    public void deleteUser(long userId, DataScopeService.Scope scope, long subjectId) {
+    public void deleteUser(String userId, DataScopeService.Scope scope, String subjectId) {
         ApiKeyUserEntity user = findScopedForUpdate(userId, scope, subjectId);
         if (user == null) throw new java.util.NoSuchElementException("user not found");
         delete(user);
@@ -111,10 +111,10 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
 
     /** 按数据范围批量删除用户，跳过不存在和范围外记录。 */
     @Transactional
-    public int deleteUsers(List<Long> userIds, DataScopeService.Scope scope, long subjectId) {
+    public int deleteUsers(List<String> userIds, DataScopeService.Scope scope, String subjectId) {
         if (userIds == null || userIds.isEmpty()) return 0;
         int deleted = 0;
-        for (Long userId : userIds) {
+        for (String userId : userIds) {
             if (userId == null) continue;
             ApiKeyUserEntity user = findScopedForUpdate(userId, scope, subjectId);
             if (user != null) {
@@ -156,8 +156,8 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
 
     /** 使用用户行写锁更新密码，确保失败锁定和凭据版本在同一事务内变化。 */
     @Transactional
-    public User updatePassword(long userId, String password, PasswordPolicy passwordPolicy) {
-        ApiKeyUserEntity user = find("id = ?1", userId)
+    public User updatePassword(String userId, String password, PasswordPolicy passwordPolicy) {
+        ApiKeyUserEntity user = find("id = ?1", app.keystone.identity.UuidValues.parse(userId))
                 .withLock(LockModeType.PESSIMISTIC_WRITE)
                 .firstResult();
         if (user == null) throw new java.util.NoSuchElementException("user not found");
@@ -167,13 +167,13 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
     }
 
     @Transactional
-    public Set<String> permissions(long userId) {
+    public Set<String> permissions(String userId) {
         ApiKeyUserEntity user = findEnabled(userId);
         return user == null ? Set.of() : user.permissions();
     }
 
     @Transactional
-    boolean hasPermission(long userId, String permission) {
+    boolean hasPermission(String userId, String permission) {
         return permissions(userId).contains(permission);
     }
 
@@ -185,43 +185,43 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
     }
 
     @Transactional
-    public long permissionVersion(long userId) {
+    public long permissionVersion(String userId) {
         ApiKeyUserEntity user = findEnabled(userId);
         return user == null ? -1 : user.permissionVersion();
     }
 
     @Transactional
-    public void markLogin(long userId, String ipAddress) {
-        ApiKeyUserEntity user = findById(userId);
+    public void markLogin(String userId, String ipAddress) {
+        ApiKeyUserEntity user = findById(app.keystone.identity.UuidValues.parse(userId));
         if (user != null) user.markLogin(ipAddress, Instant.now());
     }
 
-    ApiKeyUserEntity findEnabledEntity(long userId) {
+    ApiKeyUserEntity findEnabledEntity(String userId) {
         return findEnabled(userId);
     }
 
-    ApiKeyUserEntity findForUpdate(long userId) {
-        ApiKeyUserEntity user = find("id = ?1 and enabled = true", userId)
+    ApiKeyUserEntity findForUpdate(String userId) {
+        ApiKeyUserEntity user = find("id = ?1 and enabled = true", app.keystone.identity.UuidValues.parse(userId))
                 .withLock(LockModeType.PESSIMISTIC_WRITE)
                 .firstResult();
         return user != null && user.enabled() ? user : null;
     }
 
     /** 在 MFA 和其他安全状态事务中锁定用户行，包括已禁用用户。 */
-    ApiKeyUserEntity findAnyForUpdate(long userId) {
-        return find("id = ?1", userId).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    ApiKeyUserEntity findAnyForUpdate(String userId) {
+        return find("id = ?1", app.keystone.identity.UuidValues.parse(userId)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
     }
 
-    List<ApiKeyUserEntity> findUsersByIdsForUpdate(List<Long> userIds) {
+    List<ApiKeyUserEntity> findUsersByIdsForUpdate(List<String> userIds) {
         if (userIds == null || userIds.isEmpty()) return List.of();
-        return find("id in ?1", userIds).withLock(LockModeType.PESSIMISTIC_WRITE).list();
+        return find("id in ?1", userIds.stream().map(app.keystone.identity.UuidValues::parse).toList()).withLock(LockModeType.PESSIMISTIC_WRITE).list();
     }
 
-    List<ApiKeyUserEntity> findUsersWithRole(long roleId) {
+    List<ApiKeyUserEntity> findUsersWithRole(java.util.UUID roleId) {
         return find("select distinct u from ApiKeyUserEntity u join u.roles r where r.id = ?1 order by u.id", roleId).list();
     }
 
-    List<Long> findUserIdsByRole(long roleId, boolean allocated) {
+    List<String> findUserIdsByRole(java.util.UUID roleId, boolean allocated) {
         if (allocated) {
             return find("select distinct u from ApiKeyUserEntity u join u.roles r where r.id = ?1 order by u.id", roleId)
                     .list().stream().map(ApiKeyUserEntity::id).toList();
@@ -249,17 +249,17 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         return new LinkedHashSet<>(found);
     }
 
-    private ApiKeyUserEntity findScopedForUpdate(long userId, DataScopeService.Scope scope, long subjectId) {
+    private ApiKeyUserEntity findScopedForUpdate(String userId, DataScopeService.Scope scope, String subjectId) {
         var query = new StringBuilder("id = ?1");
         var parameters = new java.util.ArrayList<Object>();
-        parameters.add(userId);
+        parameters.add(app.keystone.identity.UuidValues.parse(userId));
         appendScope(query, parameters, scope, subjectId);
         return find(query.toString(), parameters.toArray()).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
     }
 
-    private PanacheQuery<ApiKeyUserEntity> userQuery(String username, String displayName, Long deptId,
+    private PanacheQuery<ApiKeyUserEntity> userQuery(String username, String displayName, String deptId,
                                                        Boolean enabled, DataScopeService.Scope scope,
-                                                       long subjectId) {
+                                                       String subjectId) {
         var query = new StringBuilder("1 = 1");
         var parameters = new java.util.ArrayList<Object>();
         if (username != null && !username.isBlank()) {
@@ -271,7 +271,7 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
             query.append(" and displayName like ?").append(parameters.size());
         }
         if (deptId != null) {
-            parameters.add(deptId);
+            parameters.add(app.keystone.identity.UuidValues.parse(deptId));
             query.append(" and deptId = ?").append(parameters.size());
         }
         if (enabled != null) {
@@ -284,17 +284,17 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
     }
 
     private static void appendScope(StringBuilder query, List<Object> parameters,
-                                    DataScopeService.Scope scope, long subjectId) {
+                                    DataScopeService.Scope scope, String subjectId) {
         if (scope.all()) return;
         var clauses = new java.util.ArrayList<String>();
         if (scope.self()) {
-            parameters.add(subjectId);
+            parameters.add(app.keystone.identity.UuidValues.parse(subjectId));
             clauses.add("id = ?" + parameters.size());
         }
         if (!scope.departments().isEmpty()) {
             var placeholders = new java.util.ArrayList<String>();
-            for (Long department : scope.departments()) {
-                parameters.add(department);
+            for (String department : scope.departments()) {
+                parameters.add(app.keystone.identity.UuidValues.parse(department));
                 placeholders.add("?" + parameters.size());
             }
             clauses.add("deptId in (" + String.join(", ", placeholders) + ")");

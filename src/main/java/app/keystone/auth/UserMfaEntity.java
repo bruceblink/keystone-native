@@ -5,6 +5,8 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
+import jakarta.persistence.Convert;
+import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
 
@@ -16,8 +18,9 @@ public class UserMfaEntity {
     @Column(nullable = false, length = 36)
     private String id;
 
-    @Column(name = "user_id", nullable = false)
-    private long userId;
+    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
+    private String userId;
 
     @Column(name = "mfa_type", nullable = false, length = 16)
     private String mfaType;
@@ -59,7 +62,7 @@ public class UserMfaEntity {
     protected UserMfaEntity() {
     }
 
-    UserMfaEntity(String id, long userId, String mfaType, byte[] secretCiphertext, byte[] secretNonce,
+    UserMfaEntity(String id, String userId, String mfaType, byte[] secretCiphertext, byte[] secretNonce,
                   int keyVersion) {
         this.id = id;
         this.userId = userId;
@@ -73,7 +76,7 @@ public class UserMfaEntity {
         return id;
     }
 
-    long userId() {
+    String userId() {
         return userId;
     }
 

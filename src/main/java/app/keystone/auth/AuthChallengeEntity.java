@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Convert;
+import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
 
@@ -15,8 +17,9 @@ public class AuthChallengeEntity {
     @Column(nullable = false, length = 36)
     private String id;
 
-    @Column(name = "user_id", nullable = false)
-    private long userId;
+    @Column(name = "user_id", nullable = false, columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
+    private String userId;
 
     @Column(nullable = false, length = 16)
     private String purpose;
@@ -45,7 +48,7 @@ public class AuthChallengeEntity {
     protected AuthChallengeEntity() {
     }
 
-    AuthChallengeEntity(String id, long userId, String purpose, String clientId, String sessionId,
+    AuthChallengeEntity(String id, String userId, String purpose, String clientId, String sessionId,
                         String contextHash, Instant expiresAt) {
         this.id = id;
         this.userId = userId;
@@ -60,7 +63,7 @@ public class AuthChallengeEntity {
         return id;
     }
 
-    long userId() {
+    String userId() {
         return userId;
     }
 

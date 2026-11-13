@@ -2,8 +2,6 @@ package app.keystone.auth;
 
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.FetchType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
@@ -14,14 +12,18 @@ import jakarta.persistence.Table;
 import java.util.HashSet;
 import java.util.Set;
 import app.keystone.role.Role;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
+import java.util.UUID;
 
 /** 映射 API Key 签发所需的已启用角色和权限关系。 */
 @Entity
 @Table(name = "sys_role")
 public class ApiKeyRoleEntity {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
-    private Long id;
+    @JdbcTypeCode(SqlTypes.BINARY)
+    @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
+    private UUID id;
 
     @Column(nullable = false)
     private boolean enabled;
@@ -56,7 +58,11 @@ public class ApiKeyRoleEntity {
         return code;
     }
 
-    long id() {
+    String id() {
+        return id == null ? null : id.toString();
+    }
+
+    UUID uuid() {
         return id;
     }
 
@@ -78,6 +84,7 @@ public class ApiKeyRoleEntity {
 
     /** 创建角色实体；数据库结构仍由 Flyway 管理。 */
     ApiKeyRoleEntity(String code, String name) {
+        this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.code = code;
         this.name = name;
         this.enabled = true;
@@ -97,7 +104,7 @@ public class ApiKeyRoleEntity {
     }
 
     Role toRole() {
-        return new Role(id, code, name, enabled, dataScope, deptScope,
+        return new Role(id(), code, name, enabled, dataScope, deptScope,
                 permissions.stream().map(ApiKeyPermissionEntity::code).sorted().toList());
     }
 }

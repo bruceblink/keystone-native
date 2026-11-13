@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Convert;
+import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
 
@@ -22,7 +24,8 @@ public class ServiceSubjectEntity {
     private String name;
 
     @Column(name = "owner_user_id")
-    private Long ownerUserId;
+    @Convert(converter = UuidBinaryConverter.class)
+    private String ownerUserId;
 
     @Column(nullable = false)
     private boolean enabled;
@@ -33,7 +36,7 @@ public class ServiceSubjectEntity {
     protected ServiceSubjectEntity() {
     }
 
-    ServiceSubjectEntity(String id, String code, String name, Long ownerUserId) {
+    ServiceSubjectEntity(String id, String code, String name, String ownerUserId) {
         this.id = id;
         this.code = code;
         this.name = name;

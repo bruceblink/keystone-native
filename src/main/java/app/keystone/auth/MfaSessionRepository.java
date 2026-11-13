@@ -19,16 +19,16 @@ public class MfaSessionRepository {
 
     /** 为活动会话写入最近一次 MFA 验证结果。 */
     @Transactional
-    public boolean markVerified(String sessionId, long userId, String clientId, String assurance, String amr) {
+    public boolean markVerified(String sessionId, String userId, String clientId, String assurance, String amr) {
         String boundSessionId = requiredIdentifier(sessionId, "sessionId", 64);
         String boundClientId = requiredClientId(clientId);
         String boundAssurance = requiredToken(assurance, "assurance", MAX_ASSURANCE_LENGTH);
         String boundAmr = requiredToken(amr, "amr", MAX_AMR_LENGTH);
-        if (userId <= 0) throw new IllegalArgumentException("userId must be positive");
+        app.keystone.identity.UuidValues.requireCanonical(userId);
 
         Instant now = Instant.now();
         AuthSessionEntity session = sessions.findForUpdate(boundSessionId);
-        if (session == null || session.userId() != userId || !session.clientId().equals(boundClientId)
+        if (session == null || !userId.equals(session.userId()) || !session.clientId().equals(boundClientId)
                 || !session.activeAt(now)) return false;
         session.markMfaVerified(now, boundAssurance, boundAmr);
         return true;
@@ -36,12 +36,12 @@ public class MfaSessionRepository {
 
     /** 检查会话是否在指定时间内完成了指定认证强度的 MFA 验证。 */
     @Transactional
-    public boolean hasRecentStepUp(String sessionId, long userId, String clientId, Duration maxAge,
+    public boolean hasRecentStepUp(String sessionId, String userId, String clientId, Duration maxAge,
                                    String requiredAssurance) {
         String boundSessionId = requiredIdentifier(sessionId, "sessionId", 64);
         String boundClientId = requiredClientId(clientId);
         String boundAssurance = requiredToken(requiredAssurance, "requiredAssurance", MAX_ASSURANCE_LENGTH);
-        if (userId <= 0) throw new IllegalArgumentException("userId must be positive");
+        app.keystone.identity.UuidValues.requireCanonical(userId);
         if (maxAge == null || maxAge.isZero() || maxAge.isNegative() || maxAge.compareTo(MAX_VERIFICATION_AGE) > 0) {
             throw new IllegalArgumentException("maxAge must be between one second and twenty-four hours");
         }
@@ -49,7 +49,7 @@ public class MfaSessionRepository {
         Instant now = Instant.now();
         AuthSessionEntity session = sessions.findById(boundSessionId);
         return session != null
-                && session.userId() == userId
+                && userId.equals(session.userId())
                 && session.clientId().equals(boundClientId)
                 && session.activeAt(now)
                 && session.mfaVerifiedAt() != null

@@ -40,8 +40,8 @@ public class MfaSecretCipher {
     public int currentKeyVersion() { return masterKeyVersion; }
 
     /** 加密 TOTP 密钥，并把主体、记录和密钥版本绑定到认证标签。 */
-    public EncryptedSecret encrypt(long userId, String mfaId, int keyVersion, String secret) {
-        if (userId <= 0 || mfaId == null || mfaId.isBlank() || keyVersion <= 0 || secret == null || secret.isBlank()) throw new IllegalArgumentException("invalid MFA secret input");
+    public EncryptedSecret encrypt(String userId, String mfaId, int keyVersion, String secret) {
+        if (userId == null || mfaId == null || mfaId.isBlank() || keyVersion <= 0 || secret == null || secret.isBlank()) throw new IllegalArgumentException("invalid MFA secret input");
         requireConfiguredVersion(keyVersion);
         byte[] nonce = new byte[NONCE_BYTES]; random.nextBytes(nonce);
         try {
@@ -51,8 +51,8 @@ public class MfaSecretCipher {
     }
 
     /** 解密时重新校验主体和版本标签，密文被替换或归属错误时直接失败。 */
-    public String decrypt(long userId, String mfaId, EncryptedSecret encrypted) {
-        if (encrypted == null || userId <= 0 || mfaId == null || mfaId.isBlank()) throw new IllegalArgumentException("invalid MFA secret input");
+    public String decrypt(String userId, String mfaId, EncryptedSecret encrypted) {
+        if (encrypted == null || userId == null || mfaId == null || mfaId.isBlank()) throw new IllegalArgumentException("invalid MFA secret input");
         requireConfiguredVersion(encrypted.keyVersion());
         try {
             Cipher cipher = cipher(Cipher.DECRYPT_MODE, encrypted.nonce(), aad(userId, mfaId, encrypted.keyVersion()));
@@ -81,9 +81,10 @@ public class MfaSecretCipher {
         if (keyVersion != masterKeyVersion) throw new IllegalStateException("MFA master key version is unavailable");
     }
 
-    private static byte[] aad(long userId, String mfaId, int keyVersion) {
+    private static byte[] aad(String userId, String mfaId, int keyVersion) {
         byte[] id = mfaId.getBytes(StandardCharsets.UTF_8);
-        return ByteBuffer.allocate(Long.BYTES + Integer.BYTES + id.length).putLong(userId).putInt(keyVersion).put(id).array();
+        byte[] user = app.keystone.identity.UuidValues.toBytes(userId);
+        return ByteBuffer.allocate(user.length + Integer.BYTES + id.length).put(user).putInt(keyVersion).put(id).array();
     }
 
     /** 密文对象只在内存中携带 nonce、密文和版本；访问数组时返回副本。 */
