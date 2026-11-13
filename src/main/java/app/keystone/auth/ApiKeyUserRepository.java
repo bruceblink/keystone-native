@@ -9,7 +9,9 @@ import jakarta.persistence.LockModeType;
 import java.util.Set;
 import java.util.Optional;
 import java.time.Instant;
+import app.keystone.user.User;
 import app.keystone.user.UserRepository;
+import app.keystone.user.PasswordPolicy;
 
 /** 通过 ORM 读取 API Key 认证主体和签发权限。 */
 @ApplicationScoped
@@ -60,6 +62,18 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         }
         user.clearFailedLogins();
         return Optional.of(user.toAuthUser());
+    }
+
+    /** 使用用户行写锁更新密码，确保失败锁定和凭据版本在同一事务内变化。 */
+    @Transactional
+    public User updatePassword(long userId, String password, PasswordPolicy passwordPolicy) {
+        ApiKeyUserEntity user = find("id = ?1", userId)
+                .withLock(LockModeType.PESSIMISTIC_WRITE)
+                .firstResult();
+        if (user == null) throw new java.util.NoSuchElementException("user not found");
+        passwordPolicy.validate(user.username(), password);
+        user.changePassword(BcryptUtil.bcryptHash(password), Instant.now());
+        return user.toUser();
     }
 
     @Transactional

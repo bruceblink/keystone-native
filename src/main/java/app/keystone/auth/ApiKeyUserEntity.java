@@ -8,10 +8,13 @@ import jakarta.persistence.JoinColumn;
 import jakarta.persistence.JoinTable;
 import jakarta.persistence.ManyToMany;
 import jakarta.persistence.Table;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 
 import java.util.HashSet;
 import java.util.Set;
 import java.util.stream.Collectors;
+import app.keystone.user.User;
 import app.keystone.user.UserRepository;
 
 /** 映射 API Key 认证和签发所需的用户状态及权限关系。 */
@@ -19,6 +22,7 @@ import app.keystone.user.UserRepository;
 @Table(name = "sys_user")
 public class ApiKeyUserEntity {
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false, length = 64)
@@ -130,6 +134,16 @@ public class ApiKeyUserEntity {
         return lockedUntil;
     }
 
+    /** 更新密码及凭据版本；调用方必须在用户行写锁事务内调用。 */
+    void changePassword(String newPasswordHash, java.time.Instant changedAt) {
+        passwordHash = newPasswordHash;
+        mustChangePassword = false;
+        failedLoginCount = 0;
+        lockedUntil = null;
+        credentialVersion++;
+        lastPasswordChangedAt = changedAt;
+    }
+
     /** 记录一次错误密码尝试；调用方必须在用户行写锁事务内调用。 */
     void recordFailedLogin(int attempts, java.time.Instant newLockedUntil) {
         failedLoginCount = attempts;
@@ -155,5 +169,13 @@ public class ApiKeyUserEntity {
         return new UserRepository.AuthUser(id, username, displayName,
                 roleCodes.isEmpty() ? java.util.List.of("USER") : roleCodes,
                 mustChangePassword, deptId, postId, email, phoneNumber, sex, avatar, loginIp, loginAt, remark);
+    }
+
+    /** 转换为用户管理接口返回的公开字段，不包含密码和凭据版本。 */
+    User toUser() {
+        var roleCodes = roles.stream().filter(ApiKeyRoleEntity::enabled).map(ApiKeyRoleEntity::code).sorted().toList();
+        return new User(id, username, displayName, deptId, postId, enabled,
+                email, phoneNumber, sex, avatar, loginIp, loginAt, remark,
+                roleCodes.isEmpty() ? java.util.List.of("USER") : roleCodes);
     }
 }

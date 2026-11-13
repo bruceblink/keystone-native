@@ -104,10 +104,30 @@ public class UserRepository {
     }
 
     public User update(long id, String password, String displayName, Long deptId, Boolean enabled, List<String> roleCodes) {
+        if (password != null && !password.isBlank() && displayName == null && deptId == null && enabled == null && roleCodes == null) {
+            try {
+                return ormUsers.updatePassword(id, password, passwordPolicy);
+            } catch (IllegalArgumentException | java.util.NoSuchElementException e) {
+                throw e;
+            } catch (RuntimeException e) {
+                throw new IllegalStateException("Could not update user password", e);
+            }
+        }
         return updateExtended(id, password, displayName, deptId != null, deptId, null, null, null, null, null, null, enabled, roleCodes);
     }
 
     public User updateExtended(long id, String password, String displayName, boolean updateDept, Long deptId, Long postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
+        if (password != null && !password.isBlank() && !updateDept && (displayName == null || displayName.isBlank())
+                && postId == null && email == null && phoneNumber == null && sex == null && avatar == null
+                && remark == null && enabled == null && roleCodes == null) {
+            try {
+                return ormUsers.updatePassword(id, password, passwordPolicy);
+            } catch (IllegalArgumentException | java.util.NoSuchElementException e) {
+                throw e;
+            } catch (RuntimeException e) {
+                throw new IllegalStateException("Could not update user password", e);
+            }
+        }
         try (var c = dataSource.getConnection()) {
             c.setAutoCommit(false);
             try {
