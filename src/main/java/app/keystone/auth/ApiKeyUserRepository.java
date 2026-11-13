@@ -212,6 +212,24 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         return find("id = ?1", userId).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
     }
 
+    List<ApiKeyUserEntity> findUsersByIdsForUpdate(List<Long> userIds) {
+        if (userIds == null || userIds.isEmpty()) return List.of();
+        return find("id in ?1", userIds).withLock(LockModeType.PESSIMISTIC_WRITE).list();
+    }
+
+    List<ApiKeyUserEntity> findUsersWithRole(long roleId) {
+        return find("select distinct u from ApiKeyUserEntity u join u.roles r where r.id = ?1 order by u.id", roleId).list();
+    }
+
+    List<Long> findUserIdsByRole(long roleId, boolean allocated) {
+        if (allocated) {
+            return find("select distinct u from ApiKeyUserEntity u join u.roles r where r.id = ?1 order by u.id", roleId)
+                    .list().stream().map(ApiKeyUserEntity::id).toList();
+        }
+        return find("select u from ApiKeyUserEntity u where not exists (select r.id from u.roles r where r.id = ?1) order by u.id", roleId)
+                .list().stream().map(ApiKeyUserEntity::id).toList();
+    }
+
     java.util.Set<String> permissions(ApiKeyUserEntity user) {
         return user == null ? java.util.Set.of() : user.permissions();
     }

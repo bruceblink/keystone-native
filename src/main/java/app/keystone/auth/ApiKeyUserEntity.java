@@ -215,6 +215,18 @@ public class ApiKeyUserEntity {
         roles.addAll(replacement);
     }
 
+    boolean addRole(ApiKeyRoleEntity role) {
+        return roles.add(role);
+    }
+
+    boolean removeRole(ApiKeyRoleEntity role) {
+        return roles.remove(role);
+    }
+
+    boolean hasRole(ApiKeyRoleEntity role) {
+        return roles.contains(role);
+    }
+
     /** 更新用户资料字段；调用方必须在用户行写锁事务内调用。 */
     void updateProfile(String newDisplayName, boolean updateDept, Long newDeptId, Long newPostId,
                        String newEmail, String newPhoneNumber, Integer newSex, String newAvatar,
