@@ -50,7 +50,7 @@ public class UserResource {
 
     /** 从 XLSX 第一张工作表逐行创建用户；失败行返回行号和脱敏原因。 */
     @POST @Path("/import") @Consumes(MediaType.MULTIPART_FORM_DATA)
-    @RequiresPermission("user:import") @RequiresMfaStepUp @RejectApiKey
+    @RequiresPermission("user:import") @RequiresMfaStepUp(enforce = true) @RejectApiKey
     public Response importUsers(@RestForm("file") FileUpload file) {
         if (file == null || file.uploadedFile() == null) return bad("file is required");
         try {

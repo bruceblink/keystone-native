@@ -4,6 +4,8 @@ import jakarta.interceptor.Interceptor;
 import jakarta.interceptor.InterceptorBinding;
 import org.junit.jupiter.api.Test;
 import org.eclipse.microprofile.jwt.JsonWebToken;
+import org.jboss.resteasy.reactive.multipart.FileUpload;
+import app.keystone.user.UserResource;
 
 import java.lang.reflect.Method;
 import java.lang.reflect.Proxy;
@@ -36,6 +38,14 @@ class MfaStepUpInterceptorTest {
         assertStepUp(AuthResource.class, "verifyMfaEnrollment", AuthResource.MfaCodeRequest.class);
         assertStepUp(AuthResource.class, "setMfaPolicy", String.class, AuthResource.MfaPolicyRequest.class);
         assertStepUp(AuthResource.class, "rotateRecoveryCodes", AuthResource.CurrentPasswordRequest.class);
+    }
+
+    @Test
+    void userImportAlwaysRequiresAal2() throws Exception {
+        var method = UserResource.class.getDeclaredMethod("importUsers", FileUpload.class);
+        var requirement = method.getAnnotation(RequiresMfaStepUp.class);
+        assertNotNull(requirement);
+        assertTrue(requirement.enforce());
     }
 
     @Test

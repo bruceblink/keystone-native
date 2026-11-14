@@ -44,10 +44,11 @@ public class MfaStepUpInterceptor {
             throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "human bearer authentication is required"));
         }
         Claims claims = Claims.from(jwt);
+        boolean enforce = requiresAal2(context);
         try {
             var status = mfa.findStatus(claims.userId())
                     .orElseThrow(() -> new NotAuthorizedException("authentication subject is unavailable"));
-            if (!status.required()) return context.proceed();
+            if (!status.required() && !enforce) return context.proceed();
             if (!"AAL2".equals(claims.assurance()) || claims.authenticationMethods().stream().noneMatch(method -> method.equals("otp") || method.equals("recovery"))
                     || !status.enabled() || !sessions.hasRecentStepUp(claims.sessionId(), claims.userId(), claims.clientId(), STEP_UP_AGE, REQUIRED_ASSURANCE)) {
                 throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "permission_denied", "recent MFA step-up is required"));
@@ -58,6 +59,12 @@ public class MfaStepUpInterceptor {
             throw new ServiceUnavailableException(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), "authorization_unavailable", "MFA state is unavailable"), e);
         }
         return context.proceed();
+    }
+
+    /** 读取当前资源方法的强制标记；默认标记保持既有按用户策略决定的行为。 */
+    private static boolean requiresAal2(InvocationContext context) {
+        RequiresMfaStepUp requirement = context.getMethod().getAnnotation(RequiresMfaStepUp.class);
+        return requirement != null && requirement.enforce();
     }
 
     /** 从已签名 JWT 读取会话绑定字段；缺少任一字段都按未认证处理。 */

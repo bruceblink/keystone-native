@@ -46,6 +46,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
         JwkSetService.JwkSet.class, JwkSetService.RsaJwk.class,
         User.class, UserRepository.AuthUser.class, UserRepository.Page.class,
         UserResource.UserRequest.class, UserResource.PasswordRequest.class, UserResource.StatusRequest.class,
+        UserResource.ImportResult.class, UserResource.ImportFailure.class,
         Role.class, RoleResource.RoleRequest.class, RoleResource.PermissionRequest.class,
         Menu.class, MenuNode.class, MenuRepository.MenuRequest.class,
         Department.class, DepartmentResource.DepartmentRequest.class,
