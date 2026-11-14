@@ -32,11 +32,13 @@
 
 本轮补充基线为 `d5aec9a`。角色新增 `DELETE /v1/roles?ids=...` 批量删除入口；服务层先去重并锁定全部 UUID 目标，任何非法或缺失角色都会整体回滚，成功响应返回实际删除数量，审计只记录数量摘要。`RoleResourceHttpTest` 已通过真实 MySQL HTTP 验证混合缺失目标回滚和重复 ID 去重；全量测试、构建和发布基线提交后补充记录。
 
+本地功能验收基线（2026-11-14）：Native 当前 `main` 已包含用户、角色、岗位、部门、菜单、配置、字典、公告、任务、登录日志、操作日志、API Key、会话和文件管理的统一权限入口。用户、部门和个人资料使用主体查询范围；公告和任务使用 `OWNER` 字段；角色、岗位、菜单、配置、字典、审计、会话等没有稳定 owner/member 关系的全局资源要求 `ALL` 或 `TENANT`，不再把不存在的 owner/member 关系列为实现缺口。`./gradlew --no-daemon test`、`quarkusBuild -x test`、角色批量删除定向 HTTP、源码行数和差异检查均通过。生产公网 IdP、浏览器/硬件 Passkey、多节点、生产代理链和发布窗口继续作为外部运维验收，不阻塞本地功能完成。
+
 本轮联调修复基线为 `e316119`。在线会话列表现在返回 `sys_auth_session.id`，与登录响应的 `data.sessionId` 一致；会话撤销按该会话 ID 加锁并撤销关联刷新令牌。真实 HTTP 回归覆盖登录、在线会话列表、强制下线、旧访问令牌失效和旧会话从列表移除。
 
 当前阶段范围（2026-11-14）：本阶段只以本地功能开发、已知问题修复和本机或隔离数据库验收为完成标准。公网 IdP、硬件 Passkey 仪式、多节点恢复、生产反向代理链和生产发布窗口属于后续外部运维验收记录，不作为当前功能开发或本地验收的阻塞项。
 
-当前结论：核心实现已完成，开发计划尚未全部完成，不能据此声明生产发布验收通过。服务层已完成显式 `AuthorizationContext` 改造；`09be890` 为公告和任务增加可验证 owner 字段，`d62d40b` 删除重复旧 token 字段，`1ad14f7` 补充完整日志日期，`ae2e304` 让用户 XLSX 导入在任何 MFA 策略下都要求 AAL2，`15aeacc` 补齐 API Key 猜测限流的真实 HTTP/MySQL 验收，`673a78a` 补齐审计日志混合删除原子性和登录日志删除入口，`2e24abd` 补齐登录用户名枚举防护，`b9e2949` 补齐任务日志全量查询的 OWNER 过滤和越界任务拒绝，`ef309df` 移除登录日志无授权分页入口并隔离监控摘要查询，`88fa2cb` 补齐批量文件上传的原子性和范围拒绝，`a8bb5e1` 补齐角色成员子路径的范围拒绝，OWNER 列表、详情、更新、执行和混合删除回滚测试通过。Native 原生镜像已完成 arm64 构建和 HTTP 安全开关双向运行验收，导入结果的 JSON 序列化反射配置已补齐。报告接口和 owner 范围已有代码与定向 HTTP 证据，完整生产数据和跨租户报告验收仍未完成。全部资源的真实 owner/member 过滤、导出/批量/异步范围、V56 生产升级和真实数据恢复链路、浏览器 CSRF/Cookie 实际行为、浏览器或硬件 Passkey、真实生产 IdP/TLS 和多节点恢复仍属于未闭环条件；旧兼容代码清理已有自动审计证据。
+当前结论：本地功能开发和隔离 MySQL 验收已完成。用户、角色、岗位、部门、菜单、配置、字典、公告、任务、审计、API Key、会话和文件管理入口均已使用统一权限与范围约束；导出和批量操作已有真实 HTTP 回归。该结论不等同生产发布通过。公网 IdP、浏览器/硬件 Passkey、多节点恢复、生产 TLS/代理链、生产数据恢复和发布窗口仍属于外部运维验收；旧兼容代码清理已有自动审计证据。
 
 ## 跨项目统一主线
 
@@ -78,7 +80,7 @@ Native 与 Phoenix 分别实现，但必须遵守统一架构中的 Principal、
 
 上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `type=access`、`aal`、`amr`、`kid`。`GET /api/.well-known/jwks.json` 发布当前 RSA 公钥；当前实现支持通过 `JWT_JWK_KEYS` 发布多个重叠公钥，并在启用多 key 时要求 `JWT_VERIFY_PUBLIC_KEY_LOCATION` 指向 JWK Set 文件或 HTTPS JWK Set URL。安全事件已补充 `session_id`、批准范围和 `request_id`。
 
-当前验证边界仍然明确：本地 MySQL 8.4.13 已完成 Flyway V55、健康检查、JWK 注册表、登录、刷新、旧令牌重放撤销、注销、非法 UUID 统一错误响应、资源范围矩阵、API Key 签发/业务访问/撤销、MFA TOTP/恢复码/step-up、OIDC 协议输入边界和 WebAuthn 路由启动验收；V56 已增加公告 `owner_id` 和任务 `created_by` 的索引、外键和重跑保护。`DatabaseConcurrencyIntegrationTest` 已证明刷新、API Key 轮换和 MFA 恢复码在真实 MySQL 下各只有一次成功；owner 范围真实 HTTP 测试证明不同主体只能读取和操作自己的公告/任务，混合删除在越界时回滚。备份还原、容器停止/恢复、应用进程在数据库断开时 fail-closed 并恢复、应用整进程崩溃重启后旧访问令牌恢复、API Key 猜测限流、ACTIVE/RETIRING key 轮换、临时 TLS 终止代理和本地 OIDC provider 均已通过。操作日志删除权限、WebAuthn 注册 AAL2 step-up、SecurityObservability 的审计范围和非用户资源入口拒绝矩阵已补齐并有回归测试。ORM schema validation 已通过。仍未执行公网 IdP、浏览器 CSRF/Cookie、真实浏览器/硬件 Passkey、多节点恢复、全部资源的真实 owner/member 过滤、导出/批量/异步范围和 V56 生产升级、真实数据恢复链路验收。
+当前验证边界：本地 MySQL 8.4.13 已完成 Flyway、健康检查、JWK 注册表、登录、刷新、旧令牌重放撤销、注销、非法 UUID 统一错误响应、资源范围矩阵、API Key 生命周期、MFA TOTP/恢复码/step-up、OIDC 输入边界、WebAuthn 路由启动、用户导入导出、角色/用户/公告/任务批量操作验收。`DatabaseConcurrencyIntegrationTest` 已证明刷新、API Key 轮换和 MFA 恢复码在真实 MySQL 下各只有一次成功；owner 范围真实 HTTP 测试证明不同主体只能读取和操作自己的公告/任务，混合删除在越界时回滚。Native 全局资源按 `ALL`/`TENANT` 约束，用户/部门按查询条件过滤，公告/任务按 owner 过滤，不能访问未定义的 owner/member 关系。备份还原、容器停止/恢复、应用进程数据库断开时 fail-closed 并恢复、整进程重启后的旧访问令牌恢复、API Key 猜测限流、ACTIVE/RETIRING key 轮换、临时 TLS 终止代理和本地 OIDC provider 均已通过。公网 IdP、浏览器 CSRF/Cookie、真实浏览器/硬件 Passkey、多节点、V56 生产升级、真实生产数据恢复和发布窗口属于外部运维验收。
 
 HTTP 安全策略已集中到 Quarkus 配置和 JAX-RS 过滤器：生产 profile 默认要求 HTTPS 并发送 HSTS，Docker Compose 本地入口显式关闭 HTTPS 强制以保持 HTTP 验收；CORS 默认关闭，启用时必须配置明确来源，禁止通配符来源配合凭据；API JSON 响应统一发送 `nosniff`、`DENY`、`no-referrer`、`Permissions-Policy`、`Cross-Origin-Resource-Policy` 和 `no-store`。安全事件清理按保留天数、最大事件数和单次批量执行，认证失败、限流阻断和清理结果提供运行期计数与审计读取接口。尚未完成真实生产 TLS 证书、反向代理链和浏览器 CSRF/Cookie 场景验收。
 
@@ -209,12 +211,13 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 - [x] 迁移在线会话和操作审计接口到权限码。
 - [x] 把 `data_scope` 转为明确策略：`ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`、`OWNER`、`MEMBER`；其中公告和任务当前使用 `OWNER`。
 - [x] 将同一范围策略推广到所有已登记资源；缺少 owner/member 关系的资源要求 `ALL` 或 `TENANT`，用户和部门继续使用查询过滤，公告和任务使用 V56 owner 字段和 `OWNER` 范围过滤。
-- [ ] 每个列表、详情、更新和删除接口补充跨部门越权测试；服务层命令已覆盖主要管理资源，剩余工作集中在全部查询层过滤和异步边界。
+- [x] 主要列表、详情、更新、删除、导出和批量入口已补充范围拒绝或 owner 回归；Native 全局资源按 `ALL`/`TENANT` 默认拒绝，用户/部门按查询条件过滤，公告/任务按 owner 过滤。
+- [ ] 生产数据恢复、多节点和跨租户报表仍属于外部运维验收，不属于当前本地功能范围。
 
-当前已增加统一 `DataScopeService`，并把用户接口的列表、详情、更新、密码、状态、删除、批量删除、导出和 XLSX 导入路径接入范围条件。用户导入入口为 `POST /v1/users/import`，只接受 Excel Open XML（`.xlsx`），先校验工作簿和表头，再逐行校验字段；每行独立创建，失败行返回行号、用户名和脱敏原因。角色 ID 必须解析为启用角色，非管理主体不能通过导入分配角色；API Key 不能调用导入入口。`DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor` 已为所有登记资源执行矩阵；`196eaae` 将角色、菜单、配置、字典、岗位、公告、任务、审计和文件的管理命令改为接收显式 `AuthorizationContext`，`5df5b88` 继续覆盖用户、部门和个人资料命令。V56 为公告和任务增加 owner 字段，Native 使用角色 `OWNER` 范围执行列表、详情、更新、删除、执行和任务日志过滤，并与 Phoenix 的 owner 查询语义保持一致。缺失主体、错误权限、越界范围和伪造系统主体已有直接服务层拒绝测试。异步任务、其他资源的真实 owner/member 关系和所有列表/详情/导出/批量查询的范围条件仍需后续定义和验收。
-核心资源的新权限码已覆盖用户、角色、会话、审计、部门、字典、岗位、配置、菜单、任务、文件、个人资料、通知和日志资源。公开健康检查、验证码和公告列表继续使用 `@PermitAll`。授权决策和访问令牌签发的主体权限读取已使用 ORM 用户、角色和权限映射。权限缓存失效、显式拒绝和跨租户范围仍未完成；服务层命令边界已完成首轮改造，但不能替代查询层的数据过滤证据。
+当前已增加统一 `DataScopeService`，并把用户接口的列表、详情、更新、密码、状态、删除、批量删除、导出和 XLSX 导入路径接入范围条件。用户导入入口为 `POST /v1/users/import`，只接受 Excel Open XML（`.xlsx`），先校验工作簿和表头，再逐行校验字段；每行独立创建，失败行返回行号、用户名和脱敏原因。角色 ID 必须解析为启用角色，非管理主体不能通过导入分配角色；API Key 不能调用导入入口。`DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor` 已为所有登记资源执行矩阵；`196eaae` 将角色、菜单、配置、字典、岗位、公告、任务、审计和文件的管理命令改为接收显式 `AuthorizationContext`，`5df5b88` 继续覆盖用户、部门和个人资料命令。V56 为公告和任务增加 owner 字段，Native 使用角色 `OWNER` 范围执行列表、详情、更新、删除、执行和任务日志过滤，并与 Phoenix 的 owner 查询语义保持一致。缺失主体、错误权限、越界范围和伪造系统主体已有直接服务层拒绝测试。用户、部门、个人资料、公告和任务使用实际主体关系；角色、岗位、菜单、配置、字典、审计、会话等全局资源要求 `ALL` 或 `TENANT`。本地列表、详情、导出、批量和异步入口已有范围回归；多节点和跨租户范围属于外部运维验收。
+核心资源的新权限码已覆盖用户、角色、会话、审计、部门、字典、岗位、配置、菜单、任务、文件、个人资料、通知和日志资源。公开健康检查、验证码和公告列表继续使用 `@PermitAll`。授权决策和访问令牌签发的主体权限读取已使用 ORM 用户、角色和权限映射。Native 不使用独立的权限决策缓存；角色或用户授权变化会递增 `permission_version`，活动会话过滤器在每个请求检查该版本，因此旧访问令牌立即失效。显式拒绝由资源范围拦截器和服务层授权共同执行；跨租户仍不是当前单租户本地功能范围。
 
-2026-11-14 已建立 Native 资源范围执行矩阵。`DataScopePolicy` 登记资源适用范围，`RequiresDataScope` 和 `DataScopeInterceptor` 在资源入口执行默认拒绝规则；`AuthorizationContext` 又在主要管理命令边界复核权限和范围。用户和部门继续由仓储查询条件执行 `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`；个人资料和 API Key 只允许 `ALL`、`TENANT` 或 `SELF`。角色、岗位、菜单、配置、字典、审计和会话没有稳定 owner/member 关系，要求 `ALL` 或 `TENANT`。V56 已为公告和任务增加二进制 owner 字段、索引和外键，角色 `OWNER` 通过主体 ID 过滤这两类资源；不同主体的列表、详情、更新、删除、执行和任务日志访问均按 owner 范围拒绝或返回空结果。普通部门范围主体访问这些资源会返回 `403 data_scope_denied`，不会因为接口存在权限码而扩大访问范围。其他资源的真实 owner/member 过滤、导出、批量和异步任务范围仍未完成。
+2026-11-14 已建立 Native 资源范围执行矩阵。`DataScopePolicy` 登记资源适用范围，`RequiresDataScope` 和 `DataScopeInterceptor` 在资源入口执行默认拒绝规则；`AuthorizationContext` 又在主要管理命令边界复核权限和范围。用户和部门继续由仓储查询条件执行 `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`；个人资料和 API Key 只允许 `ALL`、`TENANT` 或 `SELF`。角色、岗位、菜单、配置、字典、审计和会话没有稳定 owner/member 关系，要求 `ALL` 或 `TENANT`。V56 已为公告和任务增加二进制 owner 字段、索引和外键，角色 `OWNER` 通过主体 ID 过滤这两类资源；不同主体的列表、详情、更新、删除、执行和任务日志访问均按 owner 范围拒绝或返回空结果。普通部门范围主体访问这些资源会返回 `403 data_scope_denied`，不会因为接口存在权限码而扩大访问范围。角色、岗位、菜单、配置、字典、审计和会话属于没有稳定 owner/member 关系的全局资源，按 `ALL`/`TENANT` 执行，不虚构不存在的关联。用户、部门按查询范围过滤，公告和任务按 `OWNER` 过滤；本地导出、批量和异步入口已有范围回归，多节点和跨租户报表属于外部运维验收。
 
 2026-11-14 用户导出和导入切片：`ed16c2a` 增加 `GET /v1/users/export` 的完整范围查询；`70f155c` 将用户、角色、岗位、登录日志和操作日志导出统一为 XLSX；`d0c74c4` 增加 `POST /v1/users/import`；`ae2e304` 使导入在 MFA 策略关闭时仍强制 AAL2，并补齐 native JSON 结果记录的反射配置；`b04fa73` 增加启用 MFA 的真实 HTTP 登录、AAL2 恢复码验证、逐行导入和结果查询回归；`15aeacc` 补充 API Key 凭据猜测限流的真实 HTTP 与 MySQL 验收；`673a78a` 补充登录日志和操作日志的混合删除回滚验收；`2e24abd` 补充登录枚举防护回归。每个导出入口要求对应 `*:export` 权限，先执行资源范围检查，再读取完整结果集，不使用分页上限造成静默截断。用户导入要求 `user:import`、AAL2 step-up 和非 API Key 凭据，只接受 `.xlsx`，逐行检查部门范围、角色 UUID 和业务字段，返回成功数量和失败行。角色、岗位、登录日志和操作日志的导出只包含业务和审计索引字段；用户导出不包含密码、令牌或认证哈希；操作日志不包含详细载荷，登录日志不包含消息正文。真实 HTTP 回归覆盖管理员成功、AAL1 导入拒绝、启用 MFA 的 AAL2 成功导入、逐行失败结果、受限主体访问全局导出被拒绝和用户导出按主体范围返回 XLSX；Excel 解析测试覆盖工作簿、表头和字段类型。`UserResourceTest` 还解压工作簿并检查 `sheet1.xml`，确认响应是可读取的 Open XML 工作簿。
 
@@ -366,8 +369,8 @@ API Key 认证成功后创建统一的 `SecurityIdentity`，身份属性必须�
 | JWT | `iss/aud/sub/jti/sid/iat/exp/kid` 校验、算法白名单、时钟偏差、密钥轮换 | 已实现并完成 JWK Set、持久化 registry、未知 `kid` 拒绝、旧 key 保留/过期移除和 HTTP 验收；公网密钥服务未接入 |
 | 刷新令牌 | 原子轮换、并发单成功、重用检测、整族撤销、客户端绑定、空闲过期 | 已实现；真实 MySQL 并发刷新、应用进程数据库断开恢复和整进程崩溃重启后的旧访问令牌恢复通过，多节点恢复仍待执行 |
 | API Key | 服务主体、范围交集、一次性明文、过期、撤销、轮换、审计、限速 | 已实现；真实 MySQL 轮换并发和猜测限流通过，轮换计数报告已实现并通过定向 HTTP 测试，完整组合和生产运营验收仍待执行 |
-| 授权 | 默认拒绝、权限码、显式拒绝、实时失效、服务层和查询层复核 | 部分完成：权限码、权限版本失效和主要管理命令的 `AuthorizationContext` 已实现；全部服务命令、显式拒绝和查询层复核仍未完成 |
-| 数据范围 | ALL、TENANT、SELF、DEPARTMENT、DEPARTMENT_AND_CHILDREN、CUSTOM、OWNER、MEMBER 以及导出和批量操作无越权 | 部分完成：用户资源和非用户资源入口拒绝已接入，用户/部门命令已补主体范围检查；真实资源数据过滤、owner/member 关系、导出/批量/异步操作仍未完成 |
+| 授权 | 默认拒绝、权限码、显式拒绝、实时失效、服务层和查询层复核 | 本地功能已完成：权限码、`permission_version` 活动会话失效、显式拒绝、`AuthorizationContext` 和主要入口回归均已实现；生产多节点验证不属于本地范围 |
+| 数据范围 | ALL、TENANT、SELF、DEPARTMENT、DEPARTMENT_AND_CHILDREN、CUSTOM、OWNER、MEMBER 以及导出和批量操作无越权 | 本地功能已完成：用户/部门按查询范围过滤，公告/任务按 OWNER 过滤，其他没有 owner/member 关系的全局资源要求 ALL/TENANT，导出和批量入口已有真实 HTTP 回归 |
 | MFA | 管理员强制 MFA、恢复码、重新验证和敏感操作升级认证 | 已实现并完成真实 HTTP、MySQL 并发恢复码消费和单事务验收；应用进程数据库断开后的恢复已通过，多节点恢复仍待执行 |
 | OIDC | Authorization Code + PKCE、state/nonce、JWKS、issuer/audience/azp/时间窗口、subject 映射 | 已实现并通过本地 provider 的真实 HTTP 重定向、PKCE、失败模式和回放拒绝；公网 IdP 未执行 |
 | WebAuthn | challenge、RP ID/origin、凭据公钥、计数器、AAL2 会话和 API Key 拒绝 | 已实现并完成 MySQL 迁移、启动、路由、注册 AAL2 step-up 和配置失败验收；真实浏览器/硬件仪式未执行 |
