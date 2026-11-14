@@ -2,9 +2,9 @@
 
 跨项目统一架构见 [`02-auth-authorization-parity-architecture.md`](02-auth-authorization-parity-architecture.md)。本文件同时记录 Native 本地实施任务和与 Keystone Phoenix 的跨项目验收要求。项目采用一次性重构，不保留旧接口、旧权限格式、旧响应封装或旧整数主键。
 
-更新日期：2026-11-14。当前代码基线为 `53b3cac`。`73d1bb9` 至 `6b1a586` 完成权限目录、UUID 主键、统一错误、资源范围、HTTP 安全策略、审计清理、限流告警和持久化 JWK 注册表；`7c0ec76` 完成 OIDC Authorization Code + PKCE；`a73073b` 完成 Native WebAuthn/Passkey；`3501045` 增加真实 MySQL 刷新、API Key 轮换和 MFA 恢复码并发验收；`6267559` 对齐 ORM 与 MySQL 最终列类型，并修复 WebAuthn 默认关闭时的 session key 启动条件；`0960a5e` 修复操作日志删除权限码并要求 WebAuthn 注册使用 AAL2 step-up；`53b3cac` 补齐非用户资源入口范围检查、修复 CDI 代理上的范围注解解析并增加真实 HTTP 越权测试。当前 `./gradlew clean test --no-daemon` 为 160 项通过、0 项跳过，`./gradlew quarkusBuild -x test --no-daemon` 和源码行数检查均通过；MySQL 8.4.13 已执行并重复验证 Flyway V55，真实启动健康检查无 Hibernate schema validation 错误。本地 OIDC provider、临时 TLS 终止代理、备份还原、应用进程数据库断开恢复、API Key 猜测限流、JWT key 轮换和单进程崩溃重启后的旧访问令牌恢复均已完成真实验收。主线已无 `is_admin` 字段。当前剩余公网 IdP、浏览器/硬件 Passkey、浏览器 CSRF/Cookie、多节点恢复、完整服务层授权复核、真实非用户资源数据过滤和运营报表验收。
+更新日期：2026-11-14。当前代码基线为 `3b0ec87`。`73d1bb9` 至 `6b1a586` 完成权限目录、UUID 主键、统一错误、资源范围、HTTP 安全策略、审计清理、限流告警和持久化 JWK 注册表；`7c0ec76` 完成 OIDC Authorization Code + PKCE；`a73073b` 完成 Native WebAuthn/Passkey；`3501045` 增加真实 MySQL 刷新、API Key 轮换和 MFA 恢复码并发验收；`6267559` 对齐 ORM 与 MySQL 最终列类型，并修复 WebAuthn 默认关闭时的 session key 启动条件；`0960a5e` 修复操作日志删除权限码并要求 WebAuthn 注册使用 AAL2 step-up；`53b3cac` 补齐非用户资源入口范围检查、修复 CDI 代理上的范围注解解析并增加真实 HTTP 越权测试；`196eaae` 为角色、菜单、配置、字典、岗位、公告、任务、审计和文件等管理命令建立显式 `AuthorizationContext`；`5df5b88` 将用户、部门和个人资料命令也接入该上下文；`3b0ec87` 增加 API Key 轮换计数和安全事件运营报告接口，并通过定向 HTTP 测试。当前 `./gradlew clean test --no-daemon` 为 167 项通过、0 项跳过；`./gradlew quarkusBuild -x test --no-daemon`、源码行数和 `git diff --check` 均通过。MySQL 8.4.13 已执行并重复验证 Flyway V55，真实启动健康检查无 Hibernate schema validation 错误。本地 OIDC provider、临时 TLS 终止代理、备份还原、应用进程数据库断开恢复、API Key 猜测限流、JWT key 轮换和单进程崩溃重启后的旧访问令牌恢复均已完成真实验收。主线已无 `is_admin` 字段。当前剩余公网 IdP、浏览器/硬件 Passkey、浏览器 CSRF/Cookie、多节点恢复、真实非用户资源 owner/member 数据过滤、导出/批量/异步范围和旧代码清理；报告接口的真实生产数据和跨租户报告验收仍待执行。
 
-当前结论：核心实现已完成，开发计划尚未全部完成，不能据此声明生产发布验收通过。非用户资源入口范围已完成一轮真实 HTTP 拒绝测试，但服务层授权复核、真实资源数据过滤、浏览器 CSRF/Cookie 实际行为、浏览器或硬件 Passkey、真实生产 IdP/TLS、多节点恢复和凭据生命周期运营报表仍属于未闭环条件。
+当前结论：核心实现已完成，开发计划尚未全部完成，不能据此声明生产发布验收通过。服务层已完成一轮显式 `AuthorizationContext` 改造，并通过缺失主体、错误权限、越界范围和伪造系统主体测试；报告接口已通过定向 HTTP 测试，合并后的完整测试为 167 项通过。真实生产数据和跨租户报告验收仍未完成。真实资源数据过滤、导出/批量/异步范围、浏览器 CSRF/Cookie 实际行为、浏览器或硬件 Passkey、真实生产 IdP/TLS、多节点恢复和旧代码清理仍属于未闭环条件。
 
 ## 跨项目统一主线
 
@@ -175,12 +175,12 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 - [x] 迁移在线会话和操作审计接口到权限码。
 - [x] 把 `data_scope` 转为明确策略：`ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`。
 - [x] 将同一范围策略推广到所有已登记资源；缺少 owner/member 关系的资源默认要求 `ALL` 或 `TENANT`，用户和部门继续使用查询过滤。
-- [ ] 每个列表、详情、更新和删除接口补充跨部门越权测试。
+- [ ] 每个列表、详情、更新和删除接口补充跨部门越权测试；服务层命令已覆盖主要管理资源，剩余工作集中在全部查询层过滤和异步边界。
 
-当前已增加统一 `DataScopeService`，并把用户接口的列表、详情、更新、密码、状态、删除、批量删除、导出和导入路径接入范围条件。`DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor` 已为所有登记资源执行矩阵；岗位、菜单、配置、字典、审计、会话、文件、公告和任务在没有稳定 owner/member 关系时默认拒绝部门范围主体。异步任务和 owner/member 关系字段仍需后续定义。
-核心资源的新权限码已覆盖用户、角色、会话、审计、部门、字典、岗位、配置、菜单、任务、文件、个人资料、通知和日志资源。公开健康检查、验证码和公告列表继续使用 `@PermitAll`。授权决策和访问令牌签发的主体权限读取已使用 ORM 用户、角色和权限映射。权限缓存失效、显式拒绝和跨租户范围仍未完成。
+当前已增加统一 `DataScopeService`，并把用户接口的列表、详情、更新、密码、状态、删除、批量删除、导出和导入路径接入范围条件。`DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor` 已为所有登记资源执行矩阵；`196eaae` 将角色、菜单、配置、字典、岗位、公告、任务、审计和文件的管理命令改为接收显式 `AuthorizationContext`，`5df5b88` 继续覆盖用户、部门和个人资料命令。缺失主体、错误权限、越界范围和伪造系统主体已有直接服务层拒绝测试。异步任务、真实 owner/member 关系和所有列表/详情/导出/批量查询的范围条件仍需后续定义和验收。
+核心资源的新权限码已覆盖用户、角色、会话、审计、部门、字典、岗位、配置、菜单、任务、文件、个人资料、通知和日志资源。公开健康检查、验证码和公告列表继续使用 `@PermitAll`。授权决策和访问令牌签发的主体权限读取已使用 ORM 用户、角色和权限映射。权限缓存失效、显式拒绝和跨租户范围仍未完成；服务层命令边界已完成首轮改造，但不能替代查询层的数据过滤证据。
 
-2026-11-14 已建立 Native 资源范围执行矩阵。`DataScopePolicy` 登记资源适用范围，`RequiresDataScope` 和 `DataScopeInterceptor` 在资源入口执行默认拒绝规则。用户和部门继续由仓储查询条件执行 `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`；个人资料和 API Key 只允许 `ALL`、`TENANT` 或 `SELF`。角色、岗位、菜单、配置、字典、审计和会话没有稳定 owner/member 关系，要求 `ALL` 或 `TENANT`。文件、公告和任务当前没有可验证的 owner/member 字段，也采用 `ALL` 或 `TENANT`，直到领域模型补充关系。普通部门范围主体访问这些资源会返回 `403 data_scope_denied`，不会因为接口存在权限码而扩大访问范围。
+2026-11-14 已建立 Native 资源范围执行矩阵。`DataScopePolicy` 登记资源适用范围，`RequiresDataScope` 和 `DataScopeInterceptor` 在资源入口执行默认拒绝规则；`AuthorizationContext` 又在主要管理命令边界复核权限和范围。用户和部门继续由仓储查询条件执行 `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`；个人资料和 API Key 只允许 `ALL`、`TENANT` 或 `SELF`。角色、岗位、菜单、配置、字典、审计和会话没有稳定 owner/member 关系，要求 `ALL` 或 `TENANT`。文件、公告和任务当前没有可验证的 owner/member 字段，也采用 `ALL` 或 `TENANT`，直到领域模型补充关系。普通部门范围主体访问这些资源会返回 `403 data_scope_denied`，不会因为接口存在权限码而扩大访问范围。真实记录的 owner/member 过滤、导出、批量和异步任务范围仍未完成。
 
 | 资源 | 支持范围 | 执行方式 | 当前入口 |
 | --- | --- | --- | --- |
@@ -231,7 +231,7 @@ API Key、角色、用户、在线会话、MFA enrollment/策略变更和恢复�
 ### P4：运营与发布
 
 - [x] 增加安全事件基础指标、异常登录和 MFA/API Key 限流告警、事件容量限制和保留清理；运行指标通过 `GET /api/v1/monitor/security` 提供给 `audit:read` 主体。
-- [ ] 增加 API Key 轮换报告和按租户的安全事件运营报表。
+- [x] 增加 API Key 轮换报告和按当前单租户范围筛选的安全事件运营报表（`3b0ec87`，定向 HTTP 测试 3 项通过；完整组合测试、真实生产数据和多租户验收仍待执行）。
 - [x] 进行 MySQL 8.4 刷新、API Key 轮换和 MFA 恢复码并发验收；完成容器停止/恢复、迁移重复执行和 ORM schema validation 检查。仍需补应用进程断开后的自动重连、备份还原和真实密钥轮换演练。
 - [x] 完成 MFA 因子消费的单事务实现，覆盖 enrollment、TOTP、恢复码和认证请求状态；真实 MySQL 并发消费已通过，应用进程断开后的恢复仍待执行。
 - [x] 完成可信代理地址解析，默认使用连接远端地址，拒绝未验证的 `X-Forwarded-For` 链；真实 HTTP 注入和部署链验收仍待执行。
@@ -308,15 +308,15 @@ API Key 认证成功后创建统一的 `SecurityIdentity`，身份属性必须�
 | 密码认证 | 弱密码拒绝、失败退避、账户锁定、用户枚举防护、密码变更撤销会话 | 部分完成：密码策略和指数退避已实现，用户枚举防护及运行验收未完成 |
 | JWT | `iss/aud/sub/jti/sid/iat/exp/kid` 校验、算法白名单、时钟偏差、密钥轮换 | 已实现并完成 JWK Set、持久化 registry、未知 `kid` 拒绝、旧 key 保留/过期移除和 HTTP 验收；公网密钥服务未接入 |
 | 刷新令牌 | 原子轮换、并发单成功、重用检测、整族撤销、客户端绑定、空闲过期 | 已实现；真实 MySQL 并发刷新、应用进程数据库断开恢复和整进程崩溃重启后的旧访问令牌恢复通过，多节点恢复仍待执行 |
-| API Key | 服务主体、范围交集、一次性明文、过期、撤销、轮换、审计、限速 | 已实现；真实 MySQL 轮换并发和猜测限流通过，完整运营报表仍待执行 |
-| 授权 | 默认拒绝、权限码、显式拒绝、实时失效、服务层和查询层复核 | 部分完成：权限码和权限版本失效已实现，显式拒绝及全量服务层复核未完成 |
-| 数据范围 | ALL、TENANT、SELF、DEPARTMENT、DEPARTMENT_AND_CHILDREN、CUSTOM、OWNER、MEMBER 以及导出和批量操作无越权 | 部分完成：用户资源和非用户资源入口拒绝已接入并完成一轮 HTTP 验收；真实资源数据过滤、服务层复核、导出/批量/异步操作仍未完成 |
+| API Key | 服务主体、范围交集、一次性明文、过期、撤销、轮换、审计、限速 | 已实现；真实 MySQL 轮换并发和猜测限流通过，轮换计数报告已实现并通过定向 HTTP 测试，完整组合和生产运营验收仍待执行 |
+| 授权 | 默认拒绝、权限码、显式拒绝、实时失效、服务层和查询层复核 | 部分完成：权限码、权限版本失效和主要管理命令的 `AuthorizationContext` 已实现；全部服务命令、显式拒绝和查询层复核仍未完成 |
+| 数据范围 | ALL、TENANT、SELF、DEPARTMENT、DEPARTMENT_AND_CHILDREN、CUSTOM、OWNER、MEMBER 以及导出和批量操作无越权 | 部分完成：用户资源和非用户资源入口拒绝已接入，用户/部门命令已补主体范围检查；真实资源数据过滤、owner/member 关系、导出/批量/异步操作仍未完成 |
 | MFA | 管理员强制 MFA、恢复码、重新验证和敏感操作升级认证 | 已实现并完成真实 HTTP、MySQL 并发恢复码消费和单事务验收；应用进程故障恢复仍待执行 |
 | OIDC | Authorization Code + PKCE、state/nonce、JWKS、issuer/audience/azp/时间窗口、subject 映射 | 已实现并通过本地 provider 的真实 HTTP 重定向、PKCE、失败模式和回放拒绝；公网 IdP 未执行 |
 | WebAuthn | challenge、RP ID/origin、凭据公钥、计数器、AAL2 会话和 API Key 拒绝 | 已实现并完成 MySQL 迁移、启动、路由、注册 AAL2 step-up 和配置失败验收；真实浏览器/硬件仪式未执行 |
 | Web 与传输 | HTTPS、CORS、CSRF、Cookie 属性、浏览器存储、缓存控制 | 生产 HTTPS/HSTS、CORS、统一安全响应头和临时 TLS 代理链已验证；浏览器 CSRF/Cookie 和生产证书链仍待执行 |
-| 审计 | 签发、使用、失败、撤销、重用、权限拒绝和管理员操作可追踪 | 部分完成：API Key 认证、权限拒绝和非秘密 credential ID 已记录；事件按保留时间和总量清理，并提供基础指标；完整凭据生命周期和 MySQL 运行验收未完成 |
-| 运维 | 密钥托管、轮换、备份恢复、告警、限流、数据库故障行为 | 部分完成：认证失败阻断告警、限流、事件清理、迁移重复执行、备份还原、容器恢复、进程崩溃重启、进程存活恢复和 key 轮换已验证；多节点恢复和完整运营报表仍待执行 |
+| 审计 | 签发、使用、失败、撤销、重用、权限拒绝和管理员操作可追踪 | 部分完成：API Key 认证、权限拒绝和非秘密 credential ID 已记录；事件按保留时间和总量清理，安全事件运营报告已实现并通过定向 HTTP 测试；完整凭据生命周期和生产数据验收未完成 |
+| 运维 | 密钥托管、轮换、备份恢复、告警、限流、数据库故障行为 | 部分完成：认证失败阻断告警、限流、事件清理、迁移重复执行、备份还原、容器恢复、进程崩溃重启、进程存活恢复、key 轮换和运营报告接口已验证；完整组合测试、多节点恢复和真实运营演练仍待执行 |
 | 旧代码清理 | 旧根路由、旧 token 字段、旧测试和旧资源全部删除 | 未完成：一次性重构阶段统一删除 |
 
 ## 审查后的阶段调整
