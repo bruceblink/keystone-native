@@ -29,6 +29,23 @@ class AuthResourceTest extends AuthTestFixture {
     }
 
     @Test
+    void acceptsPhoenixCompatibleRsaEncryptedLoginPassword() throws Exception {
+        String publicKey = given().when().get("/v1/auth/rsa-public-key")
+                .then().statusCode(200).extract().path("data.publicKey");
+        byte[] der = java.util.Base64.getDecoder().decode(publicKey);
+        var key = java.security.KeyFactory.getInstance("RSA")
+                .generatePublic(new java.security.spec.X509EncodedKeySpec(der));
+        var cipher = javax.crypto.Cipher.getInstance("RSA/ECB/PKCS1Padding");
+        cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key);
+        String encrypted = java.util.Base64.getEncoder().encodeToString(cipher.doFinal("password".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+
+        given().contentType(JSON)
+                .body("{\"username\":\"admin\",\"password\":\"" + encrypted + "\",\"forceLogin\":true}")
+                .when().post("/v1/auth/login")
+                .then().statusCode(200).body("data.accessToken", not(emptyOrNullString()));
+    }
+
+    @Test
     void accessTokenCarriesCanonicalAuthenticationClaims() throws Exception {
         String token = given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
                 .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");

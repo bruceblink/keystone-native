@@ -4,6 +4,7 @@ import org.junit.jupiter.api.Test;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Base64;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -23,6 +24,13 @@ class JwkSetServiceTest {
         assertEquals("AQAB", key.e());
         assertTrue(key.n().matches("[A-Za-z0-9_-]+"));
         assertTrue(key.e().matches("[A-Za-z0-9_-]+"));
+    }
+
+    @Test
+    void exposesSubjectPublicKeyInfoForLoginClients() {
+        byte[] der = Base64.getDecoder().decode(new JwkSetService("keys/publicKey.pem", "test-rs256-1").currentPublicKeyBase64());
+        assertTrue(der.length > 256);
+        assertEquals(0x30, der[0] & 0xff);
     }
 
     @Test

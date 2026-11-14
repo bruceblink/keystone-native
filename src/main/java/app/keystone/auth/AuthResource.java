@@ -8,6 +8,7 @@ import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.PUT;
+import jakarta.ws.rs.GET;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
@@ -30,6 +31,8 @@ public class AuthResource {
     @Inject AccessTokenService tokens;
     @Inject SecurityIdentity identity;
     @Inject LoginRateLimiter loginRateLimiter;
+    @Inject LoginPasswordDecoder loginPasswordDecoder;
+    @Inject JwkSetService jwkSetService;
     @Inject SecurityObservability securityObservability;
     @Inject MfaService mfa;
     @Inject MfaSessionRepository mfaSessions;
@@ -49,7 +52,8 @@ public class AuthResource {
             }
         }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
-        var user = users.authenticate(request.username(), request.password());
+        String plaintextPassword = loginPasswordDecoder.decode(request.password()).orElse("");
+        var user = users.authenticate(request.username(), plaintextPassword);
         if (user.isEmpty()) {
             boolean blocked;
             try { blocked = loginRateLimiter.recordFailure(request.username(), clientAddress); }
@@ -87,6 +91,16 @@ public class AuthResource {
         users.markLogin(u.id(), clientAddress);
         loginLogs.record(u.username(), "SUCCESS", clientAddress, "login successful", userAgent);
         return tokenResponse;
+    }
+
+    /** 返回 RSA/SubjectPublicKeyInfo 公钥，供客户端加密登录密码。 */
+    @GET @Path("/rsa-public-key") @PermitAll @RejectApiKey
+    public Response rsaPublicKey() {
+        try {
+            return Response.ok(ApiResponse.ok(java.util.Map.of("publicKey", jwkSetService.currentPublicKeyBase64()))).build();
+        } catch (IllegalStateException e) {
+            return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("JWT public key is unavailable")).build();
+        }
     }
 
     @POST @Path("/refresh") @PermitAll @RejectApiKey

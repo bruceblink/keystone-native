@@ -77,6 +77,16 @@ public class JwkSetService {
         return snapshot().pem();
     }
 
+    /** 返回登录客户端使用的 SubjectPublicKeyInfo DER 公钥，不暴露私钥材料。 */
+    public String currentPublicKeyBase64() {
+        String text = currentPem().trim();
+        String body = text
+                .replace("-----BEGIN PUBLIC KEY-----", "")
+                .replace("-----END PUBLIC KEY-----", "")
+                .replaceAll("\\s", "");
+        return Base64.getEncoder().encodeToString(Base64.getDecoder().decode(body));
+    }
+
     private CachedKey snapshot() {
         long now = System.nanoTime();
         CachedKey existing = cached;
