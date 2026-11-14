@@ -21,9 +21,12 @@ public class SecurityHeadersFilter implements ContainerResponseFilter {
     /** 在运行时读取 HSTS 开关，避免 native image 固化生产 profile 的构建时值。 */
     @PostConstruct
     void loadRuntimeConfiguration() {
-        hstsEnabled = ConfigProvider.getConfig()
-                .getOptionalValue("keystone.security.http.hsts", Boolean.class)
-                .orElse(false);
+        var config = ConfigProvider.getConfig();
+        String value = System.getenv("KEYSTONE_SECURITY_HTTP_HSTS");
+        if (value == null) value = System.getenv("HTTP_HSTS_ENABLED");
+        hstsEnabled = value == null
+                ? config.getOptionalValue("keystone.security.http.hsts", Boolean.class).orElse(false)
+                : Boolean.parseBoolean(value);
     }
 
     @Override

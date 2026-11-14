@@ -34,8 +34,16 @@ public class HttpsRequestFilter implements ContainerRequestFilter {
     @PostConstruct
     void loadRuntimeConfiguration() {
         var config = ConfigProvider.getConfig();
-        requireHttps = config.getOptionalValue("keystone.security.http.require-https", Boolean.class).orElse(false);
-        trustForwardedProto = config.getOptionalValue("keystone.security.http.trust-forwarded-proto", Boolean.class).orElse(false);
+        requireHttps = runtimeBoolean(config, "keystone.security.http.require-https", "KEYSTONE_SECURITY_HTTP_REQUIRE_HTTPS", "HTTP_REQUIRE_HTTPS");
+        trustForwardedProto = runtimeBoolean(config, "keystone.security.http.trust-forwarded-proto", "KEYSTONE_SECURITY_HTTP_TRUST_FORWARDED_PROTO", "HTTP_TRUST_FORWARDED_PROTO");
+    }
+
+    private static boolean runtimeBoolean(org.eclipse.microprofile.config.Config config, String property, String... environmentNames) {
+        for (String environmentName : environmentNames) {
+            String value = System.getenv(environmentName);
+            if (value != null) return Boolean.parseBoolean(value);
+        }
+        return config.getOptionalValue(property, Boolean.class).orElse(false);
     }
 
     @Override
