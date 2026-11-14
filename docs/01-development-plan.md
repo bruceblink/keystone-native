@@ -28,6 +28,8 @@
 
 本轮补充基线为 `7e8f0ee`。岗位创建、更新、XLSX 导出和删除增加真实 MySQL HTTP 回归，测试结束后清理岗位数据。全量测试、`quarkusBuild -x test`、源码行数和差异检查均通过。
 
+本轮补充基线为 `4335d9f`。公告和任务新增 OWNER 批量删除接口；接口先锁定全部目标，缺失或越界时整体回滚。任务删除前暂停调度，失败后恢复调度，并保留已有执行日志。真实 MySQL HTTP 回归、全量测试和 `quarkusBuild -x test` 均通过。
+
 本轮联调修复基线为 `e316119`。在线会话列表现在返回 `sys_auth_session.id`，与登录响应的 `data.sessionId` 一致；会话撤销按该会话 ID 加锁并撤销关联刷新令牌。真实 HTTP 回归覆盖登录、在线会话列表、强制下线、旧访问令牌失效和旧会话从列表移除。
 
 当前阶段范围（2026-11-14）：本阶段只以本地功能开发、已知问题修复和本机或隔离数据库验收为完成标准。公网 IdP、硬件 Passkey 仪式、多节点恢复、生产反向代理链和生产发布窗口属于后续外部运维验收记录，不作为当前功能开发或本地验收的阻塞项。
@@ -212,7 +214,7 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 
 2026-11-14 已建立 Native 资源范围执行矩阵。`DataScopePolicy` 登记资源适用范围，`RequiresDataScope` 和 `DataScopeInterceptor` 在资源入口执行默认拒绝规则；`AuthorizationContext` 又在主要管理命令边界复核权限和范围。用户和部门继续由仓储查询条件执行 `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`；个人资料和 API Key 只允许 `ALL`、`TENANT` 或 `SELF`。角色、岗位、菜单、配置、字典、审计和会话没有稳定 owner/member 关系，要求 `ALL` 或 `TENANT`。V56 已为公告和任务增加二进制 owner 字段、索引和外键，角色 `OWNER` 通过主体 ID 过滤这两类资源；不同主体的列表、详情、更新、删除、执行和任务日志访问均按 owner 范围拒绝或返回空结果。普通部门范围主体访问这些资源会返回 `403 data_scope_denied`，不会因为接口存在权限码而扩大访问范围。其他资源的真实 owner/member 过滤、导出、批量和异步任务范围仍未完成。
 
-2026-11-14 用户导出和导入切片：`ed16c2a` 增加 `GET /v1/users/export` 的完整范围查询；`70f155c` 将用户、角色、岗位、登录日志和操作日志导出统一为 XLSX；`d0c74c4` 增加 `POST /v1/users/import`；`ae2e304` 使导入在 MFA 策略关闭时仍强制 AAL2，并补齐 native JSON 结果记录的反射配置；`15aeacc` 补充 API Key 凭据猜测限流的真实 HTTP 与 MySQL 验收；`673a78a` 补充登录日志和操作日志的混合删除回滚验收；`2e24abd` 补充登录枚举防护回归。每个导出入口要求对应 `*:export` 权限，先执行资源范围检查，再读取完整结果集，不使用分页上限造成静默截断。用户导入要求 `user:import`、AAL2 step-up 和非 API Key 凭据，只接受 `.xlsx`，逐行检查部门范围、角色 UUID 和业务字段，返回成功数量和失败行。角色、岗位、登录日志和操作日志的导出只包含业务和审计索引字段；用户导出不包含密码、令牌或认证哈希；操作日志不包含详细载荷，登录日志不包含消息正文。真实 HTTP 回归覆盖管理员成功、AAL1 导入拒绝、受限主体访问全局导出被拒绝和用户导出按主体范围返回 XLSX；Excel 解析测试覆盖工作簿、表头和字段类型。`UserResourceTest` 还解压工作簿并检查 `sheet1.xml`，确认响应是可读取的 Open XML 工作簿。AAL2 成功导入和逐行创建结果仍需在启用 MFA 的真实 HTTP 流程中补充验收。
+2026-11-14 用户导出和导入切片：`ed16c2a` 增加 `GET /v1/users/export` 的完整范围查询；`70f155c` 将用户、角色、岗位、登录日志和操作日志导出统一为 XLSX；`d0c74c4` 增加 `POST /v1/users/import`；`ae2e304` 使导入在 MFA 策略关闭时仍强制 AAL2，并补齐 native JSON 结果记录的反射配置；`b04fa73` 增加启用 MFA 的真实 HTTP 登录、AAL2 恢复码验证、逐行导入和结果查询回归；`15aeacc` 补充 API Key 凭据猜测限流的真实 HTTP 与 MySQL 验收；`673a78a` 补充登录日志和操作日志的混合删除回滚验收；`2e24abd` 补充登录枚举防护回归。每个导出入口要求对应 `*:export` 权限，先执行资源范围检查，再读取完整结果集，不使用分页上限造成静默截断。用户导入要求 `user:import`、AAL2 step-up 和非 API Key 凭据，只接受 `.xlsx`，逐行检查部门范围、角色 UUID 和业务字段，返回成功数量和失败行。角色、岗位、登录日志和操作日志的导出只包含业务和审计索引字段；用户导出不包含密码、令牌或认证哈希；操作日志不包含详细载荷，登录日志不包含消息正文。真实 HTTP 回归覆盖管理员成功、AAL1 导入拒绝、启用 MFA 的 AAL2 成功导入、逐行失败结果、受限主体访问全局导出被拒绝和用户导出按主体范围返回 XLSX；Excel 解析测试覆盖工作簿、表头和字段类型。`UserResourceTest` 还解压工作簿并检查 `sheet1.xml`，确认响应是可读取的 Open XML 工作簿。
 
 2026-11-14 角色成员分配切片：`RoleResource` 增加 `GET /v1/roles/{id}/users`、`PUT /v1/roles/{id}/users` 和 `DELETE /v1/roles/{id}/users`。写入口使用 `role:assign` 和角色范围检查，成员 ID 在同一事务内锁定并更新用户 `permission_version`。批量请求逐项校验 UUID 和目标用户；任一目标无效或不存在时整体失败，不写入其他成员。`RoleResourceHttpTest` 已通过真实 HTTP 验证无效批量回滚、重复分配、成员查询和撤销。该切片只开放已有角色资源的全局范围，未改变其他资源的 owner/member 关系定义。
 
@@ -221,6 +223,8 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 2026-11-14 用户批量删除范围切片：`DELETE /v1/users?ids=...` 在同一事务中先锁定全部目标并逐项检查存在性和主体范围，再执行删除。任一目标不存在返回 `404`，任一目标越界返回 `403 data_scope_denied`，可见目标不会先被删除。`UserBatchDeletionResourceHttpTest` 已通过真实 HTTP 和 MySQL 验证越界、缺失目标的整体回滚，以及管理主体的成功删除。
 
 2026-11-14 用户 XLSX 导出范围切片：修复 `dept_id` UUID 转换字段的查询参数类型，用户列表和完整 XLSX 导出现在使用规范 UUID 字符串绑定部门范围。新增 `UserExportScopeResourceHttpTest`，使用真实 MySQL 创建部门范围主体和跨部门用户，确认导出工作簿包含当前部门用户且不包含其他部门用户；导出仍先过滤再序列化完整结果集。
+
+本轮补充基线为 `4335d9f`。公告和任务新增 Phoenix 对齐的批量删除入口：`DELETE /v1/notices?notice_ids=...` 和 `DELETE /v1/jobs?jobIds=...`，同时接受通用 `ids` 参数。仓储在同一事务中锁定全部目标并按 `OWNER` 范围过滤；任一目标缺失、越界或 UUID 无效时整体失败，不产生部分删除，重复 ID 只删除一次。任务批量删除先停止调度，数据库失败时恢复原有调度，并保留执行日志。`OwnerBatchResourceHttpTest` 通过真实 MySQL HTTP 验证混合所有者回滚、缺失和非法 ID、重复 ID 去重、成功删除以及任务日志保留。全量测试、`quarkusBuild -x test`、源码行数和差异检查均通过。
 
 | 资源 | 支持范围 | 执行方式 | 当前入口 |
 | --- | --- | --- | --- |
