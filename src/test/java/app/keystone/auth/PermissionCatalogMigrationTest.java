@@ -89,4 +89,38 @@ class PermissionCatalogMigrationTest {
         assertFalse(PermissionCatalog.contains("user:write"));
         assertFalse(PermissionCatalog.contains("profile:read"));
     }
+
+    /** Clean-break 主线不保留旧兼容资源、旧兼容测试或 compat 包。 */
+    @Test
+    void cleanBreakRemovesLegacyResourcesAndTests() throws Exception {
+        assertNoLegacyFiles(Path.of("src/main/java"));
+        assertNoLegacyFiles(Path.of("src/test/java"));
+    }
+
+    /** 认证响应只保留规范 accessToken 和 refreshToken 字段。 */
+    @Test
+    void tokenResponseDoesNotExposeDuplicateLegacyTokenField() throws Exception {
+        String source = Files.readString(Path.of("src/main/java/app/keystone/auth/AuthResource.java"));
+        Matcher matcher = Pattern.compile("record TokenResponse\\(([^)]*)\\)").matcher(source);
+
+        assertTrue(matcher.find(), "TokenResponse record is missing");
+        assertFalse(Pattern.compile("\\btoken\\b").matcher(matcher.group(1)).find());
+    }
+
+    private static void assertNoLegacyFiles(Path root) throws Exception {
+        try (var files = Files.walk(root)) {
+            assertTrue(
+                    files.filter(Files::isRegularFile)
+                            .noneMatch(PermissionCatalogMigrationTest::isLegacyPath),
+                    "legacy compatibility file remains under " + root);
+        }
+    }
+
+    private static boolean isLegacyPath(Path path) {
+        String normalized = path.toString().replace('\\', '/');
+        String fileName = path.getFileName().toString();
+        return normalized.contains("/compat/")
+                || fileName.startsWith("Legacy")
+                || fileName.contains("Compatibility");
+    }
 }
