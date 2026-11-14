@@ -66,6 +66,22 @@ class AuthorizationContextTest {
     }
 
     @Test
+    void explicitServicePrincipalVectorPreservesCredentialAndScopeFields() {
+        AuthorizationContext context = AuthorizationContext.user(
+                "00000000-0000-7000-8000-000000000005", "SERVICE", "service", "API_KEY",
+                "00000000-0000-7000-8000-000000000006", "api", Set.of("role:read"),
+                Set.of("role:read"), "TENANT", 9, "AAL2", DataScopeService.Scope.unrestricted());
+        assertEquals("SERVICE", context.subjectType());
+        assertEquals("API_KEY", context.credentialType());
+        assertEquals("00000000-0000-7000-8000-000000000006", context.credentialId());
+        assertEquals("api", context.clientId());
+        assertEquals(Set.of("role:read"), context.approvedScopes());
+        assertEquals("TENANT", context.dataScope());
+        assertEquals(9, context.permissionVersion());
+        assertEquals("AAL2", context.authenticationLevel());
+    }
+
+    @Test
     void userAndDepartmentCommandsRejectOutOfScopeWritesBeforePersistence() {
         AuthorizationContext context = AuthorizationContext.user(
                 "00000000-0000-7000-8000-000000000003", "limited", "USER",
