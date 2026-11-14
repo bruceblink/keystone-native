@@ -12,6 +12,7 @@ import jakarta.ws.rs.core.MediaType;
 /** 为具备审计读取权限的运维人员提供认证异常和清理指标。 */
 @Path("/v1/monitor/security")
 @Produces(MediaType.APPLICATION_JSON)
+@app.keystone.auth.RequiresDataScope("audit")
 public class SecurityObservabilityResource {
     @Inject SecurityObservability observability;
 

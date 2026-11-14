@@ -7,6 +7,7 @@ import app.keystone.file.FileResource;
 import app.keystone.job.JobResource;
 import app.keystone.menu.MenuResource;
 import app.keystone.monitor.MonitorResource;
+import app.keystone.monitor.SecurityObservabilityResource;
 import app.keystone.post.PostResource;
 import app.keystone.profile.ProfileResource;
 import app.keystone.role.RoleResource;
@@ -20,17 +21,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 class DataScopeResourceMatrixTest {
     @Test
     void protectedResourcesDeclareTheirMatrixResource() {
-        Map<Class<?>, String> expected = Map.of(
-                RoleResource.class, "role",
-                PostResource.class, "post",
-                MenuResource.class, "menu",
-                SystemConfigResource.class, "config",
-                DictionaryResource.class, "dictionary",
-                JobResource.class, "job",
-                OperationLogResource.class, "audit",
-                MonitorResource.class, "session",
-                FileResource.class, "file",
-                ProfileResource.class, "profile");
+        Map<Class<?>, String> expected = Map.ofEntries(
+                Map.entry(RoleResource.class, "role"),
+                Map.entry(PostResource.class, "post"),
+                Map.entry(MenuResource.class, "menu"),
+                Map.entry(SystemConfigResource.class, "config"),
+                Map.entry(DictionaryResource.class, "dictionary"),
+                Map.entry(JobResource.class, "job"),
+                Map.entry(OperationLogResource.class, "audit"),
+                Map.entry(MonitorResource.class, "session"),
+                Map.entry(SecurityObservabilityResource.class, "audit"),
+                Map.entry(FileResource.class, "file"),
+                Map.entry(ProfileResource.class, "profile"));
 
         expected.forEach((resource, value) -> assertEquals(
                 value, resource.getAnnotation(RequiresDataScope.class).value(), resource.getName()));
