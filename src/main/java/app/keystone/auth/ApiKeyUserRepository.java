@@ -20,6 +20,8 @@ import app.keystone.user.PasswordPolicy;
 /** 通过 ORM 读取 API Key 认证主体和签发权限。 */
 @ApplicationScoped
 public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEntity, java.util.UUID> {
+    /** 不存在或暂时锁定的账号也执行一次相同成本的 BCrypt 校验，避免泄露账号存在性。 */
+    private static final String DUMMY_PASSWORD_HASH = "$2a$12$kjxM5Gygcre909f4.loS7uO7NiAf56RAqjQnTQnK5rlACdFf.N3/W";
     @jakarta.inject.Inject ApiKeyRoleRepository roles;
 
     ApiKeyUserEntity findEnabled(String userId) {
@@ -151,15 +153,24 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
                                                           long accountLockBaseSeconds,
                                                           long accountLockMaxSeconds) {
         UserRepository.validateLockConfiguration(accountLockBaseSeconds, accountLockMaxSeconds);
-        if (username == null || username.isBlank()) return Optional.empty();
+        if (username == null || username.isBlank()) {
+            matchesPassword(password, DUMMY_PASSWORD_HASH);
+            return Optional.empty();
+        }
         ApiKeyUserEntity user = find("username = ?1 and enabled = true", username)
                 .withLock(LockModeType.PESSIMISTIC_WRITE)
                 .firstResult();
-        if (user == null) return Optional.empty();
+        if (user == null) {
+            matchesPassword(password, DUMMY_PASSWORD_HASH);
+            return Optional.empty();
+        }
 
         java.time.Instant now = java.time.Instant.now();
-        if (user.lockedUntil() != null && user.lockedUntil().isAfter(now)) return Optional.empty();
-        if (password == null || !BcryptUtil.matches(password, user.passwordHash())) {
+        if (user.lockedUntil() != null && user.lockedUntil().isAfter(now)) {
+            matchesPassword(password, user.passwordHash());
+            return Optional.empty();
+        }
+        if (!matchesPassword(password, user.passwordHash())) {
             int attempts = user.failedLoginCount() + 1;
             java.time.Instant lockedUntil = attempts >= 5
                     ? now.plusSeconds(UserRepository.calculateLockDelaySeconds(accountLockBaseSeconds, accountLockMaxSeconds, attempts))
@@ -169,6 +180,10 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         }
         user.clearFailedLogins();
         return Optional.of(user.toAuthUser());
+    }
+
+    private static boolean matchesPassword(String password, String passwordHash) {
+        return BcryptUtil.matches(password == null ? "" : password, passwordHash);
     }
 
     /** 使用用户行写锁更新密码，确保失败锁定和凭据版本在同一事务内变化。 */

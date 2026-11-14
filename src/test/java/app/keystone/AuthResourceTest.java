@@ -48,6 +48,21 @@ class AuthResourceTest extends AuthTestFixture {
     }
 
     @Test
+    void loginDoesNotRevealWhetherUsernameExists() {
+        var existing = given().contentType(JSON)
+                .body("{\"username\":\"admin\",\"password\":\"wrong\"}")
+                .when().post("/v1/auth/login").then().extract().response();
+        var missing = given().contentType(JSON)
+                .body("{\"username\":\"missing_" + System.nanoTime() + "\",\"password\":\"wrong\"}")
+                .when().post("/v1/auth/login").then().extract().response();
+
+        assertEquals(401, existing.statusCode());
+        assertEquals(401, missing.statusCode());
+        assertEquals(existing.jsonPath().getString("error.code"), missing.jsonPath().getString("error.code"));
+        assertEquals(existing.jsonPath().getString("message"), missing.jsonPath().getString("message"));
+    }
+
+    @Test
     void repeatedFailuresAreRateLimited() {
         String admin = given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
                 .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");
