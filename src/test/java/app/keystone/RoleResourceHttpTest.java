@@ -13,6 +13,45 @@ import static org.hamcrest.Matchers.is;
 /** 通过真实 HTTP 验证角色成员的查询、分配、撤销和批量失败回滚边界。 */
 @QuarkusTest
 class RoleResourceHttpTest extends AuthTestFixture {
+    /** 通过真实 HTTP 验证角色自身的创建、更新、权限绑定和删除生命周期。 */
+    @Test
+    void administratorCanManageRoleLifecycle() {
+        String admin = login("admin", "password");
+        String roleId = null;
+        try {
+            String roleCode = "HTTP_ROLE_LIFECYCLE_" + System.nanoTime();
+            roleId = given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"code\":\"" + roleCode + "\",\"name\":\"Lifecycle role\"}")
+                    .when().post("/v1/roles")
+                    .then().statusCode(201)
+                    .body("data.code", is(roleCode))
+                    .extract().path("data.id");
+
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"name\":\"Lifecycle role updated\",\"enabled\":false}")
+                    .when().put("/v1/roles/" + roleId)
+                    .then().statusCode(200)
+                    .body("data.name", is("Lifecycle role updated"))
+                    .body("data.enabled", is(false));
+
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"permissions\":[\"user:read\"]}")
+                    .when().put("/v1/roles/" + roleId + "/permissions")
+                    .then().statusCode(200)
+                    .body("data.updated", is(true));
+
+            given().auth().oauth2(admin)
+                    .when().delete("/v1/roles/" + roleId)
+                    .then().statusCode(200)
+                    .body("data.deleted", is(true));
+            roleId = null;
+        } finally {
+            if (roleId != null) {
+                given().auth().oauth2(admin).when().delete("/v1/roles/" + roleId).then().statusCode(200);
+            }
+        }
+    }
+
     @Test
     void administratorCanAssignAndRevokeRoleUsers() {
         String admin = login("admin", "password");
