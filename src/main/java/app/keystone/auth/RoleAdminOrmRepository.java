@@ -88,18 +88,30 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
     public void assignUsers(String code, List<String> userIds) {
         ApiKeyRoleEntity role = find("code", code).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (role == null) throw new java.util.NoSuchElementException("role not found");
-        for (ApiKeyUserEntity user : users.findUsersByIdsForUpdate(userIds)) {
-            if (user.addRole(role)) user.bumpPermissionVersion();
-        }
+        assignUsers(role, userIds);
     }
 
     @Transactional
     public void revokeUsers(String code, List<String> userIds) {
         ApiKeyRoleEntity role = find("code", code).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (role == null) throw new java.util.NoSuchElementException("role not found");
-        for (ApiKeyUserEntity user : users.findUsersByIdsForUpdate(userIds)) {
-            if (user.removeRole(role)) user.bumpPermissionVersion();
-        }
+        revokeUsers(role, userIds);
+    }
+
+    /** 使用 UUID 主键更新角色成员，角色行锁与用户行锁处于同一事务。 */
+    @Transactional
+    public void assignUsersById(String id, List<String> userIds) {
+        ApiKeyRoleEntity role = findRoleEntityByIdForUpdate(id);
+        if (role == null) throw new java.util.NoSuchElementException("role not found");
+        assignUsersStrict(role, userIds);
+    }
+
+    /** 使用 UUID 主键撤销角色成员，角色行锁与用户行锁处于同一事务。 */
+    @Transactional
+    public void revokeUsersById(String id, List<String> userIds) {
+        ApiKeyRoleEntity role = findRoleEntityByIdForUpdate(id);
+        if (role == null) throw new java.util.NoSuchElementException("role not found");
+        revokeUsersStrict(role, userIds);
     }
 
     @Transactional
@@ -123,8 +135,57 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
         return users.findUserIdsByRole(role.uuid(), allocated);
     }
 
+    @Transactional
+    public List<String> userIdsById(String id, boolean allocated) {
+        ApiKeyRoleEntity role = findRoleEntityById(id);
+        if (role == null) throw new java.util.NoSuchElementException("role not found");
+        return users.findUserIdsByRole(role.uuid(), allocated);
+    }
+
+    private void assignUsers(ApiKeyRoleEntity role, List<String> userIds) {
+        for (ApiKeyUserEntity user : users.findUsersByIdsForUpdate(userIds)) {
+            if (user.addRole(role)) user.bumpPermissionVersion();
+        }
+    }
+
+    private void revokeUsers(ApiKeyRoleEntity role, List<String> userIds) {
+        for (ApiKeyUserEntity user : users.findUsersByIdsForUpdate(userIds)) {
+            if (user.removeRole(role)) user.bumpPermissionVersion();
+        }
+    }
+
+    /** 新 HTTP 批量入口要求所有目标用户存在，避免静默跳过造成部分成功。 */
+    private void assignUsersStrict(ApiKeyRoleEntity role, List<String> userIds) {
+        for (ApiKeyUserEntity user : assignmentUsers(userIds)) {
+            if (user.addRole(role)) user.bumpPermissionVersion();
+        }
+    }
+
+    /** 新 HTTP 批量入口在任何目标缺失时整体失败并回滚。 */
+    private void revokeUsersStrict(ApiKeyRoleEntity role, List<String> userIds) {
+        for (ApiKeyUserEntity user : assignmentUsers(userIds)) {
+            if (user.removeRole(role)) user.bumpPermissionVersion();
+        }
+    }
+
+    private List<ApiKeyUserEntity> assignmentUsers(List<String> userIds) {
+        List<String> normalized = (userIds == null ? List.<String>of() : userIds).stream()
+                .map(app.keystone.identity.UuidValues::requireCanonical)
+                .distinct()
+                .toList();
+        List<ApiKeyUserEntity> found = users.findUsersByIdsForUpdate(normalized);
+        if (found.size() != normalized.size()) throw new java.util.NoSuchElementException("user not found");
+        return found;
+    }
+
     private ApiKeyRoleEntity findRoleEntityById(String id) {
         return find("id", app.keystone.identity.UuidValues.parse(id)).firstResult();
+    }
+
+    private ApiKeyRoleEntity findRoleEntityByIdForUpdate(String id) {
+        return find("id", app.keystone.identity.UuidValues.parse(id))
+                .withLock(LockModeType.PESSIMISTIC_WRITE)
+                .firstResult();
     }
 
     private Set<ApiKeyPermissionEntity> resolvePermissions(List<String> permissionCodes) {

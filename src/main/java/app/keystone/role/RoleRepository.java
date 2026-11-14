@@ -133,6 +133,39 @@ public class RoleRepository {
         return ormRoles.userIds(code, allocated);
     }
 
+    /** 通过 UUID 主键执行角色用户分配，并使用独立的 role:assign 权限。 */
+    public void assignUsersById(AuthorizationContext context, String id, List<String> userIds) {
+        authorization.require(context, "role:assign", "role");
+        requireId(id);
+        try {
+            ormRoles.assignUsersById(id, userIds);
+        } catch (java.util.NoSuchElementException | IllegalArgumentException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not grant role users", e);
+        }
+    }
+
+    /** 通过 UUID 主键撤销角色用户分配，并在同一事务中更新权限版本。 */
+    public void revokeUsersById(AuthorizationContext context, String id, List<String> userIds) {
+        authorization.require(context, "role:assign", "role");
+        requireId(id);
+        try {
+            ormRoles.revokeUsersById(id, userIds);
+        } catch (java.util.NoSuchElementException | IllegalArgumentException e) {
+            throw e;
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not revoke role users", e);
+        }
+    }
+
+    /** 按 UUID 主键读取角色成员或未分配用户的 ID 列表。 */
+    public List<String> userIdsById(AuthorizationContext context, String id, boolean allocated) {
+        authorization.require(context, "role:read", "role");
+        requireId(id);
+        return ormRoles.userIdsById(id, allocated);
+    }
+
     private static void require(String value, String field) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException(field + " is required");
     }

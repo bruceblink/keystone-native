@@ -186,6 +186,8 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 
 2026-11-14 用户导出和导入切片：`ed16c2a` 增加 `GET /v1/users/export` 的完整范围查询；`70f155c` 将用户、角色、岗位、登录日志和操作日志导出统一为 XLSX；`d0c74c4` 增加 `POST /v1/users/import`；`ae2e304` 使导入在 MFA 策略关闭时仍强制 AAL2，并补齐 native JSON 结果记录的反射配置；`15aeacc` 补充 API Key 凭据猜测限流的真实 HTTP 与 MySQL 验收；`673a78a` 补充登录日志和操作日志的混合删除回滚验收；`2e24abd` 补充登录枚举防护回归。每个导出入口要求对应 `*:export` 权限，先执行资源范围检查，再读取完整结果集，不使用分页上限造成静默截断。用户导入要求 `user:import`、AAL2 step-up 和非 API Key 凭据，只接受 `.xlsx`，逐行检查部门范围、角色 UUID 和业务字段，返回成功数量和失败行。角色、岗位、登录日志和操作日志的导出只包含业务和审计索引字段；用户导出不包含密码、令牌或认证哈希；操作日志不包含详细载荷，登录日志不包含消息正文。真实 HTTP 回归覆盖管理员成功、AAL1 导入拒绝、受限主体访问全局导出被拒绝和用户导出按主体范围返回 XLSX；Excel 解析测试覆盖工作簿、表头和字段类型。`UserResourceTest` 还解压工作簿并检查 `sheet1.xml`，确认响应是可读取的 Open XML 工作簿。AAL2 成功导入和逐行创建结果仍需在启用 MFA 的真实 HTTP 流程中补充验收。
 
+2026-11-14 角色成员分配切片：`RoleResource` 增加 `GET /v1/roles/{id}/users`、`PUT /v1/roles/{id}/users` 和 `DELETE /v1/roles/{id}/users`。写入口使用 `role:assign` 和角色范围检查，成员 ID 在同一事务内锁定并更新用户 `permission_version`。批量请求逐项校验 UUID 和目标用户；任一目标无效或不存在时整体失败，不写入其他成员。`RoleResourceHttpTest` 已通过真实 HTTP 验证无效批量回滚、重复分配、成员查询和撤销。该切片只开放已有角色资源的全局范围，未改变其他资源的 owner/member 关系定义。
+
 | 资源 | 支持范围 | 执行方式 | 当前入口 |
 | --- | --- | --- | --- |
 | `user` | `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` | 用户查询、详情和写入条件 | `UserResource`、`ApiKeyUserRepository` |

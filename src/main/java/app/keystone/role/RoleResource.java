@@ -27,6 +27,14 @@ public class RoleResource {
     @GET @RequiresPermission("role:read")
     public ApiResponse<java.util.List<Role>> list() { return ApiResponse.ok(roles.list(context())); }
 
+    /** 返回角色已分配或尚未分配的用户 ID，查询范围由角色资源规则统一限制。 */
+    @GET @Path("/{id}/users") @RequiresPermission("role:read")
+    public Response users(@PathParam("id") String id, @QueryParam("allocated") @DefaultValue("true") boolean allocated) {
+        try { return Response.ok(ApiResponse.ok(roles.userIdsById(context(), id, allocated))).build(); }
+        catch (IllegalArgumentException e) { return bad("id must be a UUID"); }
+        catch (NoSuchElementException e) { return notFound(); }
+    }
+
     @GET @Path("/export") @Produces(ExcelExporter.CONTENT_TYPE) @RequiresPermission("role:export")
     public Response export() {
         return Response.ok(RoleExcelExporter.export(roles.export(context())))
@@ -38,12 +46,32 @@ public class RoleResource {
     @POST @RequiresPermission("role:create") @RequiresMfaStepUp public Response create(RoleRequest request) { if (request == null) return bad("request body is required"); try { var role = roles.create(context(), request.code(), request.name()); logs.record(actor(), "CREATE", "role", String.valueOf(role.id()), role.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(role)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
     @PUT @Path("/{id}") @RequiresPermission("role:update") @RequiresMfaStepUp public Response update(@PathParam("id") String id, RoleRequest request) { if (request == null) return bad("request body is required"); try { var role = roles.updateById(context(), id, request.name(), request.enabled()); logs.record(actor(), "UPDATE", "role", role.id(), role.code()); return Response.ok(ApiResponse.ok(role)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
     @PUT @Path("/{id}/permissions") @RequiresPermission("role:manage") @RequiresMfaStepUp public Response permissions(@PathParam("id") String id, PermissionRequest request) { if (request == null) return bad("request body is required"); try { roles.assignPermissionsById(context(), id, request.permissions()); logs.record(actor(), "UPDATE", "role-permission", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
+    /** 原子追加角色成员；成员权限版本在同一事务内递增。 */
+    @PUT @Path("/{id}/users") @RequiresPermission("role:assign") @RequiresMfaStepUp
+    public Response assignUsers(@PathParam("id") String id, UserAssignmentRequest request) {
+        if (request == null || request.userIds() == null) return bad("userIds is required");
+        try { roles.assignUsersById(context(), id, request.userIds()); logs.record(actor(), "UPDATE", "role-users", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build(); }
+        catch (IllegalArgumentException e) { return bad(e.getMessage()); }
+        catch (NoSuchElementException e) { return notFound(e.getMessage()); }
+    }
+
+    /** 原子移除角色成员；重复或不存在的成员保持幂等。 */
+    @DELETE @Path("/{id}/users") @Consumes(MediaType.APPLICATION_JSON) @RequiresPermission("role:assign") @RequiresMfaStepUp
+    public Response revokeUsers(@PathParam("id") String id, UserAssignmentRequest request) {
+        if (request == null || request.userIds() == null) return bad("userIds is required");
+        try { roles.revokeUsersById(context(), id, request.userIds()); logs.record(actor(), "UPDATE", "role-users", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build(); }
+        catch (IllegalArgumentException e) { return bad(e.getMessage()); }
+        catch (NoSuchElementException e) { return notFound(e.getMessage()); }
+    }
+
     @DELETE @Path("/{id}") @RequiresPermission("role:delete") @RequiresMfaStepUp public Response delete(@PathParam("id") String id) { try { roles.deleteById(context(), id); logs.record(actor(), "DELETE", "role", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
 
     private AuthorizationContext context() { return authorization.context(identity); }
     private String actor() { return identity.getPrincipal().getName(); }
     private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).build(); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("role not found")).build(); }
+    private static Response notFound(String message) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(message)).build(); }
     public record RoleRequest(String code, String name, Boolean enabled) {}
     public record PermissionRequest(List<String> permissions) {}
+    public record UserAssignmentRequest(List<String> userIds) {}
 }
