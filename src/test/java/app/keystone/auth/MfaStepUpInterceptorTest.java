@@ -39,6 +39,12 @@ class MfaStepUpInterceptorTest {
     }
 
     @Test
+    void webauthnRegistrationRequiresStepUpBoundary() throws Exception {
+        assertStepUp(WebAuthnResource.class, "registerOptions");
+        assertStepUp(WebAuthnResource.class, "register", io.vertx.core.json.JsonObject.class);
+    }
+
+    @Test
     void claimsRecordKeepsRequiredSessionFields() {
         var claims = new MfaStepUpInterceptor.Claims(USER_ID, "session-1", "web", "access", "AAL2", java.util.List.of("otp"));
         assertEquals(USER_ID, claims.userId());

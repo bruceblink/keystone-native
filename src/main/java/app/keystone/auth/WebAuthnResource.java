@@ -39,6 +39,7 @@ public class WebAuthnResource {
     @GET
     @Path("/register/options")
     @RejectApiKey
+    @RequiresMfaStepUp
     public Response registerOptions() {
         var user = currentUser();
         if (user == null) return error(Response.Status.UNAUTHORIZED, "authentication_required", "authentication is required");
@@ -56,6 +57,7 @@ public class WebAuthnResource {
     @POST
     @Path("/register")
     @RejectApiKey
+    @RequiresMfaStepUp
     public Response register(JsonObject body) {
         var user = currentUser();
         if (user == null) return error(Response.Status.UNAUTHORIZED, "authentication_required", "authentication is required");

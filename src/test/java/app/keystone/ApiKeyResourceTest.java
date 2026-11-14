@@ -52,6 +52,28 @@ class ApiKeyResourceTest extends AuthTestFixture {
     }
 
     @Test
+    void operationLogDeleteRequiresDeletePermission() {
+        String admin = login();
+        var readOnly = issue(admin, "operation-log-read", "audit:read");
+        String readKey = readOnly.path("data.apiKey");
+        String readId = readOnly.path("data.id");
+
+        given().header("Authorization", "ApiKey " + readKey)
+                .when().delete("/v1/operation-logs?ids=" + UuidValues.v7())
+                .then().statusCode(403);
+        revoke(admin, readId);
+
+        var deleter = issue(admin, "operation-log-delete", "operation-log:delete");
+        String deleteKey = deleter.path("data.apiKey");
+        String deleteId = deleter.path("data.id");
+        given().header("Authorization", "ApiKey " + deleteKey)
+                .when().delete("/v1/operation-logs?ids=" + UuidValues.v7())
+                .then().statusCode(200)
+                .body("data.deleted", is(0));
+        revoke(admin, deleteId);
+    }
+
+    @Test
     void rotatingAnApiKeyRevokesTheOldSecretAndKeepsTheApprovedScope() {
         String admin = login();
         var issued = issue(admin, "rotation", "audit:read");
