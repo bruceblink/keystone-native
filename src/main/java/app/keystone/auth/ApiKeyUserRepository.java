@@ -97,6 +97,15 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         return new UserRepository.Page(users, safePage, safeSize, total);
     }
 
+    /** 按相同数据范围读取完整用户集合，供导出入口使用，避免分页上限造成静默截断。 */
+    @Transactional
+    public List<User> exportUsers(String username, String displayName, String deptId,
+                                                 Boolean enabled, DataScopeService.Scope scope,
+                                                 String subjectId) {
+        return userQuery(username, displayName, deptId, enabled, scope, subjectId)
+                .list().stream().map(ApiKeyUserEntity::toUser).toList();
+    }
+
     /** 在事务内按主体数据范围读取单个用户。 */
     @Transactional
     public User findUser(String userId, DataScopeService.Scope scope, String subjectId) {

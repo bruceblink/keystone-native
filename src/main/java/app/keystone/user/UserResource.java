@@ -32,6 +32,19 @@ public class UserResource {
         return ApiResponse.ok(users.list(context(), page == null ? 1 : page, size == null ? 20 : size, username, displayName, deptId, enabled));
     }
 
+    @GET @Path("/export") @Produces("text/csv; charset=UTF-8") @RequiresPermission("user:export")
+    public Response export(@QueryParam("username") String username, @QueryParam("displayName") String displayName,
+                           @QueryParam("deptId") String deptId, @QueryParam("enabled") Boolean enabled) {
+        try {
+            String csv = UserCsvExporter.export(users.export(context(), username, displayName, deptId, enabled));
+            return Response.ok(csv).type("text/csv; charset=UTF-8")
+                    .header("Content-Disposition", "attachment; filename=users.csv")
+                    .build();
+        } catch (IllegalArgumentException e) {
+            return bad(e.getMessage());
+        }
+    }
+
     @GET @Path("/{id}") @RequiresPermission("user:read")
     public ApiResponse<User> get(@PathParam("id") String id) {
         try { return ApiResponse.ok(users.findPublic(context(), id)); }

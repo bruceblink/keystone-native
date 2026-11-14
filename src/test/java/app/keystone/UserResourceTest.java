@@ -8,6 +8,7 @@ import static io.restassured.http.ContentType.JSON;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.not;
+import static org.hamcrest.Matchers.containsString;
 
 @QuarkusTest
 class UserResourceTest extends AuthTestFixture {
@@ -48,6 +49,26 @@ class UserResourceTest extends AuthTestFixture {
                 .body("{\"roleCodes\":[\"USER\"]}")
                 .when().put("/v1/users/" + id).then().statusCode(200);
         given().auth().oauth2(user).when().get("/v1/profile").then().statusCode(401);
+        given().auth().oauth2(admin).when().delete("/v1/users/" + id).then().statusCode(200);
+    }
+
+    @Test
+    void adminCanExportUsersAsScopedCsvWithoutSecrets() {
+        String admin = login("admin", "password");
+        String username = "export_" + System.nanoTime();
+        String id = given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Export User\",\"roleCodes\":[\"USER\"]}")
+                .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
+
+        String csv = given().auth().oauth2(admin)
+                .when().get("/v1/users/export?username=" + username)
+                .then().statusCode(200).contentType(containsString("text/csv"))
+                .extract().asString();
+
+        org.junit.jupiter.api.Assertions.assertTrue(csv.contains(username));
+        org.junit.jupiter.api.Assertions.assertTrue(csv.contains("Export User"));
+        org.junit.jupiter.api.Assertions.assertFalse(csv.contains("password_hash"));
+        org.junit.jupiter.api.Assertions.assertFalse(csv.contains("password"));
         given().auth().oauth2(admin).when().delete("/v1/users/" + id).then().statusCode(200);
     }
 

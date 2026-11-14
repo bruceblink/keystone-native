@@ -75,6 +75,17 @@ public class UserRepository {
         return list(page, size, username, displayName, deptId, enabled, context.scope(), context.subjectId());
     }
 
+    /** 用户导出复用同一范围查询，并读取完整结果集。 */
+    public List<User> export(AuthorizationContext context, String username, String displayName,
+                             String deptId, Boolean enabled) {
+        authorization.require(context, "user:export", "user");
+        try {
+            return ormUsers.exportUsers(username, displayName, deptId, enabled, context.scope(), context.subjectId());
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not export users", e);
+        }
+    }
+
     private User create(String username, String password, String displayName, String deptId, List<String> roleCodes) {
         return create(username, password, displayName, deptId, null, null, null, null, null, null, roleCodes);
     }
