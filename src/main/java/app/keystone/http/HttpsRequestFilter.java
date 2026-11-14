@@ -3,6 +3,7 @@ package app.keystone.http;
 import app.keystone.ApiResponse;
 import app.keystone.auth.ClientAddressResolver;
 import io.vertx.ext.web.RoutingContext;
+import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Priorities;
@@ -13,16 +14,14 @@ import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import jakarta.ws.rs.ext.Provider;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
+import org.eclipse.microprofile.config.ConfigProvider;
 
 /** 在生产入口强制使用 HTTPS，并只接受受信代理转发的 HTTPS 标识。 */
 @Provider
 @Priority(Priorities.AUTHENTICATION)
 public class HttpsRequestFilter implements ContainerRequestFilter {
-    @ConfigProperty(name = "keystone.security.http.require-https", defaultValue = "false")
     boolean requireHttps;
 
-    @ConfigProperty(name = "keystone.security.http.trust-forwarded-proto", defaultValue = "false")
     boolean trustForwardedProto;
 
     @Inject
@@ -30,6 +29,14 @@ public class HttpsRequestFilter implements ContainerRequestFilter {
 
     @Context
     RoutingContext routingContext;
+
+    /** 在运行时读取安全开关，允许同一个 native 镜像按部署环境切换入口策略。 */
+    @PostConstruct
+    void loadRuntimeConfiguration() {
+        var config = ConfigProvider.getConfig();
+        requireHttps = config.getOptionalValue("keystone.security.http.require-https", Boolean.class).orElse(false);
+        trustForwardedProto = config.getOptionalValue("keystone.security.http.trust-forwarded-proto", Boolean.class).orElse(false);
+    }
 
     @Override
     public void filter(ContainerRequestContext requestContext) {
