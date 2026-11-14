@@ -190,8 +190,8 @@ public class SessionRepository {
             if (username != null && !username.isBlank() && !user.username().contains(username.trim())) continue;
             if (ipAddress != null && !ipAddress.isBlank() && (user.loginIp() == null || !user.loginIp().contains(ipAddress.trim()))) continue;
             RefreshTokenEntity token = tokens.find("sessionId = ?1 and revokedAt is null", session.id()).firstResult();
-            if (token == null || token.id() == null) continue;
-            result.add(new OnlineSession(token.id(), user.id(), user.username(), user.displayName(), user.loginIp(),
+            if (token == null || token.sessionId() == null) continue;
+            result.add(new OnlineSession(session.id(), user.id(), user.username(), user.displayName(), user.loginIp(),
                     session.createdAt(), session.refreshExpiresAt(), token.accessExpiresAt()));
         }
         return result;
@@ -199,16 +199,16 @@ public class SessionRepository {
 
     @Transactional
     public void revokeById(String sessionId) {
-        RefreshTokenEntity token = tokens.findById(app.keystone.identity.UuidValues.parse(sessionId));
-        if (token == null) throw new java.util.NoSuchElementException("session not found");
         Instant now = Instant.now();
-        AuthSessionEntity session = token.sessionId() == null ? null : sessions.findForUpdate(token.sessionId());
-        if (session != null) session.revoke(now);
-        if (token.sessionId() == null) {
-            token.revoke(now);
-            return;
+        AuthSessionEntity session;
+        try {
+            session = sessions.findForUpdate(sessionId);
+        } catch (IllegalArgumentException e) {
+            throw new java.util.NoSuchElementException("session not found");
         }
-        for (RefreshTokenEntity familyToken : tokens.find("sessionId", token.sessionId()).list()) familyToken.revoke(now);
+        if (session == null) throw new java.util.NoSuchElementException("session not found");
+        session.revoke(now);
+        for (RefreshTokenEntity token : tokens.find("sessionId", session.id()).list()) token.revoke(now);
     }
 
     private void revokeExpiredTokens(String userId, Instant now) {
