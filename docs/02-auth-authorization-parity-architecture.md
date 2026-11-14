@@ -96,7 +96,13 @@ scope_allowed(principal, scope, resource, context)
 - 外部身份：OIDC 使用 Authorization Code + PKCE。服务端生成并保存 `state`、`nonce` 和 verifier，回调只接受一次性 `code` 与 `state`，并校验 JWKS、RS256、issuer、audience、`azp`、nonce 和时间窗口。外部主体按完整 issuer 与 subject 绑定本地用户。
 - Passkey：WebAuthn 使用一次性 challenge、受控 RP ID/origin、凭据公钥、算法、签名计数器和账户映射。注册要求已完成 AAL2 step-up；登录成功签发 AAL2 会话。API Key 不能进入注册和登录入口。
 
-两个项目的资源路径存在语言适配边界：Phoenix 管理资源使用 `/api/v1/system/*`，Native 使用 `/api/v1/{users,roles,departments,...}`；两者共享 Principal、权限、范围、错误和审计语义，不提供旧根路径。认证统一使用 `/api/v1/auth/*`；OIDC 入口为 `/api/v1/auth/oidc/{authorize,callback}`，Phoenix Passkey 入口为 `/api/v1/auth/passkey/{registration,registration/challenge,authentication,authentication/challenge}`，Native WebAuthn 入口为 `/api/v1/auth/webauthn/{register,register/options,login,login/options}`。JWK Set 保留标准路径 `/api/.well-known/jwks.json`。两项目均把公开 RSA key 登记到持久化 registry，使用 `ACTIVE/RETIRING` 保留窗口、过期清理和未知 `kid` 拒绝；私钥只由运行时密钥配置提供。
+两个项目的资源路径使用同一组外部接口：管理资源统一为 `/api/v1/{users,roles,departments,posts,menus,configs,dictionaries,notices,jobs,login-logs,operation-logs,profile}`；两者共享 Principal、权限、范围、错误和审计语义，不提供旧 `/system/*`、`/logs/*` 路径。认证统一使用 `/api/v1/auth/*`；OIDC 入口为 `/api/v1/auth/oidc/{authorize,callback}`，两个项目的 WebAuthn 入口统一为 `/api/v1/auth/webauthn/{register,register/options,login,login/options}`。JWK Set 保留标准路径 `/api/.well-known/jwks.json`。两项目均把公开 RSA key 登记到持久化 registry，使用 `ACTIVE/RETIRING` 保留窗口、过期清理和未知 `kid` 拒绝；私钥只由运行时密钥配置提供。
+
+2026-11-15 的路由集合核对确认，Native 与 Phoenix 各有 109 条业务接口，方法分布均为
+`GET 41`、`POST 29`、`PUT 20`、`DELETE 19`。将 Java `{id}` 和 Phoenix `:id` 参数
+占位符归一后，两边的业务接口集合相等，双方没有重复的 `HTTP method + path`。Phoenix
+额外的 3 条 GET 路由属于 LiveView 页面和头像资源，不属于后端业务接口；Native 的
+`/api/openapi` 和 `/api/swagger` 是生成文档入口，也不属于业务接口集合。
 
 ## Phoenix 适配边界
 
