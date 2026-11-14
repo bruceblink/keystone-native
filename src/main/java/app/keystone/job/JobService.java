@@ -1,5 +1,7 @@
 package app.keystone.job;
 
+import app.keystone.auth.AuthorizationContext;
+import app.keystone.auth.AuthorizationService;
 import io.quarkus.scheduler.ScheduledExecution;
 import io.quarkus.scheduler.Scheduler;
 import io.quarkus.runtime.StartupEvent;
@@ -26,13 +28,15 @@ public class JobService {
     @Inject JobRepository jobs;
     @Inject JobInvocationService invocations;
     @Inject JobLogRepository jobLogs;
+    @Inject AuthorizationService authorization;
     private final Map<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     void onStart(@Observes StartupEvent ignored) {
         for (Job job : jobs.enabled()) schedule(job);
     }
 
-    public Job create(String code, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
+    public Job create(AuthorizationContext context, String code, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
+        authorization.require(context, "job:create", "job");
         validateCron(cron);
         String target = invokeTarget == null || invokeTarget.isBlank() ? "keystoneJob.heartbeat()" : invokeTarget;
         invocations.validate(target, jobParams);
@@ -41,9 +45,13 @@ public class JobService {
         return job;
     }
 
-    public List<Job> jobs() { return jobs.list(); }
+    public List<Job> jobs(AuthorizationContext context) {
+        authorization.require(context, "job:read", "job");
+        return jobs.list();
+    }
 
-    public Job update(String id, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
+    public Job update(AuthorizationContext context, String id, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
+        authorization.require(context, "job:update", "job");
         Job current = jobs.findById(id);
         if (cron != null && !cron.isBlank()) validateCron(cron);
         String target = invokeTarget == null || invokeTarget.isBlank() ? current.invokeTarget() : invokeTarget;
@@ -57,13 +65,27 @@ public class JobService {
         return job;
     }
 
-    public void delete(String id) { unschedule(id); jobs.delete(id); locks.remove(id); }
+    public void delete(AuthorizationContext context, String id) {
+        authorization.require(context, "job:delete", "job");
+        unschedule(id);
+        jobs.delete(id);
+        locks.remove(id);
+    }
 
-    public void trigger(String id) { run(jobs.findById(id), MANUAL_TRIGGER); }
+    public void trigger(AuthorizationContext context, String id) {
+        authorization.require(context, "job:run", "job");
+        run(jobs.findById(id), MANUAL_TRIGGER);
+    }
 
-    public List<JobInvocationService.JobTarget> targets() { return invocations.targets(); }
+    public List<JobInvocationService.JobTarget> targets(AuthorizationContext context) {
+        authorization.require(context, "job:read", "job");
+        return invocations.targets();
+    }
 
-    public JobLogRepository.Page logs(String jobId, int page, int size) { return jobLogs.list(jobId, page, size); }
+    public JobLogRepository.Page logs(AuthorizationContext context, String jobId, int page, int size) {
+        authorization.require(context, "job:read", "job");
+        return jobLogs.list(jobId, page, size);
+    }
 
     private void schedule(Job job) {
         String schedulerId = schedulerId(job.id());

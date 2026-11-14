@@ -1,6 +1,8 @@
 package app.keystone.menu;
 
 import app.keystone.auth.ApiKeyRoleEntity;
+import app.keystone.auth.AuthorizationContext;
+import app.keystone.auth.AuthorizationService;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -15,9 +17,11 @@ import java.util.Set;
 @ApplicationScoped
 public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.util.UUID> {
     @Inject MenuRoleOrmRepository roles;
+    @Inject AuthorizationService authorization;
 
     @Transactional
-    public List<Menu> listForRoles(List<String> roleCodes) {
+    public List<Menu> listForRoles(AuthorizationContext context, List<String> roleCodes) {
+        authorization.require(context, "menu:read", "menu");
         if (roleCodes == null || roleCodes.isEmpty()) return List.of();
         return find("select distinct m from MenuEntity m join m.roles role "
                         + "where m.enabled = true and role.code in ?1 "
@@ -26,7 +30,8 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.ut
     }
 
     @Transactional
-    public Menu create(MenuRequest request) {
+    public Menu create(AuthorizationContext context, MenuRequest request) {
+        authorization.require(context, "menu:create", "menu");
         require(request.code(), "code");
         require(request.name(), "name");
         try {
@@ -40,7 +45,8 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.ut
     }
 
     @Transactional
-    public Menu update(String id, MenuRequest request) {
+    public Menu update(AuthorizationContext context, String id, MenuRequest request) {
+        authorization.require(context, "menu:update", "menu");
         MenuEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("menu not found");
         entity.update(request);
@@ -48,7 +54,8 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.ut
     }
 
     @Transactional
-    public void delete(String id) {
+    public void delete(AuthorizationContext context, String id) {
+        authorization.require(context, "menu:delete", "menu");
         MenuEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("menu not found");
         try {
@@ -60,7 +67,8 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.ut
     }
 
     @Transactional
-    public void assignRoles(String menuId, List<String> roleCodes) {
+    public void assignRoles(AuthorizationContext context, String menuId, List<String> roleCodes) {
+        authorization.require(context, "menu:manage", "menu");
         MenuEntity menu = find("id", app.keystone.identity.UuidValues.parse(menuId)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (menu == null) throw new java.util.NoSuchElementException("menu not found");
         var normalized = new LinkedHashSet<String>();

@@ -1,5 +1,7 @@
 package app.keystone.config;
 
+import app.keystone.auth.AuthorizationContext;
+import app.keystone.auth.AuthorizationService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -9,8 +11,10 @@ import java.util.List;
 @ApplicationScoped
 public class SystemConfigRepository {
     @Inject SystemConfigOrmRepository ormConfigs;
+    @Inject AuthorizationService authorization;
 
-    public List<SystemConfig> list() {
+    public List<SystemConfig> list(AuthorizationContext context) {
+        authorization.require(context, "config:read", "config");
         try {
             return ormConfigs.listConfigs();
         } catch (RuntimeException e) {
@@ -18,7 +22,8 @@ public class SystemConfigRepository {
         }
     }
 
-    public SystemConfig find(String key) {
+    public SystemConfig find(AuthorizationContext context, String key) {
+        authorization.require(context, "config:read", "config");
         try {
             return ormConfigs.findEnabled(key);
         } catch (java.util.NoSuchElementException e) {
@@ -28,7 +33,8 @@ public class SystemConfigRepository {
         }
     }
 
-    public SystemConfig create(String key, String value, String description) {
+    public SystemConfig create(AuthorizationContext context, String key, String value, String description) {
+        authorization.require(context, "config:create", "config");
         require(key, "key");
         require(value, "value");
         try {
@@ -39,7 +45,8 @@ public class SystemConfigRepository {
         }
     }
 
-    public SystemConfig update(String key, String value, String description, Boolean enabled) {
+    public SystemConfig update(AuthorizationContext context, String key, String value, String description, Boolean enabled) {
+        authorization.require(context, "config:update", "config");
         try {
             return ormConfigs.updateConfig(key, value, description, enabled);
         } catch (java.util.NoSuchElementException e) {
@@ -49,7 +56,8 @@ public class SystemConfigRepository {
         }
     }
 
-    public void delete(String key) {
+    public void delete(AuthorizationContext context, String key) {
+        authorization.require(context, "config:update", "config");
         try {
             ormConfigs.deleteConfig(key);
         } catch (java.util.NoSuchElementException e) {

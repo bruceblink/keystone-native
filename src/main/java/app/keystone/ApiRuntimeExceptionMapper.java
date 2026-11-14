@@ -1,5 +1,6 @@
 package app.keystone;
 
+import app.keystone.auth.AuthorizationDeniedException;
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -12,6 +13,9 @@ import jakarta.ws.rs.ext.Provider;
 public class ApiRuntimeExceptionMapper implements ExceptionMapper<RuntimeException> {
     @Override
     public Response toResponse(RuntimeException exception) {
+        if (exception instanceof AuthorizationDeniedException denied) {
+            return response(Response.Status.fromStatusCode(denied.status()), denied.code(), denied.getMessage());
+        }
         if (exception instanceof IllegalArgumentException || containsIllegalArgument(exception)) {
             return response(Response.Status.BAD_REQUEST, "validation_failed", "request is invalid");
         }

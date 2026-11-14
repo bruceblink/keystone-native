@@ -1,6 +1,8 @@
 package app.keystone.role;
 
 import app.keystone.auth.RoleAdminOrmRepository;
+import app.keystone.auth.AuthorizationContext;
+import app.keystone.auth.AuthorizationService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 
@@ -10,12 +12,15 @@ import java.util.List;
 @ApplicationScoped
 public class RoleRepository {
     @Inject RoleAdminOrmRepository ormRoles;
+    @Inject AuthorizationService authorization;
 
-    public List<Role> list() {
+    public List<Role> list(AuthorizationContext context) {
+        authorization.require(context, "role:read", "role");
         return ormRoles.listRoles();
     }
 
-    public Role create(String code, String name) {
+    public Role create(AuthorizationContext context, String code, String name) {
+        authorization.require(context, "role:create", "role");
         require(code, "code");
         require(name, "name");
         try {
@@ -26,17 +31,20 @@ public class RoleRepository {
         }
     }
 
-    public Role update(String code, String name, Boolean enabled) {
-        return updateExtended(code, name, enabled, null, null);
+    public Role update(AuthorizationContext context, String code, String name, Boolean enabled) {
+        authorization.require(context, "role:update", "role");
+        return updateExtended(context, code, name, enabled, null, null);
     }
 
     /** 通过公开 UUID 主键更新角色；角色 code 仅作为业务标识保存。 */
-    public Role updateById(String id, String name, Boolean enabled) {
+    public Role updateById(AuthorizationContext context, String id, String name, Boolean enabled) {
+        authorization.require(context, "role:update", "role");
         requireId(id);
         return ormRoles.updateRoleById(id, name, enabled, null, null);
     }
 
-    public Role updateExtended(String code, String name, Boolean enabled, String dataScope, String deptScope) {
+    public Role updateExtended(AuthorizationContext context, String code, String name, Boolean enabled, String dataScope, String deptScope) {
+        authorization.require(context, "role:update", "role");
         try {
             return ormRoles.updateRole(code, name, enabled, dataScope, deptScope);
         } catch (java.util.NoSuchElementException | IllegalArgumentException e) {
@@ -46,7 +54,8 @@ public class RoleRepository {
         }
     }
 
-    public void delete(String code) {
+    public void delete(AuthorizationContext context, String code) {
+        authorization.require(context, "role:delete", "role");
         try {
             ormRoles.deleteRole(code);
         } catch (java.util.NoSuchElementException | IllegalArgumentException e) {
@@ -57,20 +66,24 @@ public class RoleRepository {
     }
 
     /** 通过公开 UUID 主键删除角色。 */
-    public void deleteById(String id) {
+    public void deleteById(AuthorizationContext context, String id) {
+        authorization.require(context, "role:delete", "role");
         requireId(id);
         ormRoles.deleteRoleById(id);
     }
 
-    public Role findById(String id) {
+    public Role findById(AuthorizationContext context, String id) {
+        authorization.require(context, "role:read", "role");
         return ormRoles.findRoleById(id);
     }
 
-    public Role findByCode(String code) {
+    public Role findByCode(AuthorizationContext context, String code) {
+        authorization.require(context, "role:read", "role");
         return ormRoles.findByCode(code);
     }
 
-    public void assignPermissions(String code, List<String> permissions) {
+    public void assignPermissions(AuthorizationContext context, String code, List<String> permissions) {
+        authorization.require(context, "role:manage", "role");
         try {
             ormRoles.assignPermissions(code, permissions);
         } catch (java.util.NoSuchElementException | IllegalArgumentException e) {
@@ -81,12 +94,14 @@ public class RoleRepository {
     }
 
     /** 通过公开 UUID 主键替换角色权限。 */
-    public void assignPermissionsById(String id, List<String> permissions) {
+    public void assignPermissionsById(AuthorizationContext context, String id, List<String> permissions) {
+        authorization.require(context, "role:manage", "role");
         requireId(id);
         ormRoles.assignPermissionsById(id, permissions);
     }
 
-    public void assignUsers(String code, List<String> userIds) {
+    public void assignUsers(AuthorizationContext context, String code, List<String> userIds) {
+        authorization.require(context, "role:manage", "role");
         try {
             ormRoles.assignUsers(code, userIds);
         } catch (java.util.NoSuchElementException | IllegalArgumentException e) {
@@ -96,7 +111,8 @@ public class RoleRepository {
         }
     }
 
-    public void revokeUsers(String code, List<String> userIds) {
+    public void revokeUsers(AuthorizationContext context, String code, List<String> userIds) {
+        authorization.require(context, "role:manage", "role");
         try {
             ormRoles.revokeUsers(code, userIds);
         } catch (java.util.NoSuchElementException | IllegalArgumentException e) {
@@ -106,7 +122,8 @@ public class RoleRepository {
         }
     }
 
-    public List<String> userIds(String code, boolean allocated) {
+    public List<String> userIds(AuthorizationContext context, String code, boolean allocated) {
+        authorization.require(context, "role:read", "role");
         return ormRoles.userIds(code, allocated);
     }
 

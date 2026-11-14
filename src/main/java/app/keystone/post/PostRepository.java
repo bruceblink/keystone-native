@@ -1,5 +1,7 @@
 package app.keystone.post;
 
+import app.keystone.auth.AuthorizationContext;
+import app.keystone.auth.AuthorizationService;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.LockModeType;
@@ -10,13 +12,17 @@ import java.util.List;
 /** 岗位管理入口；具体持久化由 Panache Repository 负责。 */
 @ApplicationScoped
 public class PostRepository implements PanacheRepositoryBase<PostEntity, java.util.UUID> {
+    @jakarta.inject.Inject AuthorizationService authorization;
+
     @Transactional
-    public List<Post> list() {
+    public List<Post> list(AuthorizationContext context) {
+        authorization.require(context, "post:read", "post");
         return find("order by sortOrder, id").list().stream().map(PostEntity::toModel).toList();
     }
 
     @Transactional
-    public Post create(String code, String name, Integer sortOrder) {
+    public Post create(AuthorizationContext context, String code, String name, Integer sortOrder) {
+        authorization.require(context, "post:create", "post");
         require(code, "code");
         require(name, "name");
         try {
@@ -30,7 +36,8 @@ public class PostRepository implements PanacheRepositoryBase<PostEntity, java.ut
     }
 
     @Transactional
-    public Post update(String id, String name, Integer sortOrder, Boolean enabled) {
+    public Post update(AuthorizationContext context, String id, String name, Integer sortOrder, Boolean enabled) {
+        authorization.require(context, "post:update", "post");
         PostEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("post not found");
         entity.update(name, sortOrder, enabled);
@@ -38,7 +45,8 @@ public class PostRepository implements PanacheRepositoryBase<PostEntity, java.ut
     }
 
     @Transactional
-    public void delete(String id) {
+    public void delete(AuthorizationContext context, String id) {
+        authorization.require(context, "post:delete", "post");
         PostEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("post not found");
         delete(entity);

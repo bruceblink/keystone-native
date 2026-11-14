@@ -1,5 +1,7 @@
 package app.keystone.notice;
 
+import app.keystone.auth.AuthorizationContext;
+import app.keystone.auth.AuthorizationService;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.LockModeType;
@@ -10,8 +12,11 @@ import java.util.List;
 /** 公告管理入口；具体持久化由 Panache Repository 负责。 */
 @ApplicationScoped
 public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, java.util.UUID> {
+    @jakarta.inject.Inject AuthorizationService authorization;
+
     @Transactional
-    public List<Notice> list(boolean publicOnly) {
+    public List<Notice> list(AuthorizationContext context, boolean publicOnly) {
+        if (!publicOnly) authorization.require(context, "notice:read", "notice");
         String query = publicOnly
                 ? "published = true and enabled = true and (publishAt is null or publishAt <= ?1) order by coalesce(publishAt, createdAt) desc, id desc"
                 : "order by coalesce(publishAt, createdAt) desc, id desc";
@@ -20,7 +25,8 @@ public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, jav
     }
 
     @Transactional
-    public Notice create(String title, String content, String type, String createdBy) {
+    public Notice create(AuthorizationContext context, String title, String content, String type, String createdBy) {
+        authorization.require(context, "notice:create", "notice");
         require(title, "title");
         require(content, "content");
         try {
@@ -33,7 +39,8 @@ public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, jav
     }
 
     @Transactional
-    public Notice update(String id, String title, String content, String type, Boolean enabled) {
+    public Notice update(AuthorizationContext context, String id, String title, String content, String type, Boolean enabled) {
+        authorization.require(context, "notice:update", "notice");
         NoticeEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("notice not found");
         entity.update(title, content, type, enabled);
@@ -41,7 +48,8 @@ public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, jav
     }
 
     @Transactional
-    public Notice publish(String id, boolean published) {
+    public Notice publish(AuthorizationContext context, String id, boolean published) {
+        authorization.require(context, "notice:update", "notice");
         NoticeEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("notice not found");
         entity.publish(published);
@@ -49,7 +57,8 @@ public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, jav
     }
 
     @Transactional
-    public void delete(String id) {
+    public void delete(AuthorizationContext context, String id) {
+        authorization.require(context, "notice:delete", "notice");
         NoticeEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("notice not found");
         delete(entity);
