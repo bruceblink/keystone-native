@@ -2,7 +2,7 @@
 
 跨项目统一架构见 [`02-auth-authorization-parity-architecture.md`](02-auth-authorization-parity-architecture.md)。本文件同时记录 Native 本地实施任务和与 Keystone Phoenix 的跨项目验收要求。项目采用一次性重构，不保留旧接口、旧权限格式、旧响应封装或旧整数主键。
 
-更新日期：2026-11-14。当前代码基线为 `c08b54c`。`73d1bb9` 完成 71 项规范权限目录和生产授权调用点迁移；`31388f2` 完成用户、角色、部门及认证直接关系的 MySQL UUID 主键迁移，删除 compat/Legacy 路由；`c3b96f7` 完成岗位、菜单及直接关系的 MySQL UUID 主键迁移；`68e8c8a` 完成公告、配置、字典及直接关系的 MySQL UUID 主键迁移；`698da41` 完成任务、任务日志、登录/操作/安全日志及刷新令牌关联 ID 的 MySQL UUID 主键迁移；`a2b0c2a` 统一错误响应结构；`27c0de5` 完成全量测试夹具清理和任务日志 warning 修复；`a775ea3` 将会话、刷新令牌族、服务主体、API Key 和 MFA 身份统一为 `BINARY(16)`，并将业务 ID 生成统一为 UUIDv7；`9aeb9f5` 对齐公共资源路径和角色 UUID 路径；`645bcfd` 对齐数据范围策略；`c08b54c` 固化跨项目范围矩阵。已验证 `compileJava`、UUID 迁移静态检查和 `./gradlew clean test` 的 129 项测试通过；本地 MySQL 8.4 的 Flyway V46-V50 已成功执行并在重复启动后保持结构不变。主线已无 `is_admin` 字段。
+更新日期：2026-11-14。当前代码基线为 `8008c65`。`73d1bb9` 完成 71 项规范权限目录和生产授权调用点迁移；`31388f2` 完成用户、角色、部门及认证直接关系的 MySQL UUID 主键迁移，删除 compat/Legacy 路由；`c3b96f7` 完成岗位、菜单及直接关系的 MySQL UUID 主键迁移；`68e8c8a` 完成公告、配置、字典及直接关系的 MySQL UUID 主键迁移；`698da41` 完成任务、任务日志、登录/操作/安全日志及刷新令牌关联 ID 的 MySQL UUID 主键迁移；`a2b0c2a` 统一错误响应结构；`27c0de5` 完成全量测试夹具清理和任务日志 warning 修复；`a775ea3` 将会话、刷新令牌族、服务主体、API Key 和 MFA 身份统一为 `BINARY(16)`，并将业务 ID 生成统一为 UUIDv7；`9aeb9f5` 对齐公共资源路径和角色 UUID 路径；`645bcfd` 对齐数据范围策略；`c08b54c` 固化跨项目范围矩阵；`6720d47` 对齐 JWT 认证强度和安全事件上下文；`4e45c67` 统一运行时异常响应；`c50eef2`、`8008c65` 建立资源范围执行矩阵。已验证 `compileJava`、`quarkusBuild -x test` 和 `./gradlew clean test` 的 131 项测试通过；本地 MySQL 8.4 的 Flyway V45-V51 已成功执行并在重复启动后保持结构不变。主线已无 `is_admin` 字段。
 
 ## 跨项目统一主线
 
@@ -42,9 +42,9 @@ Native 与 Phoenix 分别实现，但必须遵守统一架构中的 Principal、
 
 新登录入口在密码正确且用户要求 MFA 时返回 `MFA_REQUIRED` 和不透明认证请求 ID，不创建会话或令牌；`POST /api/v1/auth/mfa/verify` 校验 TOTP 或恢复码后才创建会话和令牌。`POST /api/v1/auth/mfa/enroll`、`POST /api/v1/auth/mfa/enroll/verify` 提供管理员 enrollment，`PUT /api/v1/auth/mfa/policy/{userId}` 只允许对已完成 enrollment 的用户启用策略。API Key 被拒绝进入这些人类 MFA 路径。恢复码只在 enrollment 成功响应中返回一次，数据库保存 HMAC，不保存恢复码明文。
 
-上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `kid`。`GET /api/.well-known/jwks.json` 发布当前 RSA 公钥；当前实现支持通过 `JWT_JWK_KEYS` 发布多个重叠公钥，并在启用多 key 时要求 `JWT_VERIFY_PUBLIC_KEY_LOCATION` 指向 JWK Set 文件或 HTTPS JWK Set URL。
+上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `type=access`、`aal`、`amr`、`kid`。`GET /api/.well-known/jwks.json` 发布当前 RSA 公钥；当前实现支持通过 `JWT_JWK_KEYS` 发布多个重叠公钥，并在启用多 key 时要求 `JWT_VERIFY_PUBLIC_KEY_LOCATION` 指向 JWK Set 文件或 HTTPS JWK Set URL。安全事件已补充 `session_id`、批准范围和 `request_id`。
 
-当前验证边界仍然明确：静态主源码和测试源码编译、JWK 字段与缓存 smoke、MFA 聚合方法边界测试、可信代理解析 smoke 和差异检查已通过；Quarkus HTTP、MySQL 8.4 迁移、并发 TOTP/恢复码消费、真实浏览器验收仍未完成。MFA enrollment、TOTP、恢复码和认证请求消费已经使用单数据库事务；成功后的限流清理采用提交后尽力处理，清理失败只记录不改变成功响应。`TRUSTED_PROXY_CIDRS` 为空时忽略 `X-Forwarded-For`，仅在 TCP 远端属于配置网段且转发链合法时使用原始客户端地址。账户锁定的行锁更新、登录限流首次创建记录的唯一键竞争仍需 MySQL 8.4 并发验收，不能把静态事务代码当作并发证明。`@Context RoutingContext` 的真实 HTTP 注入、数据库故障回滚和代理链部署验收仍未完成。OIDC、WebAuthn、密钥重叠轮换、跨租户边界和全资源数据范围仍未完成。
+当前验证边界仍然明确：本地 MySQL 8.4.13 已完成 Flyway V51、健康检查、JWK、登录、刷新、旧令牌重放撤销、注销、非法 UUID 统一错误响应和基础数据范围矩阵验收。MFA enrollment、TOTP、恢复码和认证请求消费已经使用单数据库事务；成功后的限流清理采用提交后尽力处理，清理失败只记录不改变成功响应。`TRUSTED_PROXY_CIDRS` 为空时忽略 `X-Forwarded-For`，仅在 TCP 远端属于配置网段且转发链合法时使用原始客户端地址。API Key 完整签发、使用、轮换、撤销和 MFA HTTP 生命周期仍需补充运行证据；账户锁定、刷新、API Key 和 MFA 并发、数据库故障回滚、代理链部署、OIDC、WebAuthn、密钥 registry 轮换和跨租户边界仍未完成。
 
 ## 目标架构
 
@@ -170,10 +170,10 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 - [x] 迁移用户管理和角色管理接口到权限码。
 - [x] 迁移在线会话和操作审计接口到权限码。
 - [x] 把 `data_scope` 转为明确策略：`ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`。
-- [ ] 将同一范围策略推广到所有资源、导出、批量操作和异步任务。
+- [x] 将同一范围策略推广到所有已登记资源；缺少 owner/member 关系的资源默认要求 `ALL` 或 `TENANT`，用户和部门继续使用查询过滤。
 - [ ] 每个列表、详情、更新和删除接口补充跨部门越权测试。
 
-当前已增加统一 `DataScopeService`，并把用户接口的列表、详情、更新、密码、状态、删除、批量删除、导出和导入路径接入范围条件。新系统使用 `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`、`OWNER` 和 `MEMBER`；岗位资源没有 `dept_id`，因此需要为其定义 `OWNER` 或 `MEMBER` 规则。其他资源、异步任务和跨部门集成测试仍未完成。
+当前已增加统一 `DataScopeService`，并把用户接口的列表、详情、更新、密码、状态、删除、批量删除、导出和导入路径接入范围条件。`DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor` 已为所有登记资源执行矩阵；岗位、菜单、配置、字典、审计、会话、文件、公告和任务在没有稳定 owner/member 关系时默认拒绝部门范围主体。异步任务和 owner/member 关系字段仍需后续定义。
 核心资源的新权限码已覆盖用户、角色、会话、审计、部门、字典、岗位、配置、菜单、任务、文件、个人资料、通知和日志资源。公开健康检查、验证码和公告列表继续使用 `@PermitAll`。授权决策和访问令牌签发的主体权限读取已使用 ORM 用户、角色和权限映射。权限缓存失效、显式拒绝和跨租户范围仍未完成。
 
 2026-11-14 已建立 Native 资源范围执行矩阵。`DataScopePolicy` 登记资源适用范围，`RequiresDataScope` 和 `DataScopeInterceptor` 在资源入口执行默认拒绝规则。用户和部门继续由仓储查询条件执行 `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`；个人资料和 API Key 只允许 `ALL`、`TENANT` 或 `SELF`。角色、岗位、菜单、配置、字典、审计和会话没有稳定 owner/member 关系，要求 `ALL` 或 `TENANT`。文件、公告和任务当前没有可验证的 owner/member 字段，也采用 `ALL` 或 `TENANT`，直到领域模型补充关系。普通部门范围主体访问这些资源会返回 `403 data_scope_denied`，不会因为接口存在权限码而扩大访问范围。
