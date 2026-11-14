@@ -13,8 +13,8 @@ class UserUpdatePersistenceTest {
     @Test
     void extendedUpdatesDelegateToOrmRepository() throws Exception {
         String source = Files.readString(Path.of("src/main/java/app/keystone/user/UserRepository.java"));
-        int start = source.indexOf("public User updateExtended");
-        int end = source.indexOf("\n    public void markLogin", start);
+        int start = source.indexOf("private User updateExtended");
+        int end = source.indexOf("\n    public User updateExtended(AuthorizationContext", start);
         String method = source.substring(start, end);
         assertTrue(method.contains("ormUsers.updateUser"));
         assertFalse(method.contains("prepareStatement"));

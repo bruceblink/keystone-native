@@ -18,26 +18,28 @@ public final class AuthorizationContext {
     private final Set<String> permissions;
     private final boolean allScope;
     private final boolean selfScope;
+    private final DataScopeService.Scope scope;
 
     private AuthorizationContext(String subjectId, String username, String credentialType, Object capability,
-                                 Set<String> permissions, boolean allScope, boolean selfScope) {
+                                 Set<String> permissions, DataScopeService.Scope scope) {
         this.subjectId = subjectId;
         this.username = username;
         this.credentialType = credentialType;
         this.capability = capability;
         this.permissions = Set.copyOf(permissions == null ? Set.of() : permissions);
-        this.allScope = allScope;
-        this.selfScope = selfScope;
+        this.scope = scope == null ? DataScopeService.Scope.none() : scope;
+        this.allScope = this.scope.all();
+        this.selfScope = this.scope.self();
     }
 
     /** 创建内部系统主体；只有固定能力标记可以满足系统主体判断。 */
     public static AuthorizationContext system() {
-        return new AuthorizationContext("system", "system", "SYSTEM", SYSTEM_CAPABILITY, Set.of("*"), true, false);
+        return new AuthorizationContext("system", "system", "SYSTEM", SYSTEM_CAPABILITY, Set.of("*"), DataScopeService.Scope.unrestricted());
     }
 
     static AuthorizationContext user(String subjectId, String username, String credentialType,
-                                    Set<String> permissions, boolean allScope, boolean selfScope) {
-        return new AuthorizationContext(subjectId, username, credentialType, new Object(), permissions, allScope, selfScope);
+                                    Set<String> permissions, DataScopeService.Scope scope) {
+        return new AuthorizationContext(subjectId, username, credentialType, new Object(), permissions, scope);
     }
 
     public String subjectId() { return subjectId; }
@@ -46,5 +48,6 @@ public final class AuthorizationContext {
     public boolean isSystem() { return capability == SYSTEM_CAPABILITY; }
     public boolean allScope() { return allScope; }
     public boolean selfScope() { return selfScope; }
+    public DataScopeService.Scope scope() { return scope; }
     public boolean hasPermission(String permission) { return isSystem() || permissions.contains(permission); }
 }

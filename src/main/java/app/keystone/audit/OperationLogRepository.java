@@ -16,6 +16,14 @@ import java.util.List;
 public class OperationLogRepository implements PanacheRepositoryBase<OperationLogEntity, java.util.UUID> {
     @jakarta.inject.Inject AuthorizationService authorization;
 
+    /** 用户命令使用已解析主体写入操作日志；系统事件继续使用无主体内部入口。 */
+    @Transactional(Transactional.TxType.REQUIRES_NEW)
+    public void record(AuthorizationContext context, String action, String resource, String resourceId, String detail) {
+        if (context == null) throw new app.keystone.auth.AuthorizationDeniedException(
+                "invalid_credential", 401, "authentication is required");
+        record(context.username(), action, resource, resourceId, detail);
+    }
+
     /** 审计记录失败不应阻断主业务，同时使用独立事务避免跟随调用方回滚。 */
     @Transactional(Transactional.TxType.REQUIRES_NEW)
     public void record(String actor, String action, String resource, String resourceId, String detail) {

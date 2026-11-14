@@ -25,8 +25,7 @@ public class AuthorizationService {
                 username,
                 String.valueOf((Object) identity.getAttribute("credentialType")),
                 permissions,
-                scope.all(),
-                scope.self());
+                scope);
     }
 
     /** 在业务命令内部执行权限和资源范围检查。 */

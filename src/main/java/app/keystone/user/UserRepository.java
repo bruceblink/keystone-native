@@ -1,6 +1,8 @@
 package app.keystone.user;
 
 import app.keystone.auth.DataScopeService;
+import app.keystone.auth.AuthorizationContext;
+import app.keystone.auth.AuthorizationService;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -12,6 +14,7 @@ import java.util.Optional;
 public class UserRepository {
     @Inject app.keystone.auth.ApiKeyUserRepository ormUsers;
     @Inject PasswordPolicy passwordPolicy;
+    @Inject AuthorizationService authorization;
     @ConfigProperty(name = "keystone.security.login.account-lock-base-seconds", defaultValue = "60")
     long accountLockBaseSeconds;
     @ConfigProperty(name = "keystone.security.login.account-lock-max-seconds", defaultValue = "900")
@@ -41,7 +44,7 @@ public class UserRepository {
         }
     }
 
-    public User findPublic(String id, DataScopeService.Scope scope, String subjectId) {
+    private User findPublic(String id, DataScopeService.Scope scope, String subjectId) {
         try {
             return ormUsers.findUser(id, scope, subjectId);
         } catch (java.util.NoSuchElementException e) {
@@ -51,7 +54,13 @@ public class UserRepository {
         }
     }
 
-    public Page list(int page, int size, String username, String displayName, String deptId, Boolean enabled,
+    /** 用户管理命令的显式授权入口；仓储只接收已经解析的范围。 */
+    public User findPublic(AuthorizationContext context, String id) {
+        authorization.require(context, "user:read", "user");
+        return findPublic(id, context.scope(), context.subjectId());
+    }
+
+    private Page list(int page, int size, String username, String displayName, String deptId, Boolean enabled,
                      DataScopeService.Scope scope, String subjectId) {
         try {
             return ormUsers.listUsers(page, size, username, displayName, deptId, enabled, scope, subjectId);
@@ -60,11 +69,26 @@ public class UserRepository {
         }
     }
 
-    public User create(String username, String password, String displayName, String deptId, List<String> roleCodes) {
+    public Page list(AuthorizationContext context, int page, int size, String username, String displayName,
+                     String deptId, Boolean enabled) {
+        authorization.require(context, "user:read", "user");
+        return list(page, size, username, displayName, deptId, enabled, context.scope(), context.subjectId());
+    }
+
+    private User create(String username, String password, String displayName, String deptId, List<String> roleCodes) {
         return create(username, password, displayName, deptId, null, null, null, null, null, null, roleCodes);
     }
 
-    public User create(String username, String password, String displayName, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, List<String> roleCodes) {
+    public User create(AuthorizationContext context, String username, String password, String displayName,
+                       String deptId, String postId, String email, String phoneNumber, Integer sex,
+                       String avatar, String remark, List<String> roleCodes) {
+        authorization.require(context, "user:create", "user");
+        if (!context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
+                "data_scope_denied", 403, "data scope does not allow this department");
+        return create(username, password, displayName, deptId, postId, email, phoneNumber, sex, avatar, remark, roleCodes);
+    }
+
+    private User create(String username, String password, String displayName, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, List<String> roleCodes) {
         if (username == null || username.isBlank() || password == null || password.isBlank() || displayName == null || displayName.isBlank()) throw new IllegalArgumentException("username, password and displayName are required");
         passwordPolicy.validate(username, password);
         try {
@@ -78,11 +102,39 @@ public class UserRepository {
         }
     }
 
-    public User update(String id, String password, String displayName, String deptId, Boolean enabled, List<String> roleCodes) {
+    private User update(String id, String password, String displayName, String deptId, Boolean enabled, List<String> roleCodes) {
         return updateExtended(id, password, displayName, deptId != null, deptId, null, null, null, null, null, null, enabled, roleCodes);
     }
 
-    public User updateExtended(String id, String password, String displayName, boolean updateDept, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
+    public User update(AuthorizationContext context, String id, String password, String displayName,
+                       String deptId, Boolean enabled, List<String> roleCodes) {
+        authorization.require(context, "user:update", "user");
+        findPublic(context, id);
+        if (deptId != null && !context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
+                "data_scope_denied", 403, "data scope does not allow this department");
+        return update(id, password, displayName, deptId, enabled, roleCodes);
+    }
+
+    public User updatePassword(AuthorizationContext context, String id, String password) {
+        authorization.require(context, "user:reset-password", "user");
+        findPublic(context, id);
+        return update(id, password, null, null, null, null);
+    }
+
+    /** 初次密码修改由认证流程调用，要求内部系统能力，不接受外部用户上下文。 */
+    public User updateInitialPassword(AuthorizationContext context, String id, String password) {
+        if (context == null || !context.isSystem()) throw new app.keystone.auth.AuthorizationDeniedException(
+                "permission_denied", 403, "internal authentication context required");
+        return update(id, password, null, null, null, null);
+    }
+
+    public User updateStatus(AuthorizationContext context, String id, Boolean enabled) {
+        authorization.require(context, "user:update", "user");
+        findPublic(context, id);
+        return update(id, null, null, null, enabled, null);
+    }
+
+    private User updateExtended(String id, String password, String displayName, boolean updateDept, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
         try {
             return ormUsers.updateUser(id, password, displayName, updateDept, deptId, postId,
                     email, phoneNumber, sex, avatar, remark, enabled, roleCodes, passwordPolicy);
@@ -93,6 +145,16 @@ public class UserRepository {
         }
     }
 
+    public User updateExtended(AuthorizationContext context, String id, String password, String displayName,
+                               boolean updateDept, String deptId, String postId, String email, String phoneNumber,
+                               Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
+        authorization.require(context, "user:update", "user");
+        findPublic(context, id);
+        if (updateDept && !context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
+                "data_scope_denied", 403, "data scope does not allow this department");
+        return updateExtended(id, password, displayName, updateDept, deptId, postId, email, phoneNumber, sex, avatar, remark, enabled, roleCodes);
+    }
+
     public void markLogin(String id, String ip) {
         try {
             ormUsers.markLogin(id, ip);
@@ -101,7 +163,7 @@ public class UserRepository {
         }
     }
 
-    public void delete(String id, DataScopeService.Scope scope, String subjectId) {
+    private void delete(String id, DataScopeService.Scope scope, String subjectId) {
         try {
             ormUsers.deleteUser(id, scope, subjectId);
         } catch (java.util.NoSuchElementException e) {
@@ -111,12 +173,22 @@ public class UserRepository {
         }
     }
 
-    public int deleteAll(List<String> ids, DataScopeService.Scope scope, String subjectId) {
+    public void delete(AuthorizationContext context, String id) {
+        authorization.require(context, "user:delete", "user");
+        delete(id, context.scope(), context.subjectId());
+    }
+
+    private int deleteAll(List<String> ids, DataScopeService.Scope scope, String subjectId) {
         try {
             return ormUsers.deleteUsers(ids, scope, subjectId);
         } catch (RuntimeException e) {
             throw new IllegalStateException("Could not delete users", e);
         }
+    }
+
+    public int deleteAll(AuthorizationContext context, List<String> ids) {
+        authorization.require(context, "user:delete", "user");
+        return deleteAll(ids, context.scope(), context.subjectId());
     }
 
     /** 计算第 N 次失败的锁定秒数；结果不会超过部署配置的上限。 */
