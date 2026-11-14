@@ -110,7 +110,7 @@ Phoenix 的 LiveView 事件总线属于管理界面能力。Native 当前只提�
 
 ## Native 资源范围执行矩阵
 
-Native 使用 `DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor` 固定入口规则。`user` 和 `department` 在仓储查询、详情和写入条件中执行范围过滤；`profile` 和 `api-key` 只允许当前主体的 `SELF` 范围或 `ALL`/`TENANT`。`role`、`post`、`menu`、`config`、`dictionary`、`audit` 和 `session` 没有稳定 owner/member 关系，入口要求 `ALL` 或 `TENANT`。`file`、`notice` 和 `job` 当前也没有可核验的 owner/member 字段，先采用同样的默认拒绝规则；请求主体没有全量范围时返回 `403 data_scope_denied`。后续增加关系字段后，必须同时修改矩阵、仓储条件和越权测试，不能只修改页面或权限注解。
+Native 使用 `DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor` 固定入口规则。`user` 和 `department` 在仓储查询、详情和写入条件中执行范围过滤；`profile` 和 `api-key` 只允许当前主体的 `SELF` 范围或 `ALL`/`TENANT`。`role`、`post`、`menu`、`config`、`dictionary`、`audit` 和 `session` 没有稳定 owner/member 关系，入口要求 `ALL` 或 `TENANT`。V56 已为公告保存 `owner_id`、为任务保存 `created_by`，两类资源使用角色 `OWNER` 范围按主体 ID 过滤；没有全量范围且没有 owner 关系的记录默认不可见。请求主体没有适用范围时返回 `403 data_scope_denied`。增加其他关系字段后，必须同时修改矩阵、仓储条件和越权测试，不能只修改页面或权限注解。
 
 | 资源 | 范围 | 执行边界 |
 | --- | --- | --- |
@@ -118,7 +118,8 @@ Native 使用 `DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor`
 | `department` | `ALL`、`TENANT`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` | 查询、父节点和目标检查 |
 | `profile`、`api-key` | `ALL`、`TENANT`、`SELF` | 当前主体关系 |
 | `role`、`post`、`menu`、`config`、`dictionary`、`audit`、`session` | `ALL`、`TENANT` | 入口默认拒绝 |
-| `file`、`notice`、`job` | `ALL`、`TENANT` | owner/member 关系补齐前默认拒绝 |
+| `file` | `ALL`、`TENANT` | 入口默认拒绝 |
+| `notice`、`job` | `ALL`、`TENANT`、`OWNER` | V56 owner 字段和仓储条件；OWNER 主体只读取和操作自己的记录 |
 
 ## 设计决策
 

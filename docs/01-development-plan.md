@@ -174,13 +174,13 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 - [x] 迁移用户管理和角色管理接口到权限码。
 - [x] 迁移在线会话和操作审计接口到权限码。
 - [x] 把 `data_scope` 转为明确策略：`ALL`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`。
-- [x] 将同一范围策略推广到所有已登记资源；缺少 owner/member 关系的资源默认要求 `ALL` 或 `TENANT`，用户和部门继续使用查询过滤。
+- [x] 将同一范围策略推广到所有已登记资源；缺少 owner/member 关系的资源要求 `ALL` 或 `TENANT`，用户和部门继续使用查询过滤，公告和任务使用 V56 owner 字段和 `OWNER` 范围过滤。
 - [ ] 每个列表、详情、更新和删除接口补充跨部门越权测试；服务层命令已覆盖主要管理资源，剩余工作集中在全部查询层过滤和异步边界。
 
-当前已增加统一 `DataScopeService`，并把用户接口的列表、详情、更新、密码、状态、删除、批量删除、导出和导入路径接入范围条件。`DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor` 已为所有登记资源执行矩阵；`196eaae` 将角色、菜单、配置、字典、岗位、公告、任务、审计和文件的管理命令改为接收显式 `AuthorizationContext`，`5df5b88` 继续覆盖用户、部门和个人资料命令。缺失主体、错误权限、越界范围和伪造系统主体已有直接服务层拒绝测试。异步任务、真实 owner/member 关系和所有列表/详情/导出/批量查询的范围条件仍需后续定义和验收。
+当前已增加统一 `DataScopeService`，并把用户接口的列表、详情、更新、密码、状态、删除、批量删除、导出和导入路径接入范围条件。`DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor` 已为所有登记资源执行矩阵；`196eaae` 将角色、菜单、配置、字典、岗位、公告、任务、审计和文件的管理命令改为接收显式 `AuthorizationContext`，`5df5b88` 继续覆盖用户、部门和个人资料命令。V56 为公告和任务增加 owner 字段，Native 使用角色 `OWNER` 范围执行列表、详情、更新、删除、执行和任务日志过滤，并与 Phoenix 的 owner 查询语义保持一致。缺失主体、错误权限、越界范围和伪造系统主体已有直接服务层拒绝测试。异步任务、其他资源的真实 owner/member 关系和所有列表/详情/导出/批量查询的范围条件仍需后续定义和验收。
 核心资源的新权限码已覆盖用户、角色、会话、审计、部门、字典、岗位、配置、菜单、任务、文件、个人资料、通知和日志资源。公开健康检查、验证码和公告列表继续使用 `@PermitAll`。授权决策和访问令牌签发的主体权限读取已使用 ORM 用户、角色和权限映射。权限缓存失效、显式拒绝和跨租户范围仍未完成；服务层命令边界已完成首轮改造，但不能替代查询层的数据过滤证据。
 
-2026-11-14 已建立 Native 资源范围执行矩阵。`DataScopePolicy` 登记资源适用范围，`RequiresDataScope` 和 `DataScopeInterceptor` 在资源入口执行默认拒绝规则；`AuthorizationContext` 又在主要管理命令边界复核权限和范围。用户和部门继续由仓储查询条件执行 `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`；个人资料和 API Key 只允许 `ALL`、`TENANT` 或 `SELF`。角色、岗位、菜单、配置、字典、审计和会话没有稳定 owner/member 关系，要求 `ALL` 或 `TENANT`。文件、公告和任务当前没有可验证的 owner/member 字段，也采用 `ALL` 或 `TENANT`，直到领域模型补充关系。普通部门范围主体访问这些资源会返回 `403 data_scope_denied`，不会因为接口存在权限码而扩大访问范围。真实记录的 owner/member 过滤、导出、批量和异步任务范围仍未完成。
+2026-11-14 已建立 Native 资源范围执行矩阵。`DataScopePolicy` 登记资源适用范围，`RequiresDataScope` 和 `DataScopeInterceptor` 在资源入口执行默认拒绝规则；`AuthorizationContext` 又在主要管理命令边界复核权限和范围。用户和部门继续由仓储查询条件执行 `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`；个人资料和 API Key 只允许 `ALL`、`TENANT` 或 `SELF`。角色、岗位、菜单、配置、字典、审计和会话没有稳定 owner/member 关系，要求 `ALL` 或 `TENANT`。V56 已为公告和任务增加二进制 owner 字段、索引和外键，角色 `OWNER` 通过主体 ID过滤这两类资源；不同主体的列表、详情、更新、删除、执行和任务日志访问均按 owner 范围拒绝或返回空结果。普通部门范围主体访问这些资源会返回 `403 data_scope_denied`，不会因为接口存在权限码而扩大访问范围。其他资源的真实 owner/member 过滤、导出、批量和异步任务范围仍未完成。
 
 | 资源 | 支持范围 | 执行方式 | 当前入口 |
 | --- | --- | --- | --- |
@@ -188,7 +188,8 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 | `department` | `ALL`、`TENANT`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` | 部门查询、父节点和目标检查 | `DepartmentResource`、`DepartmentRepository` |
 | `profile`、`api-key` | `ALL`、`TENANT`、`SELF` | 当前主体关系检查 | `ProfileResource`、`ApiKeyResource` |
 | `role`、`post`、`menu`、`config`、`dictionary`、`audit`、`session` | `ALL`、`TENANT` | 入口默认拒绝 | 对应 REST resource |
-| `file`、`notice`、`job` | `ALL`、`TENANT` | owner/member 关系缺失时入口默认拒绝 | 对应 REST resource |
+| `file` | `ALL`、`TENANT` | 入口默认拒绝 | `FileResource` |
+| `notice`、`job` | `ALL`、`TENANT`、`OWNER` | owner 字段和主体条件 | `NoticeResource`、`JobResource`、`OwnerScopeResourceHttpTest` |
 
 ### 2026-11-14 V56 迁移重跑验收
 
