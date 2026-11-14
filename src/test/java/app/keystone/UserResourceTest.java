@@ -1,5 +1,6 @@
 package app.keystone;
 
+import app.keystone.auth.TotpService;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
@@ -12,6 +13,7 @@ import static org.hamcrest.Matchers.containsString;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.zip.ZipInputStream;
 
 @QuarkusTest
@@ -95,6 +97,74 @@ class UserResourceTest extends AuthTestFixture {
                 .when().post("/v1/users/import")
                 .then().statusCode(403)
                 .body("error.code", is("permission_denied"));
+    }
+
+    @Test
+    void userImportSucceedsWithAal2AndReportsPerRowResult() throws Exception {
+        String admin = login("admin", "password");
+        String username = "import_aal2_admin_" + System.nanoTime();
+        String temporaryAdminId = null;
+        String importedId = null;
+        try {
+            temporaryAdminId = given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"AAL2 Import Admin\",\"roleCodes\":[\"ADMIN\"]}")
+                    .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
+
+            String aal1 = login(username, "password");
+            var enrollment = given().auth().oauth2(aal1).contentType(JSON)
+                    .when().post("/v1/auth/mfa/enroll").then().statusCode(201).extract();
+            String enrollmentCode = new TotpService().code(enrollment.path("data.secret"), Instant.now());
+            var enrollmentResult = given().auth().oauth2(aal1).contentType(JSON)
+                    .body("{\"challengeId\":\"" + enrollment.path("data.challengeId") + "\",\"code\":\"" + enrollmentCode + "\"}")
+                    .when().post("/v1/auth/mfa/enroll/verify").then().statusCode(200).extract();
+
+            String recoveryCode = enrollmentResult.path("data.recoveryCodes[0]");
+            given().auth().oauth2(aal1).contentType(JSON)
+                    .body("{\"required\":true}")
+                    .when().put("/v1/auth/mfa/policy/" + temporaryAdminId).then().statusCode(200);
+
+            var loginChallenge = given().contentType(JSON)
+                    .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"forceLogin\":true}")
+                    .when().post("/v1/auth/login").then().statusCode(401)
+                    .body("message", is("MFA_REQUIRED"))
+                    .extract();
+            var aal2Login = given().contentType(JSON)
+                    .body("{\"username\":\"" + username + "\",\"challengeId\":\"" + loginChallenge.path("data.challengeId")
+                            + "\",\"code\":\"" + recoveryCode + "\",\"forceLogin\":true}")
+                    .when().post("/v1/auth/mfa/verify").then().statusCode(200).extract();
+            String aal2 = aal2Login.path("data.accessToken");
+            String payload = new String(java.util.Base64.getUrlDecoder().decode(aal2.split("\\.")[1]), StandardCharsets.UTF_8);
+            var claims = new com.fasterxml.jackson.databind.ObjectMapper().readTree(payload);
+            org.junit.jupiter.api.Assertions.assertEquals("AAL2", claims.path("aal").asText());
+            org.junit.jupiter.api.Assertions.assertEquals("recovery", claims.path("amr").get(0).asText());
+
+            String importedUsername = "imported_aal2_" + System.nanoTime();
+            byte[] workbook = ExcelExporter.export(
+                    java.util.List.of("部门ID", "用户名", "昵称", "密码", "状态"),
+                    java.util.List.of(
+                            java.util.List.of("", importedUsername, "AAL2 导入用户", "password", true),
+                            java.util.List.of("", importedUsername + "_invalid", "缺少密码", "", true)));
+
+            given().auth().oauth2(aal2)
+                    .multiPart("file", "users.xlsx", workbook,
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                    .when().post("/v1/users/import")
+                    .then().statusCode(200)
+                    .body("data.total", is(2))
+                    .body("data.success", is(1))
+                    .body("data.failed.size()", is(1))
+                    .body("data.failed[0].row", is(3));
+
+            importedId = given().auth().oauth2(aal2).when().get("/v1/users?username=" + importedUsername)
+                    .then().statusCode(200).body("data.items.size()", is(1)).extract().path("data.items[0].id");
+        } finally {
+            if (importedId != null) {
+                given().auth().oauth2(admin).when().delete("/v1/users/" + importedId).then().statusCode(200);
+            }
+            if (temporaryAdminId != null) {
+                given().auth().oauth2(admin).when().delete("/v1/users/" + temporaryAdminId).then().statusCode(200);
+            }
+        }
     }
 
     private static String readWorksheet(byte[] workbook) {
