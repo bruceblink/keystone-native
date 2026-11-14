@@ -48,6 +48,9 @@ public class ApiKeyIdentityProvider implements IdentityProvider<ApiKeyAuthentica
                     .addAttribute("subjectId", principal.subjectId())
                     .addAttribute("userId", principal.userId())
                     .addAttribute("scopes", principal.scopes())
+                    .addAttribute("approvedScopes", principal.scopes())
+                    .addAttribute("clientId", "api")
+                    .addAttribute("authenticationLevel", "AAL1")
                     ;
             principal.scopes().forEach(builder::addPermissionAsString);
             return builder.build();

@@ -10,9 +10,9 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Set;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /** 验证业务命令不能在 REST 拦截器之外缺少主体或权限时执行。 */
 @QuarkusTest
@@ -50,6 +50,19 @@ class AuthorizationContextTest {
                 "00000000-0000-7000-8000-000000000002", "limited", "USER", Set.of("*"), DataScopeService.Scope.unrestricted());
         assertFalse(context.isSystem());
         assertFalse(context.hasPermission("role:create"));
+    }
+
+    @Test
+    void contextExposesUnifiedPrincipalFields() {
+        AuthorizationContext context = AuthorizationContext.user(
+                "00000000-0000-7000-8000-000000000004", "limited", "PASSWORD", Set.of("role:read"),
+                DataScopeService.Scope.unrestricted());
+        assertEquals("USER", context.subjectType());
+        assertEquals("PASSWORD", context.credentialType());
+        assertEquals("web", context.clientId());
+        assertEquals(Set.of("role:read"), context.approvedScopes());
+        assertEquals("ALL", context.dataScope());
+        assertEquals("AAL1", context.authenticationLevel());
     }
 
     @Test
