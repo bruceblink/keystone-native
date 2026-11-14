@@ -2,9 +2,9 @@
 
 跨项目统一架构见 [`02-auth-authorization-parity-architecture.md`](02-auth-authorization-parity-architecture.md)。本文件同时记录 Native 本地实施任务和与 Keystone Phoenix 的跨项目验收要求。项目采用一次性重构，不保留旧接口、旧权限格式、旧响应封装或旧整数主键。
 
-更新日期：2026-11-14。当前代码基线为 `1ad14f7`。`73d1bb9` 至 `6b1a586` 完成权限目录、UUID 主键、统一错误、资源范围、HTTP 安全策略、审计清理、限流告警和持久化 JWK 注册表；`7c0ec76` 完成 OIDC Authorization Code + PKCE；`a73073b` 完成 Native WebAuthn/Passkey；`3501045` 增加真实 MySQL 刷新、API Key 轮换和 MFA 恢复码并发验收；`6267559` 对齐 ORM 与 MySQL 最终列类型，并修复 WebAuthn 默认关闭时的 session key 启动条件；`0960a5e` 修复操作日志删除权限码并要求 WebAuthn 注册使用 AAL2 step-up；`53b3cac` 补齐非用户资源入口范围检查、修复 CDI 代理上的范围注解解析并增加真实 HTTP 越权测试；`196eaae` 为角色、菜单、配置、字典、岗位、公告、任务、审计和文件等管理命令建立显式 `AuthorizationContext`；`5df5b88` 将用户、部门和个人资料命令也接入该上下文；`3b0ec87` 增加 API Key 轮换计数和安全事件运营报告接口；`09be890` 增加 Flyway V56 owner 字段和公告/任务的 `SELF/OWNER` 数据过滤，覆盖越界读写、执行和混合删除回滚；`d62d40b` 删除认证响应中的重复旧 `token` 字段；`1ad14f7` 将控制台日志时间戳改为包含年月日。当前 `./gradlew clean test --no-daemon` 为 170 项通过、0 项跳过；`./gradlew quarkusBuild -x test --no-daemon`、源码行数和 `git diff --check` 均通过。MySQL 8.4.13 已执行并重复验证 Flyway V55；V56 已加入 owner 字段、索引和外键迁移，并有迁移结构回归。`scripts/verify_v56_migration.sh` 已在隔离的 MySQL 8.4.13 数据库中验证空库首次执行、完整重跑、索引/外键缺失重跑和字段缺失重跑；四种场景均恢复为单列、单索引和单外键。真实启动健康检查无 Hibernate schema validation 错误。本地 OIDC provider、临时 TLS 终止代理、备份还原、应用进程数据库断开恢复、API Key 猜测限流、JWT key 轮换和单进程崩溃重启后的旧访问令牌恢复均已完成真实验收。主线已无 `is_admin` 字段。当前剩余公网 IdP、浏览器/硬件 Passkey、浏览器 CSRF/Cookie、多节点恢复、全部资源的真实 owner/member 数据过滤、导出/批量/异步范围、跨租户报表和旧代码清理；V56 的独立生产升级、真实生产数据恢复和发布窗口验证仍未完成。
+更新日期：2026-11-14。当前代码基线为 `a6c1d71`。`73d1bb9` 至 `6b1a586` 完成权限目录、UUID 主键、统一错误、资源范围、HTTP 安全策略、审计清理、限流告警和持久化 JWK 注册表；`7c0ec76` 完成 OIDC Authorization Code + PKCE；`a73073b` 完成 Native WebAuthn/Passkey；`3501045` 增加真实 MySQL 刷新、API Key 轮换和 MFA 恢复码并发验收；`6267559` 对齐 ORM 与 MySQL 最终列类型，并修复 WebAuthn 默认关闭时的 session key 启动条件；`0960a5e` 修复操作日志删除权限码并要求 WebAuthn 注册使用 AAL2 step-up；`53b3cac` 补齐非用户资源入口范围检查、修复 CDI 代理上的范围注解解析并增加真实 HTTP 越权测试；`196eaae` 为角色、菜单、配置、字典、岗位、公告、任务、审计和文件等管理命令建立显式 `AuthorizationContext`；`5df5b88` 将用户、部门和个人资料命令也接入该上下文；`3b0ec87` 增加 API Key 轮换计数和安全事件运营报告接口；`09be890` 增加 Flyway V56 owner 字段和公告/任务的 `SELF/OWNER` 数据过滤，覆盖越界读写、执行和混合删除回滚；`d62d40b` 删除认证响应中的重复旧 `token` 字段；`1ad14f7` 将控制台日志时间戳改为包含年月日；`a6c1d71` 增加 clean-break 旧兼容资源和重复 token 字段自动审计。当前 `./gradlew clean test --no-daemon` 为 172 项通过、0 项跳过；`./gradlew quarkusBuild -x test --no-daemon`、源码行数和 `git diff --check` 均通过。MySQL 8.4.13 已执行并重复验证 Flyway V55；V56 已加入 owner 字段、索引和外键迁移，并有迁移结构回归。`scripts/verify_v56_migration.sh` 已在隔离的 MySQL 8.4.13 数据库中验证空库首次执行、完整重跑、索引/外键缺失重跑和字段缺失重跑；四种场景均恢复为单列、单索引和单外键。真实启动健康检查无 Hibernate schema validation 错误。本地 OIDC provider、临时 TLS 终止代理、备份还原、应用进程数据库断开恢复、API Key 猜测限流、JWT key 轮换和单进程崩溃重启后的旧访问令牌恢复均已完成真实验收。主线已无 `is_admin` 字段。当前剩余公网 IdP、浏览器/硬件 Passkey、浏览器 CSRF/Cookie、多节点恢复、全部资源的真实 owner/member 数据过滤、导出/批量/异步范围、跨租户报表；V56 的独立生产升级、真实生产数据恢复和发布窗口验证仍未完成。旧根路由、旧 token 字段、compat 包和 Legacy 资源/测试已清理，并由 `a6c1d71` 的自动审计测试持续验证。
 
-当前结论：核心实现已完成，开发计划尚未全部完成，不能据此声明生产发布验收通过。服务层已完成显式 `AuthorizationContext` 改造；`09be890` 为公告和任务增加可验证 owner 字段，`d62d40b` 删除重复旧 token 字段，`1ad14f7` 补充完整日志日期，SELF/OWNER 列表、详情、更新、执行和混合删除回滚测试通过。报告接口和 owner 范围已有代码与定向 HTTP 证据，完整生产数据和跨租户报告验收仍未完成。全部资源的真实 owner/member 过滤、导出/批量/异步范围、V56 生产升级和真实数据恢复链路、浏览器 CSRF/Cookie 实际行为、浏览器或硬件 Passkey、真实生产 IdP/TLS、多节点恢复和旧代码清理仍属于未闭环条件。
+当前结论：核心实现已完成，开发计划尚未全部完成，不能据此声明生产发布验收通过。服务层已完成显式 `AuthorizationContext` 改造；`09be890` 为公告和任务增加可验证 owner 字段，`d62d40b` 删除重复旧 token 字段，`1ad14f7` 补充完整日志日期，SELF/OWNER 列表、详情、更新、执行和混合删除回滚测试通过。报告接口和 owner 范围已有代码与定向 HTTP 证据，完整生产数据和跨租户报告验收仍未完成。全部资源的真实 owner/member 过滤、导出/批量/异步范围、V56 生产升级和真实数据恢复链路、浏览器 CSRF/Cookie 实际行为、浏览器或硬件 Passkey、真实生产 IdP/TLS 和多节点恢复仍属于未闭环条件；旧兼容代码清理已有自动审计证据。
 
 ## 跨项目统一主线
 
@@ -246,7 +246,7 @@ API Key、角色、用户、在线会话、MFA enrollment/策略变更和恢复�
 - [x] 完成 MFA 因子消费的单事务实现，覆盖 enrollment、TOTP、恢复码和认证请求状态；真实 MySQL 并发消费已通过，应用进程断开后的恢复仍待执行。
 - [x] 完成可信代理地址解析，默认使用连接远端地址，拒绝未验证的 `X-Forwarded-For` 链；真实 HTTP 注入和部署链验收仍待执行。
 - [x] 增加 `JWT_KEY_ID`、签名私钥和公钥集合的启动检查；Quarkus 就绪状态和运行时签名错误验收仍待执行。
-- [ ] 删除旧根路由、旧 token 字段、旧资源实现和无效测试。
+- [x] 删除旧根路由、旧 token 字段、旧资源实现和无效测试；`31388f2` 删除历史兼容资源和测试，`a6c1d71` 持续扫描 `src/main/java`、`src/test/java` 并断言不存在 `compat`、`Legacy*`、`*Compatibility` 路径及重复 `TokenResponse.token` 字段。规范 `/.well-known/jwks.json` 和 `old_numeric_code` 错误分类测试不属于旧兼容接口。
 
 ## 迁移与回滚边界
 
@@ -327,7 +327,7 @@ API Key 认证成功后创建统一的 `SecurityIdentity`，身份属性必须�
 | Web 与传输 | HTTPS、CORS、CSRF、Cookie 属性、浏览器存储、缓存控制 | 生产 HTTPS/HSTS、CORS、统一安全响应头和临时 TLS 代理链已验证；浏览器 CSRF/Cookie 和生产证书链仍待执行 |
 | 审计 | 签发、使用、失败、撤销、重用、权限拒绝和管理员操作可追踪 | 部分完成：API Key 认证、权限拒绝和非秘密 credential ID 已记录；事件按保留时间和总量清理，安全事件运营报告已实现并通过定向 HTTP 测试；完整凭据生命周期和生产数据验收未完成 |
 | 运维 | 密钥托管、轮换、备份恢复、告警、限流、数据库故障行为 | 部分完成：认证失败阻断告警、限流、事件清理、迁移重复执行、备份还原、容器恢复、进程崩溃重启、进程存活恢复、key 轮换和运营报告接口已验证；完整组合测试、多节点恢复和真实运营演练仍待执行 |
-| 旧代码清理 | 旧根路由、旧 token 字段、旧测试和旧资源全部删除 | 未完成：一次性重构阶段统一删除 |
+| 旧代码清理 | 旧根路由、旧 token 字段、旧测试和旧资源全部删除 | 已完成：`31388f2` 清理历史兼容实现，`a6c1d71` 增加路径和 TokenResponse 自动审计；规范 JWK 路径和未知错误分类回归保留 |
 
 ## 审查后的阶段调整
 
