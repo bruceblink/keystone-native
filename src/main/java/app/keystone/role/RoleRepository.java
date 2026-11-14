@@ -19,6 +19,12 @@ public class RoleRepository {
         return ormRoles.listRoles();
     }
 
+    /** 角色导出复用全量查询和资源范围检查。 */
+    public List<Role> export(AuthorizationContext context) {
+        authorization.require(context, "role:export", "role");
+        return ormRoles.listRoles();
+    }
+
     public Role create(AuthorizationContext context, String code, String name) {
         authorization.require(context, "role:create", "role");
         require(code, "code");

@@ -10,6 +10,10 @@ import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
 
+import java.io.ByteArrayInputStream;
+import java.nio.charset.StandardCharsets;
+import java.util.zip.ZipInputStream;
+
 @QuarkusTest
 class UserResourceTest extends AuthTestFixture {
     @Test
@@ -53,23 +57,37 @@ class UserResourceTest extends AuthTestFixture {
     }
 
     @Test
-    void adminCanExportUsersAsScopedCsvWithoutSecrets() {
+    void adminCanExportUsersAsScopedExcelWithoutSecrets() {
         String admin = login("admin", "password");
         String username = "export_" + System.nanoTime();
         String id = given().auth().oauth2(admin).contentType(JSON)
                 .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Export User\",\"roleCodes\":[\"USER\"]}")
                 .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
 
-        String csv = given().auth().oauth2(admin)
+        byte[] workbook = given().auth().oauth2(admin)
                 .when().get("/v1/users/export?username=" + username)
-                .then().statusCode(200).contentType(containsString("text/csv"))
-                .extract().asString();
+                .then().statusCode(200).contentType(containsString("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .extract().asByteArray();
 
-        org.junit.jupiter.api.Assertions.assertTrue(csv.contains(username));
-        org.junit.jupiter.api.Assertions.assertTrue(csv.contains("Export User"));
-        org.junit.jupiter.api.Assertions.assertFalse(csv.contains("password_hash"));
-        org.junit.jupiter.api.Assertions.assertFalse(csv.contains("password"));
+        org.junit.jupiter.api.Assertions.assertEquals((byte) 'P', workbook[0]);
+        org.junit.jupiter.api.Assertions.assertEquals((byte) 'K', workbook[1]);
+        String sheet = readWorksheet(workbook);
+        org.junit.jupiter.api.Assertions.assertTrue(sheet.contains(username));
+        org.junit.jupiter.api.Assertions.assertTrue(sheet.contains("Export User"));
+        org.junit.jupiter.api.Assertions.assertFalse(sheet.contains("password_hash"));
+        org.junit.jupiter.api.Assertions.assertFalse(sheet.contains("password"));
         given().auth().oauth2(admin).when().delete("/v1/users/" + id).then().statusCode(200);
+    }
+
+    private static String readWorksheet(byte[] workbook) {
+        try (var zip = new ZipInputStream(new ByteArrayInputStream(workbook), StandardCharsets.UTF_8)) {
+            for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
+                if ("xl/worksheets/sheet1.xml".equals(entry.getName())) return new String(zip.readAllBytes(), StandardCharsets.UTF_8);
+            }
+            throw new AssertionError("worksheet is missing");
+        } catch (java.io.IOException e) {
+            throw new AssertionError("invalid Excel workbook", e);
+        }
     }
 
     private static String login(String username, String password) {

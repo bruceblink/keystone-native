@@ -1,6 +1,7 @@
 package app.keystone.user;
 
 import app.keystone.ApiResponse;
+import app.keystone.ExcelExporter;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.SessionRepository;
 import app.keystone.auth.RequiresPermission;
@@ -32,13 +33,13 @@ public class UserResource {
         return ApiResponse.ok(users.list(context(), page == null ? 1 : page, size == null ? 20 : size, username, displayName, deptId, enabled));
     }
 
-    @GET @Path("/export") @Produces("text/csv; charset=UTF-8") @RequiresPermission("user:export")
+    @GET @Path("/export") @Produces(ExcelExporter.CONTENT_TYPE) @RequiresPermission("user:export")
     public Response export(@QueryParam("username") String username, @QueryParam("displayName") String displayName,
                            @QueryParam("deptId") String deptId, @QueryParam("enabled") Boolean enabled) {
         try {
-            String csv = UserCsvExporter.export(users.export(context(), username, displayName, deptId, enabled));
-            return Response.ok(csv).type("text/csv; charset=UTF-8")
-                    .header("Content-Disposition", "attachment; filename=users.csv")
+            byte[] workbook = UserExcelExporter.export(users.export(context(), username, displayName, deptId, enabled));
+            return Response.ok(workbook).type(ExcelExporter.CONTENT_TYPE)
+                    .header("Content-Disposition", "attachment; filename=users.xlsx")
                     .build();
         } catch (IllegalArgumentException e) {
             return bad(e.getMessage());

@@ -48,6 +48,21 @@ public class OperationLogRepository implements PanacheRepositoryBase<OperationLo
         authorization.require(context, "audit:read", "audit");
         int safePage = Math.max(1, page);
         int safeSize = Math.min(100, Math.max(1, size));
+        PanacheQuery<OperationLogEntity> query = query(actor, action, resource);
+        long total = query.count();
+        List<OperationLog> items = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize)).list().stream()
+                .map(OperationLogEntity::toModel)
+                .toList();
+        return new Page(items, safePage, safeSize, total);
+    }
+
+    /** 导出完整筛选结果；审计范围只允许 ALL/TENANT。 */
+    public List<OperationLog> export(AuthorizationContext context, String actor, String action, String resource) {
+        authorization.require(context, "operation-log:export", "audit");
+        return query(actor, action, resource).list().stream().map(OperationLogEntity::toModel).toList();
+    }
+
+    private PanacheQuery<OperationLogEntity> query(String actor, String action, String resource) {
         var conditions = new ArrayList<String>();
         var parameters = new ArrayList<Object>();
         if (actor != null && !actor.isBlank()) {
@@ -63,12 +78,7 @@ public class OperationLogRepository implements PanacheRepositoryBase<OperationLo
             parameters.add(resource.trim());
         }
         String queryText = conditions.isEmpty() ? "" : "where " + String.join(" and ", conditions);
-        PanacheQuery<OperationLogEntity> query = find(queryText, Sort.by("id", Sort.Direction.Descending), parameters.toArray());
-        long total = query.count();
-        List<OperationLog> items = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize)).list().stream()
-                .map(OperationLogEntity::toModel)
-                .toList();
-        return new Page(items, safePage, safeSize, total);
+        return find(queryText, Sort.by("id", Sort.Direction.Descending), parameters.toArray());
     }
 
     /** 使用参数化 HQL 批量删除指定记录。 */

@@ -1,6 +1,7 @@
 package app.keystone.role;
 
 import app.keystone.ApiResponse;
+import app.keystone.ExcelExporter;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.RequiresPermission;
 import app.keystone.auth.RequiresMfaStepUp;
@@ -25,6 +26,14 @@ public class RoleResource {
 
     @GET @RequiresPermission("role:read")
     public ApiResponse<java.util.List<Role>> list() { return ApiResponse.ok(roles.list(context())); }
+
+    @GET @Path("/export") @Produces(ExcelExporter.CONTENT_TYPE) @RequiresPermission("role:export")
+    public Response export() {
+        return Response.ok(RoleExcelExporter.export(roles.export(context())))
+                .type(ExcelExporter.CONTENT_TYPE)
+                .header("Content-Disposition", "attachment; filename=roles.xlsx")
+                .build();
+    }
 
     @POST @RequiresPermission("role:create") @RequiresMfaStepUp public Response create(RoleRequest request) { if (request == null) return bad("request body is required"); try { var role = roles.create(context(), request.code(), request.name()); logs.record(actor(), "CREATE", "role", String.valueOf(role.id()), role.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(role)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
     @PUT @Path("/{id}") @RequiresPermission("role:update") @RequiresMfaStepUp public Response update(@PathParam("id") String id, RoleRequest request) { if (request == null) return bad("request body is required"); try { var role = roles.updateById(context(), id, request.name(), request.enabled()); logs.record(actor(), "UPDATE", "role", role.id(), role.code()); return Response.ok(ApiResponse.ok(role)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }

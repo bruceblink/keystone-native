@@ -60,8 +60,10 @@ class DataScopeResourceHttpTest {
     @Test
     void restrictedSubjectCannotReadOrWriteGlobalResources() {
         assertDeniedGet("/v1/roles");
+        assertDeniedGet("/v1/roles/export");
         assertDeniedPost("/v1/roles");
         assertDeniedGet("/v1/posts");
+        assertDeniedGet("/v1/posts/export");
         assertDeniedPost("/v1/posts");
         assertDeniedGet("/v1/menus");
         assertDeniedPost("/v1/menus");
@@ -70,6 +72,8 @@ class DataScopeResourceHttpTest {
         assertDeniedGet("/v1/dictionaries");
         assertDeniedPost("/v1/dictionaries");
         assertDeniedGet("/v1/operation-logs");
+        assertDeniedGet("/v1/login-logs/export");
+        assertDeniedGet("/v1/operation-logs/export");
         assertDeniedGet("/v1/monitor/security");
         assertDeniedGet("/v1/monitor/security/report");
         assertDeniedGet("/v1/monitor/onlineUsers");
@@ -80,6 +84,11 @@ class DataScopeResourceHttpTest {
         assertOwnerScopedPost("/v1/notices", "{\"title\":\"范围公告\",\"content\":\"scope\",\"noticeType\":\"NOTICE\"}");
         assertDeniedGet("/v1/file/download?fileName=missing.txt");
         assertDeniedFileUpload();
+
+        given().auth().oauth2(accessToken)
+                .when().get("/v1/users/export")
+                .then().statusCode(200)
+                .header("Content-Type", org.hamcrest.Matchers.containsString("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"));
     }
 
     private void assertDeniedGet(String path) {

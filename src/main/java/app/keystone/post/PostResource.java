@@ -1,6 +1,7 @@
 package app.keystone.post;
 
 import app.keystone.ApiResponse;
+import app.keystone.ExcelExporter;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.RequiresPermission;
 import app.keystone.auth.AuthorizationContext;
@@ -25,6 +26,13 @@ public class PostResource {
 
     @GET @RequiresPermission("post:read")
     public ApiResponse<List<Post>> list() { return ApiResponse.ok(posts.list(context())); }
+    @GET @Path("/export") @Produces(ExcelExporter.CONTENT_TYPE) @RequiresPermission("post:export")
+    public Response export() {
+        return Response.ok(PostExcelExporter.export(posts.export(context())))
+                .type(ExcelExporter.CONTENT_TYPE)
+                .header("Content-Disposition", "attachment; filename=posts.xlsx")
+                .build();
+    }
     @POST @RequiresPermission("post:create") public Response create(PostRequest request) { if (request == null) return bad("request body is required"); try { var post = posts.create(context(), request.code(), request.name(), request.sortOrder()); logs.record(actor(), "CREATE", "post", String.valueOf(post.id()), post.code()); return Response.status(201).entity(ApiResponse.ok(post)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
     @PUT @Path("/{id}") @RequiresPermission("post:update") public Response update(@PathParam("id") String id, PostRequest request) { if (request == null) return bad("request body is required"); try { var post = posts.update(context(), id, request.name(), request.sortOrder(), request.enabled()); logs.record(actor(), "UPDATE", "post", id, post.code()); return Response.ok(ApiResponse.ok(post)).build(); } catch (NoSuchElementException e) { return notFound(); } catch (IllegalArgumentException e) { return bad("id must be a UUID"); } }
     @DELETE @Path("/{id}") @RequiresPermission("post:delete") public Response delete(@PathParam("id") String id) { try { posts.delete(context(), id); logs.record(actor(), "DELETE", "post", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (NoSuchElementException e) { return notFound(); } catch (IllegalArgumentException e) { return bad("id must be a UUID"); } }

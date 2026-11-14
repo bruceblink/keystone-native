@@ -20,6 +20,13 @@ public class PostRepository implements PanacheRepositoryBase<PostEntity, java.ut
         return find("order by sortOrder, id").list().stream().map(PostEntity::toModel).toList();
     }
 
+    /** 岗位导出复用全量查询和资源范围检查。 */
+    @Transactional
+    public List<Post> export(AuthorizationContext context) {
+        authorization.require(context, "post:export", "post");
+        return find("order by sortOrder, id").list().stream().map(PostEntity::toModel).toList();
+    }
+
     @Transactional
     public Post create(AuthorizationContext context, String code, String name, Integer sortOrder) {
         authorization.require(context, "post:create", "post");

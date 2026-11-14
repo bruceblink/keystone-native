@@ -1,6 +1,9 @@
 package app.keystone.audit;
 
+import app.keystone.auth.AuthorizationContext;
+import app.keystone.auth.AuthorizationService;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
+import io.quarkus.hibernate.orm.panache.PanacheQuery;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 
@@ -9,6 +12,8 @@ import java.util.List;
 /** 使用 Panache 保存和查询登录日志。 */
 @ApplicationScoped
 public class LoginLogRepository implements PanacheRepositoryBase<LoginLogEntity, java.util.UUID> {
+    @jakarta.inject.Inject AuthorizationService authorization;
+
     /** 登录日志写入失败不影响认证主流程。 */
     @Transactional
     public void record(String username, String status, String ipAddress, String message, String userAgent) {
@@ -24,11 +29,18 @@ public class LoginLogRepository implements PanacheRepositoryBase<LoginLogEntity,
     public Page list(int page, int size, String username, String status) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(100, Math.max(1, size));
-        var query = findQuery(username, status);
+        var query = query(username, status);
         long total = query.count();
         List<LoginLog> items = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize))
                 .list().stream().map(LoginLogEntity::toModel).toList();
         return new Page(items, safePage, safeSize, total);
+    }
+
+    /** 导出完整筛选结果；登录日志与审计资源共享 ALL/TENANT 范围。 */
+    @Transactional
+    public List<LoginLog> export(AuthorizationContext context, String username, String status) {
+        authorization.require(context, "login-log:export", "audit");
+        return query(username, status).list().stream().map(LoginLogEntity::toModel).toList();
     }
 
     @Transactional
@@ -41,7 +53,7 @@ public class LoginLogRepository implements PanacheRepositoryBase<LoginLogEntity,
         return total;
     }
 
-    private io.quarkus.hibernate.orm.panache.PanacheQuery<LoginLogEntity> findQuery(String username, String status) {
+    private PanacheQuery<LoginLogEntity> query(String username, String status) {
         var query = new StringBuilder("1 = 1");
         var parameters = new java.util.ArrayList<Object>();
         if (username != null && !username.isBlank()) {
