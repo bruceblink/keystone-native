@@ -2,7 +2,9 @@
 
 跨项目统一架构见 [`02-auth-authorization-parity-architecture.md`](02-auth-authorization-parity-architecture.md)。本文件同时记录 Native 本地实施任务和与 Keystone Phoenix 的跨项目验收要求。项目采用一次性重构，不保留旧接口、旧权限格式、旧响应封装或旧整数主键。
 
-更新日期：2026-11-14。当前代码基线为 `6267559`。`73d1bb9` 至 `6b1a586` 完成权限目录、UUID 主键、统一错误、资源范围、HTTP 安全策略、审计清理、限流告警和持久化 JWK 注册表；`7c0ec76` 完成 OIDC Authorization Code + PKCE；`a73073b` 完成 Native WebAuthn/Passkey；`3501045` 增加真实 MySQL 刷新、API Key 轮换和 MFA 恢复码并发验收；`6267559` 对齐 ORM 与 MySQL 最终列类型，并修复 WebAuthn 默认关闭时的 session key 启动条件。当前 `./gradlew clean test --no-daemon` 为 157 项通过、0 项跳过，`./gradlew quarkusBuild -x test --no-daemon` 和源码行数检查均通过；MySQL 8.4.13 已执行并重复验证 Flyway V55，真实启动健康检查无 Hibernate schema validation 错误。主线已无 `is_admin` 字段。真实外部 IdP、生产 TLS 终止链和浏览器/硬件 Passkey 仪式仍未执行。
+更新日期：2026-11-14。当前代码基线为 `0960a5e`。`73d1bb9` 至 `6b1a586` 完成权限目录、UUID 主键、统一错误、资源范围、HTTP 安全策略、审计清理、限流告警和持久化 JWK 注册表；`7c0ec76` 完成 OIDC Authorization Code + PKCE；`a73073b` 完成 Native WebAuthn/Passkey；`3501045` 增加真实 MySQL 刷新、API Key 轮换和 MFA 恢复码并发验收；`6267559` 对齐 ORM 与 MySQL 最终列类型，并修复 WebAuthn 默认关闭时的 session key 启动条件；`0960a5e` 修复操作日志删除权限码并要求 WebAuthn 注册使用 AAL2 step-up。当前 `./gradlew clean test --no-daemon` 为 159 项通过、0 项跳过，`./gradlew quarkusBuild -x test --no-daemon` 和源码行数检查均通过；MySQL 8.4.13 已执行并重复验证 Flyway V55，真实启动健康检查无 Hibernate schema validation 错误。本地 OIDC provider、临时 TLS 终止代理、备份还原、应用进程数据库断开恢复、API Key 猜测限流和 JWT key 轮换均已完成真实验收。主线已无 `is_admin` 字段。当前剩余公网 IdP、浏览器/硬件 Passkey、浏览器 CSRF/Cookie、整进程崩溃/多节点恢复和完整非用户资源授权运行验收。
+
+当前结论：核心实现已完成，开发计划尚未全部完成，不能据此声明生产发布验收通过。非用户资源的完整 HTTP 范围矩阵、服务层授权复核、浏览器 CSRF/Cookie 实际行为、浏览器或硬件 Passkey、真实生产 IdP/TLS、整进程崩溃/多节点恢复和凭据生命周期运营报表仍属于未闭环条件。
 
 ## 跨项目统一主线
 
@@ -44,7 +46,7 @@ Native 与 Phoenix 分别实现，但必须遵守统一架构中的 Principal、
 
 上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `type=access`、`aal`、`amr`、`kid`。`GET /api/.well-known/jwks.json` 发布当前 RSA 公钥；当前实现支持通过 `JWT_JWK_KEYS` 发布多个重叠公钥，并在启用多 key 时要求 `JWT_VERIFY_PUBLIC_KEY_LOCATION` 指向 JWK Set 文件或 HTTPS JWK Set URL。安全事件已补充 `session_id`、批准范围和 `request_id`。
 
-当前验证边界仍然明确：本地 MySQL 8.4.13 已完成 Flyway V55、健康检查、JWK 注册表、登录、刷新、旧令牌重放撤销、注销、非法 UUID 统一错误响应、资源范围矩阵、API Key 签发/业务访问/撤销、MFA TOTP/恢复码/step-up、OIDC 协议输入边界和 WebAuthn 路由启动验收。`DatabaseConcurrencyIntegrationTest` 已证明刷新、API Key 轮换和 MFA 恢复码在真实 MySQL 下各只有一次成功；容器停止/恢复与连接检查已通过。ORM schema validation 已通过。`TRUSTED_PROXY_CIDRS` 为空时忽略 `X-Forwarded-For`，仅在 TCP 远端属于配置网段且转发链合法时使用原始客户端地址。仍未执行真实外部 IdP、生产 TLS 证书和反向代理链、浏览器 CSRF/Cookie 场景以及真实浏览器/硬件 Passkey 仪式；故障演练尚未覆盖应用进程断开后的自动重连。
+当前验证边界仍然明确：本地 MySQL 8.4.13 已完成 Flyway V55、健康检查、JWK 注册表、登录、刷新、旧令牌重放撤销、注销、非法 UUID 统一错误响应、资源范围矩阵、API Key 签发/业务访问/撤销、MFA TOTP/恢复码/step-up、OIDC 协议输入边界和 WebAuthn 路由启动验收。`DatabaseConcurrencyIntegrationTest` 已证明刷新、API Key 轮换和 MFA 恢复码在真实 MySQL 下各只有一次成功；备份还原、容器停止/恢复、应用进程在数据库断开时 fail-closed 并恢复、API Key 猜测限流、ACTIVE/RETIRING key 轮换、临时 TLS 终止代理和本地 OIDC provider 均已通过。操作日志删除权限和 WebAuthn 注册 AAL2 step-up 已补齐并有回归测试。ORM schema validation 已通过。仍未执行公网 IdP、浏览器 CSRF/Cookie、真实浏览器/硬件 Passkey、整进程崩溃/多节点恢复和完整非用户资源授权运行验收。
 
 HTTP 安全策略已集中到 Quarkus 配置和 JAX-RS 过滤器：生产 profile 默认要求 HTTPS 并发送 HSTS，Docker Compose 本地入口显式关闭 HTTPS 强制以保持 HTTP 验收；CORS 默认关闭，启用时必须配置明确来源，禁止通配符来源配合凭据；API JSON 响应统一发送 `nosniff`、`DENY`、`no-referrer`、`Permissions-Policy`、`Cross-Origin-Resource-Policy` 和 `no-store`。安全事件清理按保留天数、最大事件数和单次批量执行，认证失败、限流阻断和清理结果提供运行期计数与审计读取接口。尚未完成真实生产 TLS 证书、反向代理链和浏览器 CSRF/Cookie 场景验收。
 
@@ -304,17 +306,17 @@ API Key 认证成功后创建统一的 `SecurityIdentity`，身份属性必须�
 | 领域 | 必须证明的行为 | 当前状态 |
 | --- | --- | --- |
 | 密码认证 | 弱密码拒绝、失败退避、账户锁定、用户枚举防护、密码变更撤销会话 | 部分完成：密码策略和指数退避已实现，用户枚举防护及运行验收未完成 |
-| JWT | `iss/aud/sub/jti/sid/iat/exp/kid` 校验、算法白名单、时钟偏差、密钥轮换 | 已实现并完成 JWK Set、持久化 registry、未知 `kid` 拒绝和 HTTP 验收；真实密钥轮换演练仍待执行 |
-| 刷新令牌 | 原子轮换、并发单成功、重用检测、整族撤销、客户端绑定、空闲过期 | 已实现；真实 MySQL 并发刷新通过，应用进程断开后的自动重连仍待执行 |
-| API Key | 服务主体、范围交集、一次性明文、过期、撤销、轮换、审计、限速 | 已实现；真实 MySQL 轮换并发通过，猜测攻击专项和应用进程故障恢复仍待执行 |
+| JWT | `iss/aud/sub/jti/sid/iat/exp/kid` 校验、算法白名单、时钟偏差、密钥轮换 | 已实现并完成 JWK Set、持久化 registry、未知 `kid` 拒绝、旧 key 保留/过期移除和 HTTP 验收；公网密钥服务未接入 |
+| 刷新令牌 | 原子轮换、并发单成功、重用检测、整族撤销、客户端绑定、空闲过期 | 已实现；真实 MySQL 并发刷新和应用进程数据库断开恢复通过，整进程崩溃/多节点恢复仍待执行 |
+| API Key | 服务主体、范围交集、一次性明文、过期、撤销、轮换、审计、限速 | 已实现；真实 MySQL 轮换并发和猜测限流通过，完整运营报表仍待执行 |
 | 授权 | 默认拒绝、权限码、显式拒绝、实时失效、服务层和查询层复核 | 部分完成：权限码和权限版本失效已实现，显式拒绝及全量服务层复核未完成 |
 | 数据范围 | ALL、TENANT、SELF、DEPARTMENT、DEPARTMENT_AND_CHILDREN、CUSTOM、OWNER、MEMBER 以及导出和批量操作无越权 | 部分完成：用户资源已接入，其他资源和运行验收未完成 |
 | MFA | 管理员强制 MFA、恢复码、重新验证和敏感操作升级认证 | 已实现并完成真实 HTTP、MySQL 并发恢复码消费和单事务验收；应用进程故障恢复仍待执行 |
-| OIDC | Authorization Code + PKCE、state/nonce、JWKS、issuer/audience/azp/时间窗口、subject 映射 | 已实现并完成协议边界、迁移和编译测试；真实外部 IdP、TLS 和浏览器流程未执行 |
-| WebAuthn | challenge、RP ID/origin、凭据公钥、计数器、AAL2 会话和 API Key 拒绝 | 已实现并完成 MySQL 迁移、启动、路由和配置失败验收；真实浏览器/硬件仪式未执行 |
-| Web 与传输 | HTTPS、CORS、CSRF、Cookie 属性、浏览器存储、缓存控制 | 部分完成：生产默认 HTTPS/HSTS、显式 CORS、统一安全响应头和 API 缓存控制已实现；真实 TLS 终止、代理链和浏览器 CSRF/Cookie 验收未完成 |
+| OIDC | Authorization Code + PKCE、state/nonce、JWKS、issuer/audience/azp/时间窗口、subject 映射 | 已实现并通过本地 provider 的真实 HTTP 重定向、PKCE、失败模式和回放拒绝；公网 IdP 未执行 |
+| WebAuthn | challenge、RP ID/origin、凭据公钥、计数器、AAL2 会话和 API Key 拒绝 | 已实现并完成 MySQL 迁移、启动、路由、注册 AAL2 step-up 和配置失败验收；真实浏览器/硬件仪式未执行 |
+| Web 与传输 | HTTPS、CORS、CSRF、Cookie 属性、浏览器存储、缓存控制 | 生产 HTTPS/HSTS、CORS、统一安全响应头和临时 TLS 代理链已验证；浏览器 CSRF/Cookie 和生产证书链仍待执行 |
 | 审计 | 签发、使用、失败、撤销、重用、权限拒绝和管理员操作可追踪 | 部分完成：API Key 认证、权限拒绝和非秘密 credential ID 已记录；事件按保留时间和总量清理，并提供基础指标；完整凭据生命周期和 MySQL 运行验收未完成 |
-| 运维 | 密钥托管、轮换、备份恢复、告警、限流、数据库故障行为 | 部分完成：认证失败阻断告警、限流、事件清理、迁移重复执行和容器恢复已验证；真实密钥轮换、备份还原、反向代理 TLS 和应用进程重连仍待执行 |
+| 运维 | 密钥托管、轮换、备份恢复、告警、限流、数据库故障行为 | 部分完成：认证失败阻断告警、限流、事件清理、迁移重复执行、备份还原、容器恢复、进程存活恢复和 key 轮换已验证；整进程崩溃、多节点恢复和完整运营报表仍待执行 |
 | 旧代码清理 | 旧根路由、旧 token 字段、旧测试和旧资源全部删除 | 未完成：一次性重构阶段统一删除 |
 
 ## 审查后的阶段调整
