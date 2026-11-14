@@ -36,7 +36,7 @@
 
 本轮跨项目对齐基线（2026-11-14）：`b292158`、`e766475` 对齐 Principal 字段向量；`ebb0b3f` 固定认证响应、规范权限码、角色权限路由、安全报告路由和共享错误分类；`4408432` 增加 `GET /api/v1/auth/rsa-public-key`，登录支持 Phoenix 使用的 Base64 RSA/PKCS#1 密文，解密失败统一返回无效凭据。Native 为保持现有本地客户端兼容，仍接受短明文密码输入；迁移客户端应优先获取公钥并发送 RSA 密文。RSA 私钥只从 `JWT_PRIVATE_KEY_LOCATION` 读取，解密结果不写日志，也不进入错误响应。
 
-本轮最终回归基线：`44152fb` 更新设计文档。`./gradlew clean test --no-daemon` 和 `./gradlew quarkusBuild -x test --no-daemon` 均通过；源码文件行数、差异检查和跨项目契约测试通过。Native 不提供管理界面，页面验收使用 `keystone-admin-web` 的客户端测试与构建证据；Native 服务端仍需在真实浏览器、生产代理和多节点环境中执行外部验收。
+本轮最终回归基线：`44152fb` 更新设计文档。`./gradlew clean test --no-daemon` 当前为 212 项通过、0 项失败、0 项跳过，`./gradlew quarkusBuild -x test --no-daemon` 通过；源码文件行数、差异检查和跨项目契约测试通过。Native 不提供管理界面，页面验收使用 `keystone-admin-web` 的 62 项客户端测试和生产构建证据；Native 服务端仍需在真实浏览器、生产代理和多节点环境中执行外部验收。
 
 本轮联调修复基线为 `e316119`。在线会话列表现在返回 `sys_auth_session.id`，与登录响应的 `data.sessionId` 一致；会话撤销按该会话 ID 加锁并撤销关联刷新令牌。真实 HTTP 回归覆盖登录、在线会话列表、强制下线、旧访问令牌失效和旧会话从列表移除。
 
