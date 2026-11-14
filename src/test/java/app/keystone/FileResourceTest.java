@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
+import java.io.RandomAccessFile;
 import java.util.List;
 
 import static io.restassured.RestAssured.given;
@@ -40,6 +41,23 @@ class FileResourceTest extends AuthTestFixture {
             }
         } finally {
             for (String fileName : fileNames) Files.deleteIfExists(Path.of("build/test-files").resolve(fileName));
+        }
+    }
+
+    @Test
+    void oversizedDownloadIsRejectedBeforeReadingTheFile() throws Exception {
+        String token = given().contentType("application/json").body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
+                .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");
+        Path path = Path.of("build/test-files").resolve("oversized.bin");
+        Files.createDirectories(path.getParent());
+        try (RandomAccessFile file = new RandomAccessFile(path.toFile(), "rw")) {
+            file.setLength(50L * 1024 * 1024 + 1);
+        }
+        try {
+            given().auth().oauth2(token).when().get("/v1/file/download?fileName=oversized.bin")
+                    .then().statusCode(413).body("success", is(false));
+        } finally {
+            Files.deleteIfExists(path);
         }
     }
 }

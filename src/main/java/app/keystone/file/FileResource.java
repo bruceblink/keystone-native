@@ -26,11 +26,17 @@ import java.util.UUID;
 @app.keystone.auth.RequiresDataScope("file")
 public class FileResource {
     private final java.nio.file.Path root;
+    private final long maxDownloadBytes;
     @Inject SecurityIdentity identity;
     @Inject AuthorizationService authorization;
 
     @Inject
-    public FileResource(@ConfigProperty(name = "keystone.file.root") String root) { this.root = Paths.get(root).toAbsolutePath().normalize(); }
+    public FileResource(@ConfigProperty(name = "keystone.file.root") String root,
+                        @ConfigProperty(name = "keystone.file.max-download-bytes", defaultValue = "52428800") long maxDownloadBytes) {
+        this.root = Paths.get(root).toAbsolutePath().normalize();
+        if (maxDownloadBytes < 1) throw new IllegalArgumentException("keystone.file.max-download-bytes must be positive");
+        this.maxDownloadBytes = maxDownloadBytes;
+    }
 
     @POST @Path("/upload") @RequiresPermission("file:write") @Consumes(MediaType.MULTIPART_FORM_DATA) @Produces(MediaType.APPLICATION_JSON)
     public Response upload(@RestForm("file") FileUpload file) { authorization.require(context(), "file:write", "file"); if (file == null) return bad("file is required"); try { return Response.ok(ApiResponse.ok(save(file))).build(); } catch (IOException e) { return Response.serverError().entity(ApiResponse.error("file upload failed")).build(); } }
@@ -51,7 +57,31 @@ public class FileResource {
     }
 
     @GET @Path("/download") @RequiresPermission("file:read") @Produces(MediaType.APPLICATION_OCTET_STREAM)
-    public Response download(@QueryParam("fileName") String fileName) { authorization.require(context(), "file:read", "file"); try { java.nio.file.Path path = safePath(fileName); if (!Files.isRegularFile(path)) return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("file not found")).type(MediaType.APPLICATION_JSON).build(); String name = path.getFileName().toString(); return Response.ok(Files.readAllBytes(path)).header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"").build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (IOException e) { return Response.serverError().entity(ApiResponse.error("file download failed")).type(MediaType.APPLICATION_JSON).build(); } }
+    public Response download(@QueryParam("fileName") String fileName) {
+        authorization.require(context(), "file:read", "file");
+        try {
+            java.nio.file.Path path = safePath(fileName);
+            if (!Files.isRegularFile(path)) {
+                return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("file not found"))
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            long size = Files.size(path);
+            if (size > maxDownloadBytes) {
+                return Response.status(413).entity(ApiResponse.error("file exceeds download size limit"))
+                        .type(MediaType.APPLICATION_JSON).build();
+            }
+            String name = path.getFileName().toString();
+            // 使用 File 实体交给 RESTEasy 流式发送，避免把完整文件复制到堆内存。
+            return Response.ok(path.toFile()).type(MediaType.APPLICATION_OCTET_STREAM)
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + name + "\"")
+                    .header(HttpHeaders.CONTENT_LENGTH, size).build();
+        } catch (IllegalArgumentException e) {
+            return bad(e.getMessage());
+        } catch (IOException e) {
+            return Response.serverError().entity(ApiResponse.error("file download failed"))
+                    .type(MediaType.APPLICATION_JSON).build();
+        }
+    }
 
     private Upload save(FileUpload file) throws IOException {
         Files.createDirectories(root);
