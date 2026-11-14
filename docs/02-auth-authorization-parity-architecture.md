@@ -89,6 +89,7 @@ scope_allowed(principal, scope, resource, context)
 ## 凭据能力
 
 - 密码会话：只用于人类用户登录，创建独立会话和刷新令牌族。
+- 登录密码传输：Phoenix 登录入口使用 `/api/v1/auth/rsa-public-key` 返回的 SubjectPublicKeyInfo 公钥对密码执行 RSA/PKCS#1 加密；Native 也提供相同路径和解密逻辑，并保留短明文输入兼容窗口。新客户端统一使用 RSA 密文；任何解密失败都按无效凭据处理，服务端不记录明文。
 - API Key：使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存哈希、前缀、主体、范围、过期和撤销状态。明文只返回一次。有效范围是请求范围、签发者可授予范围和主体当前权限的交集。API Key 不能访问密码修改、MFA 或 API Key 管理路径。
 - MFA：第一版使用 TOTP、一次性恢复码和短期认证请求。敏感写操作需要 AAL2 step-up。并发消费必须只有一次成功。
 - 外部身份：OIDC 使用 Authorization Code + PKCE。服务端生成并保存 `state`、`nonce` 和 verifier，回调只接受一次性 `code` 与 `state`，并校验 JWKS、RS256、issuer、audience、`azp`、nonce 和时间窗口。外部主体按完整 issuer 与 subject 绑定本地用户。
