@@ -79,17 +79,15 @@ java -jar build/keystone-native-0.1.0-SNAPSHOT-runner.jar
 ./build/keystone-native-0.1.0-SNAPSHOT-runner
 ```
 
-或使用容器构建：
-
-```bash
-docker build -t keystone-native:native .
-```
-
-GitHub Actions 在每次推送和 Pull Request 中执行 MySQL 集成测试、JVM 打包，并通过 Mandrel Builder 构建 Native 容器镜像。Native 镜像使用 `Dockerfile` 的多阶段构建，不需要在开发机安装 GraalVM。
+生产 Native 容器镜像只由 GitHub Actions 构建并发布。工作流文件为
+`.github/workflows/release-image.yml`，只接受 `vX.Y.Z` 格式的 Git 标签；镜像发布到
+`ghcr.io/<owner>/<repository>:X.Y.Z`，不发布 `latest`、分支、提交或带 `v` 的别名。
+工作流在 GitHub runner 上运行测试、Mandrel 构建、SBOM/provenance、Cosign 签名和远端镜像 smoke。
+本机只运行开发服务、MySQL 测试服务和 Gradle 测试，不执行生产容器镜像构建。
 
 ## 构建产物与性能基准
 
-以下数据来自当前项目的本地构建，用于比较 JVM 和 Native 的部署开销。镜像基础层、依赖版本和构建环境变化后，数值会随之变化。
+以下数据是历史基准，用于比较 JVM 和 Native 的部署开销。生产镜像由 GitHub Actions 构建；镜像基础层、依赖版本和构建环境变化后，数值会随之变化。
 
 | 指标 | Spring Boot Keystone 基线 | Quarkus JVM | Quarkus Native |
 |---|---:|---:|---:|
