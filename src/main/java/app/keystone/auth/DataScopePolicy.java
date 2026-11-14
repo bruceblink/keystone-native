@@ -47,6 +47,7 @@ public final class DataScopePolicy {
     private static final Map<String, ResourceRule> RESOURCE_RULES = Map.ofEntries(
             Map.entry("user", new ResourceRule(RESOURCE_SCOPES.get("user"), Enforcement.QUERY_FILTERED)),
             Map.entry("department", new ResourceRule(RESOURCE_SCOPES.get("department"), Enforcement.QUERY_FILTERED)),
+            Map.entry("owned", new ResourceRule(RESOURCE_SCOPES.get("owned"), Enforcement.OWNER_BOUND)),
             Map.entry("profile", new ResourceRule(Set.of(ALL, TENANT, SELF), Enforcement.OWNER_BOUND)),
             Map.entry("api-key", new ResourceRule(Set.of(ALL, TENANT, SELF), Enforcement.OWNER_BOUND)),
             Map.entry("role", globalRule()),
