@@ -24,7 +24,7 @@ public class OidcResource {
         try {
             return Response.seeOther(oidc.authorize()).build();
         } catch (IllegalArgumentException e) {
-            return error(Response.Status.BAD_REQUEST, "validation_failed", "invalid OIDC authorization request");
+            return error(422, "validation_failed", "invalid OIDC authorization request");
         } catch (IllegalStateException e) {
             return error(Response.Status.SERVICE_UNAVAILABLE, "authorization_unavailable", "OIDC authorization is unavailable");
         }
@@ -46,13 +46,17 @@ public class OidcResource {
         } catch (OidcJwtVerifier.OidcException e) {
             return error(Response.Status.UNAUTHORIZED, "invalid_credential", "OIDC authentication failed");
         } catch (IllegalArgumentException e) {
-            return error(Response.Status.BAD_REQUEST, "validation_failed", "invalid OIDC callback");
+            return error(422, "validation_failed", "invalid OIDC callback");
         } catch (IllegalStateException e) {
             return error(Response.Status.SERVICE_UNAVAILABLE, "authorization_unavailable", "OIDC authentication is unavailable");
         }
     }
 
     private static Response error(Response.Status status, String code, String message) {
+        return error(status.getStatusCode(), code, message);
+    }
+
+    private static Response error(int status, String code, String message) {
         return Response.status(status).entity(ApiResponse.error(code, message)).build();
     }
 }

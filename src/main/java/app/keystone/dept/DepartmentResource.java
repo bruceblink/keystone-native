@@ -48,7 +48,7 @@ public class DepartmentResource {
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
-    private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).build(); }
+    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("department not found")).build(); }
     public record DepartmentRequest(String code, String name, String parentId, Integer sortOrder, Boolean enabled) {}
     private String actor() { return identity.getPrincipal().getName(); }

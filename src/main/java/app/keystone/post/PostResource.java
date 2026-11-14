@@ -38,7 +38,7 @@ public class PostResource {
     @DELETE @Path("/{id}") @RequiresPermission("post:delete") public Response delete(@PathParam("id") String id) { try { posts.delete(context(), id); logs.record(actor(), "DELETE", "post", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (NoSuchElementException e) { return notFound(); } catch (IllegalArgumentException e) { return bad("id must be a UUID"); } }
     private AuthorizationContext context() { return authorization.context(identity); }
     private String actor() { return identity.getPrincipal().getName(); }
-    private static Response bad(String message) { return Response.status(400).entity(ApiResponse.error(message)).build(); }
+    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
     private static Response notFound() { return Response.status(404).entity(ApiResponse.error("post not found")).build(); }
     public record PostRequest(String code, String name, Integer sortOrder, Boolean enabled) {}
 }

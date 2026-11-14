@@ -32,7 +32,7 @@ public class NoticeResource {
 
     private AuthorizationContext context() { return authorization.context(identity); }
     private String actor() { return identity.getPrincipal().getName(); }
-    private static Response bad(String message) { return Response.status(400).entity(ApiResponse.error(message)).build(); }
+    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
     private static Response notFound() { return Response.status(404).entity(ApiResponse.error("notice not found")).build(); }
     public record NoticeRequest(String title, String content, String noticeType, Boolean enabled) {}
     public record PublishRequest(Boolean published) {}

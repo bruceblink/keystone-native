@@ -39,7 +39,7 @@ public class AuthResource {
     @POST @Path("/login") @PermitAll @RejectApiKey
     public Response login(LoginRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
         if (request == null || request.username() == null || request.password() == null) {
-            return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("username and password are required")).build();
+            return Response.status(422).entity(ApiResponse.error("username and password are required")).build();
         }
         String clientAddress = clientAddresses.resolve(routingContext, ipAddress);
         try {
@@ -63,7 +63,7 @@ public class AuthResource {
         if (u.mustChangePassword()) { loginLogs.record(u.username(), "BLOCKED", clientAddress, "password change required", userAgent); return Response.status(428).entity(ApiResponse.error("password change required")).build(); }
         MfaService.LoginPreparation preparation;
         try { preparation = mfa.prepareLogin(u.id(), request.clientId()); }
-        catch (IllegalArgumentException e) { return Response.status(400).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (preparation.required() && preparation.challenge() == null) {
             loginLogs.record(u.username(), "BLOCKED", clientAddress, "MFA enrollment required", userAgent);
@@ -77,7 +77,7 @@ public class AuthResource {
         }
         java.util.Optional<SessionRepository.CreatedSession> refresh;
         try { refresh = sessions.create(u.id(), Boolean.TRUE.equals(request.forceLogin()), request.clientId()); }
-        catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (refresh.isEmpty()) { loginLogs.record(u.username(), "BLOCKED", clientAddress, "account already has an active session", userAgent); return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build(); }
         Response tokenResponse;
@@ -91,10 +91,10 @@ public class AuthResource {
 
     @POST @Path("/refresh") @PermitAll @RejectApiKey
     public Response refresh(RefreshRequest request) {
-        if (request == null || request.refreshToken() == null || request.refreshToken().isBlank()) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("refreshToken is required")).build();
+        if (request == null || request.refreshToken() == null || request.refreshToken().isBlank()) return Response.status(422).entity(ApiResponse.error("refreshToken is required")).build();
         java.util.Optional<SessionRepository.RotatedSession> rotated;
         try { rotated = sessions.rotate(request.refreshToken(), users, request.clientId()); }
-        catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
         if (rotated.isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid or expired refresh token")).build();
         var session = rotated.get();
         try {
@@ -106,7 +106,7 @@ public class AuthResource {
     @POST @Path("/mfa/verify") @PermitAll @RejectApiKey
     public Response verifyMfa(LoginMfaRequest request, @HeaderParam("X-Forwarded-For") String ipAddress, @HeaderParam("User-Agent") String userAgent) {
         if (request == null || request.username() == null || request.challengeId() == null || request.code() == null) {
-            return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("username, challengeId and code are required")).build();
+            return Response.status(422).entity(ApiResponse.error("username, challengeId and code are required")).build();
         }
         String clientAddress = clientAddresses.resolve(routingContext, ipAddress);
         var user = users.findAuthUserByUsername(request.username().trim());
@@ -114,12 +114,12 @@ public class AuthResource {
         MfaService.LoginVerification verification;
         try {
             verification = mfa.verifyLogin(user.get().id(), request.challengeId(), request.clientId(), request.code(), clientAddress).orElse(null);
-        } catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        } catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (verification == null) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build();
         java.util.Optional<SessionRepository.CreatedSession> refresh;
         try { refresh = sessions.create(user.get().id(), Boolean.TRUE.equals(request.forceLogin()), request.clientId()); }
-        catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (refresh.isEmpty()) return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build();
         var created = refresh.get();
@@ -148,7 +148,7 @@ public class AuthResource {
         try {
             var result = mfa.beginEnrollment(current.userId(), identity.getPrincipal().getName(), current.clientId(), current.sessionId());
             return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(result)).build();
-        } catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        } catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) {
             if ("MFA is already enabled".equals(e.getMessage())) return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error(e.getMessage())).build();
             return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("MFA state is unavailable")).build();
@@ -163,21 +163,21 @@ public class AuthResource {
 
     @POST @Path("/mfa/enroll/verify") @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
     public Response verifyMfaEnrollment(MfaCodeRequest request, @HeaderParam("X-Forwarded-For") String ipAddress) {
-        if (request == null || request.challengeId() == null || request.code() == null) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("challengeId and code are required")).build();
+        if (request == null || request.challengeId() == null || request.code() == null) return Response.status(422).entity(ApiResponse.error("challengeId and code are required")).build();
         var current = currentHumanSession();
         String clientAddress = clientAddresses.resolve(routingContext, ipAddress);
         try {
             var result = mfa.verifyEnrollment(current.userId(), request.challengeId(), current.clientId(), current.sessionId(), request.code(), clientAddress);
             return result.<Response>map(value -> Response.ok(ApiResponse.ok(value)).build())
                     .orElseGet(() -> Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build());
-        } catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        } catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("MFA state is unavailable")).build(); }
     }
 
     /** 使用当前密码和最近的 MFA 验证轮换恢复码，旧批次在数据库事务内失效。 */
     @POST @Path("/mfa/recovery-codes/rotate") @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
     public Response rotateRecoveryCodes(CurrentPasswordRequest request) {
-        if (request == null || request.currentPassword() == null || request.currentPassword().isBlank()) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("currentPassword is required")).build();
+        if (request == null || request.currentPassword() == null || request.currentPassword().isBlank()) return Response.status(422).entity(ApiResponse.error("currentPassword is required")).build();
         var current = currentHumanSession();
         String username = identity.getPrincipal().getName();
         try {
@@ -193,12 +193,12 @@ public class AuthResource {
     /** 管理员只可为已经完成 enrollment 的用户启用或关闭强制 MFA。 */
     @PUT @Path("/mfa/policy/{userId}") @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
     public Response setMfaPolicy(@PathParam("userId") String userId, MfaPolicyRequest request) {
-        if (request == null || request.required() == null || userId == null) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("userId and required are required")).build();
+        if (request == null || request.required() == null || userId == null) return Response.status(422).entity(ApiResponse.error("userId and required are required")).build();
         try {
             if (!mfa.setRequired(userId, request.required())) return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("MFA enrollment is required before enabling policy")).build();
             sessions.revokeAll(userId);
             return Response.ok(ApiResponse.ok(java.util.Map.of("userId", userId, "required", request.required()))).build();
-        } catch (IllegalArgumentException e) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(e.getMessage())).build(); }
+        } catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("MFA state is unavailable")).build(); }
     }
 
@@ -213,12 +213,12 @@ public class AuthResource {
 
     @POST @Path("/change-initial-password") @PermitAll @RejectApiKey
     public Response changeInitialPassword(InitialPasswordRequest request) {
-        if (request == null || request.username() == null || request.currentPassword() == null || request.newPassword() == null || request.newPassword().isBlank()) return Response.status(400).entity(ApiResponse.error("username, currentPassword and newPassword are required")).build();
+        if (request == null || request.username() == null || request.currentPassword() == null || request.newPassword() == null || request.newPassword().isBlank()) return Response.status(422).entity(ApiResponse.error("username, currentPassword and newPassword are required")).build();
         var user = users.authenticate(request.username(), request.currentPassword());
         if (user.isEmpty()) return Response.status(401).entity(ApiResponse.error("invalid credentials")).build();
         if (!user.get().mustChangePassword()) return Response.status(409).entity(ApiResponse.error("password change is not required")).build();
         try { users.updateInitialPassword(AuthorizationContext.system(), user.get().id(), request.newPassword()); }
-        catch (IllegalArgumentException e) { return Response.status(400).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
         sessions.revokeAll(user.get().id());
         return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build();
     }

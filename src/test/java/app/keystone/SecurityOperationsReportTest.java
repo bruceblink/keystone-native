@@ -51,11 +51,11 @@ class SecurityOperationsReportTest extends AuthTestFixture {
         String token = login();
         given().auth().oauth2(token)
                 .when().get("/v1/monitor/security/report?from=invalid")
-                .then().statusCode(400)
+                .then().statusCode(422)
                 .body("error.code", is("validation_failed"));
         given().auth().oauth2(token)
                 .when().get("/v1/monitor/security/report?page=0")
-                .then().statusCode(400)
+                .then().statusCode(422)
                 .body("error.code", is("validation_failed"));
     }
 

@@ -58,7 +58,7 @@ public class FileResource {
 
     private AuthorizationContext context() { return authorization.context(identity); }
 
-    private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).type(MediaType.APPLICATION_JSON).build(); }
+    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).type(MediaType.APPLICATION_JSON).build(); }
     public record Upload(String url, String fileName, String newFileName, String originalFilename) {}
     private static final class FileUploadException extends RuntimeException { private FileUploadException(Throwable cause) { super(cause); } }
 }

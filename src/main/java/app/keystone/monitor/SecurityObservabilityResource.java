@@ -42,7 +42,7 @@ public class SecurityObservabilityResource {
             return Response.ok(ApiResponse.ok(reports.generate(subjectId, actor, credentialType, credentialId,
                     from, to, page, size, horizonDays))).build();
         } catch (IllegalArgumentException e) {
-            return Response.status(Response.Status.BAD_REQUEST)
+            return Response.status(422)
                     .entity(ApiResponse.error("validation_failed", e.getMessage())).build();
         }
     }

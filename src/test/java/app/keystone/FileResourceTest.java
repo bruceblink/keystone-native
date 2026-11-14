@@ -18,6 +18,6 @@ class FileResourceTest extends AuthTestFixture {
         String fileName = given().auth().oauth2(token).multiPart("file", "hello.txt", "hello".getBytes(StandardCharsets.UTF_8), "text/plain")
                 .when().post("/v1/file/upload").then().statusCode(200).body("data.originalFilename", is("hello.txt")).extract().path("data.fileName");
         given().auth().oauth2(token).when().get("/v1/file/download?fileName=" + fileName).then().statusCode(200).header("Content-Disposition", containsString("attachment"));
-        given().auth().oauth2(token).when().get("/v1/file/download?fileName=../application.properties").then().statusCode(400).body("success", is(false));
+        given().auth().oauth2(token).when().get("/v1/file/download?fileName=../application.properties").then().statusCode(422).body("success", is(false));
     }
 }

@@ -16,7 +16,7 @@ class ApiExceptionMapperTest {
 
     @Test
     void mapsCommonHttpExceptionsToCanonicalErrorCodes() {
-        assertError(new BadRequestException("invalid body"), 400, "validation_failed");
+        assertError(new BadRequestException("invalid body"), 422, "validation_failed");
         assertError(new NotFoundException("missing record"), 404, "validation_failed");
         assertError(new NotAuthorizedException("login required"), 401, "invalid_credential");
         assertError(new ForbiddenException("permission denied"), 403, "permission_denied");

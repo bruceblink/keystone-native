@@ -86,7 +86,7 @@ public class JobResource {
 
     private String actor() { return identity.getPrincipal().getName(); }
     private AuthorizationContext context() { return authorization.context(identity); }
-    private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).build(); }
+    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("job not found")).build(); }
     public record JobRequest(String code, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {}
     public record StatusRequest(Boolean enabled) {}

@@ -61,7 +61,7 @@ public class WebAuthnResource {
     public Response register(JsonObject body) {
         var user = currentUser();
         if (user == null) return error(Response.Status.UNAUTHORIZED, "authentication_required", "authentication is required");
-        if (body == null) return error(Response.Status.BAD_REQUEST, "validation_failed", "credential response is required");
+        if (body == null) return error(422, "validation_failed", "credential response is required");
         try {
             ensureEnabled();
             WebAuthnCredentialRecord record = webAuthn.register(user.username(), body, routingContext).await().indefinitely();
@@ -73,7 +73,7 @@ public class WebAuthnResource {
         } catch (IllegalArgumentException e) {
             securityEvents.record("WEBAUTHN_REGISTER", user.username(), "WEBAUTHN", null, null,
                     "auth", "register", "DENY", "WebAuthn registration rejected");
-            return error(Response.Status.BAD_REQUEST, "validation_failed", "invalid WebAuthn registration");
+            return error(422, "validation_failed", "invalid WebAuthn registration");
         } catch (RuntimeException e) {
             securityEvents.record("WEBAUTHN_REGISTER", user.username(), "WEBAUTHN", null, null,
                     "auth", "register", "DENY", "WebAuthn registration unavailable");
@@ -103,7 +103,7 @@ public class WebAuthnResource {
     @PermitAll
     @RejectApiKey
     public Response login(JsonObject body) {
-        if (body == null) return error(Response.Status.BAD_REQUEST, "validation_failed", "credential response is required");
+        if (body == null) return error(422, "validation_failed", "credential response is required");
         try {
             ensureEnabled();
             WebAuthnCredentialRecord record = webAuthn.login(body, routingContext).await().indefinitely();
@@ -151,6 +151,10 @@ public class WebAuthnResource {
     }
 
     private static Response error(Response.Status status, String code, String message) {
+        return error(status.getStatusCode(), code, message);
+    }
+
+    private static Response error(int status, String code, String message) {
         return Response.status(status).entity(ApiResponse.error(code, message)).build();
     }
 }

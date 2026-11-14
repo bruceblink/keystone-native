@@ -30,7 +30,7 @@ class RoleResourceHttpTest extends AuthTestFixture {
             given().auth().oauth2(admin).contentType(JSON)
                     .body("{\"userIds\":[\"" + userId + "\",\"not-a-uuid\"]}")
                     .when().put("/v1/roles/" + roleId + "/users")
-                    .then().statusCode(400);
+                    .then().statusCode(422);
             given().auth().oauth2(admin).contentType(JSON)
                     .body("{\"userIds\":[\"" + userId + "\",\"" + UUID.randomUUID() + "\"]}")
                     .when().put("/v1/roles/" + roleId + "/users")

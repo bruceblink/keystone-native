@@ -34,7 +34,7 @@ public class MenuResource {
     private AuthorizationContext context() { return authorization.context(identity); }
     private List<MenuNode> toTree(List<Menu> items) { Map<String, MenuNodeBuilder> nodes = items.stream().collect(Collectors.toMap(Menu::id, MenuNodeBuilder::new, (a, b) -> a, LinkedHashMap::new)); List<MenuNodeBuilder> roots = new ArrayList<>(); for (Menu menu : items) { var node = nodes.get(menu.id()); if (menu.parentId() == null || !nodes.containsKey(menu.parentId())) roots.add(node); else nodes.get(menu.parentId()).children.add(node); } return roots.stream().map(MenuNodeBuilder::build).toList(); }
     private String actor() { return identity.getPrincipal().getName(); }
-    private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).build(); }
+    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("menu not found")).build(); }
     private static final class MenuNodeBuilder { final Menu menu; final List<MenuNodeBuilder> children = new ArrayList<>(); MenuNodeBuilder(Menu menu) { this.menu = menu; } MenuNode build() { return new MenuNode(menu, children.stream().map(MenuNodeBuilder::build).toList()); } }
     public record RoleAssignment(List<String> roleCodes) {}

@@ -57,7 +57,7 @@ public class DictionaryResource {
         catch (java.util.NoSuchElementException | IllegalArgumentException e) { return notFound(); }
     }
 
-    private static Response bad(String message) { return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error(message)).build(); }
+    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("dictionary item not found")).build(); }
     private static Response notFoundType() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("dictionary type not found")).build(); }
     private AuthorizationContext context() { return authorization.context(identity); }

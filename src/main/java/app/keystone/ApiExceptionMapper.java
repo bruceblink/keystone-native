@@ -15,9 +15,13 @@ public class ApiExceptionMapper implements ExceptionMapper<WebApplicationExcepti
     public Response toResponse(WebApplicationException exception) {
         Response original = exception.getResponse();
         int status = original == null ? Response.Status.INTERNAL_SERVER_ERROR.getStatusCode() : original.getStatus();
+        // 统一把请求结构和字段校验归类为 422，避免资源入口各自返回不同状态码。
+        if (status == Response.Status.BAD_REQUEST.getStatusCode()) {
+            status = 422;
+        }
         String code = errorCode(status);
         String message = message(exception, status);
-        Response.ResponseBuilder builder = original == null ? Response.status(status) : Response.fromResponse(original);
+        Response.ResponseBuilder builder = original == null ? Response.status(status) : Response.fromResponse(original).status(status);
         return builder.type(MediaType.APPLICATION_JSON).entity(ApiResponse.error(code, message)).build();
     }
 

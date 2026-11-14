@@ -10,9 +10,9 @@ class ApiRuntimeExceptionMapperTest {
 
     @Test
     void mapsDirectAndWrappedInvalidArgumentsToValidationErrors() {
-        assertError(new IllegalArgumentException("invalid UUID"), 400, "validation_failed");
+        assertError(new IllegalArgumentException("invalid UUID"), 422, "validation_failed");
         assertError(new IllegalStateException("Could not find user", new IllegalArgumentException("invalid UUID")),
-                400, "validation_failed");
+                422, "validation_failed");
     }
 
     @Test

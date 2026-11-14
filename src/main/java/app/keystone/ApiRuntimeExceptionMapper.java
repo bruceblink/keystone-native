@@ -14,12 +14,12 @@ public class ApiRuntimeExceptionMapper implements ExceptionMapper<RuntimeExcepti
     @Override
     public Response toResponse(RuntimeException exception) {
         if (exception instanceof AuthorizationDeniedException denied) {
-            return response(Response.Status.fromStatusCode(denied.status()), denied.code(), denied.getMessage());
+            return response(denied.status(), denied.code(), denied.getMessage());
         }
         if (exception instanceof IllegalArgumentException || containsIllegalArgument(exception)) {
-            return response(Response.Status.BAD_REQUEST, "validation_failed", "request is invalid");
+            return response(422, "validation_failed", "request is invalid");
         }
-        return response(Response.Status.SERVICE_UNAVAILABLE, "authorization_unavailable", "service is unavailable");
+        return response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), "authorization_unavailable", "service is unavailable");
     }
 
     private static boolean containsIllegalArgument(Throwable error) {
@@ -29,7 +29,7 @@ public class ApiRuntimeExceptionMapper implements ExceptionMapper<RuntimeExcepti
         return false;
     }
 
-    private static Response response(Response.Status status, String code, String message) {
+    private static Response response(int status, String code, String message) {
         return Response.status(status)
                 .type(MediaType.APPLICATION_JSON)
                 .entity(ApiResponse.error(code, message))
