@@ -25,7 +25,6 @@ import java.util.Map;
 /** 编排 OIDC 授权码、PKCE、ID Token 校验和本地会话创建。 */
 @ApplicationScoped
 public class OidcService {
-    private static final SecureRandom RANDOM = new SecureRandom();
     private static final Logger LOG = Logger.getLogger(OidcService.class);
     @Inject OidcConfiguration config;
     @Inject OidcAuthRequestRepository requests;
@@ -145,7 +144,8 @@ public class OidcService {
     static boolean validVerifier(String value) { return value != null && value.length() >= 43 && value.length() <= 128 && value.matches("[A-Za-z0-9._~-]+"); }
     static String pkceChallenge(String verifier) { return Base64.getUrlEncoder().withoutPadding().encodeToString(sha256Bytes(verifier)); }
     private static byte[] sha256Bytes(String value) { try { return java.security.MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.US_ASCII)); } catch (Exception e) { throw new IllegalStateException("SHA-256 is unavailable", e); } }
-    private static String randomValue(int bytes) { byte[] value = new byte[bytes]; RANDOM.nextBytes(value); return Base64.getUrlEncoder().withoutPadding().encodeToString(value); }
+    // 每次生成 OIDC 随机值时在运行时创建随机源，避免 native image 缓存随机种子。
+    private static String randomValue(int bytes) { byte[] value = new byte[bytes]; new SecureRandom().nextBytes(value); return Base64.getUrlEncoder().withoutPadding().encodeToString(value); }
     private static String query(Map<String, String> params) { return params.entrySet().stream().map(entry -> encode(entry.getKey()) + "=" + encode(entry.getValue())).reduce((left, right) -> left + "&" + right).orElse(""); }
     private static String encode(String value) { return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20"); }
 }
