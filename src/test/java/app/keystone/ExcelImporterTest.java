@@ -35,6 +35,7 @@ class ExcelImporterTest {
         try {
             Files.write(path, ExcelExporter.export(List.of("用户名"), List.of(List.of("only-name"))));
             assertThrows(IllegalArgumentException.class, () -> UserExcelImporter.read(path, "users.csv"));
+            assertThrows(IllegalArgumentException.class, () -> UserExcelImporter.read(path, "users.xls"));
             assertThrows(IllegalArgumentException.class, () -> UserExcelImporter.read(path, "users.xlsx"));
         } finally {
             Files.deleteIfExists(path);
