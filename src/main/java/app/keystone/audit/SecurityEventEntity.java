@@ -97,4 +97,40 @@ public class SecurityEventEntity {
     public Instant getCreatedAt() {
         return createdAt;
     }
+
+    public String getEventType() {
+        return eventType;
+    }
+
+    public String getActor() {
+        return actor;
+    }
+
+    public String getCredentialType() {
+        return credentialType;
+    }
+
+    public String getCredentialId() {
+        return credentialId;
+    }
+
+    public String getSourceIp() {
+        return sourceIp;
+    }
+
+    public String getResource() {
+        return resource;
+    }
+
+    public String getAction() {
+        return action;
+    }
+
+    public String getOutcome() {
+        return outcome;
+    }
+
+    public String getRequestId() {
+        return requestId;
+    }
 }

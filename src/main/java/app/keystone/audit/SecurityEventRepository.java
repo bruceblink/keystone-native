@@ -1,6 +1,8 @@
 package app.keystone.audit;
 
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import io.quarkus.hibernate.orm.panache.PanacheQuery;
+import io.quarkus.panache.common.Sort;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.transaction.Transactional;
 
@@ -69,6 +71,50 @@ public class SecurityEventRepository implements PanacheRepository<SecurityEventE
         return new CleanupResult(deleted, count());
     }
 
+    /**
+     * 按主体、凭据和时间范围分页查询安全事件。返回字段经过脱敏，不包含 detail、scope 或令牌材料。
+     */
+    public ReportPage report(String actor, String credentialType, String credentialId,
+                             Instant from, Instant to, int page, int size) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(100, Math.max(1, size));
+        var conditions = new java.util.ArrayList<String>();
+        var parameters = new java.util.ArrayList<Object>();
+        if (actor != null && !actor.isBlank()) {
+            parameters.add(actor.trim());
+            conditions.add("actor = ?" + parameters.size());
+        }
+        if (credentialType != null && !credentialType.isBlank()) {
+            parameters.add(credentialType.trim());
+            conditions.add("credentialType = ?" + parameters.size());
+        }
+        if (credentialId != null && !credentialId.isBlank()) {
+            parameters.add(credentialId.trim());
+            conditions.add("credentialId = ?" + parameters.size());
+        }
+        if (from != null) {
+            parameters.add(from);
+            conditions.add("createdAt >= ?" + parameters.size());
+        }
+        if (to != null) {
+            parameters.add(to);
+            conditions.add("createdAt < ?" + parameters.size());
+        }
+        String queryText = conditions.isEmpty() ? "" : "where " + String.join(" and ", conditions);
+        PanacheQuery<SecurityEventEntity> query = find(queryText,
+                Sort.by("createdAt", Sort.Direction.Descending), parameters.toArray());
+        long total = query.count();
+        List<Event> items = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize))
+                .list().stream().map(SecurityEventRepository::toEvent).toList();
+        return new ReportPage(items, safePage, safeSize, total);
+    }
+
+    private static Event toEvent(SecurityEventEntity event) {
+        return new Event(event.getId(), event.getEventType(), event.getActor(), event.getCredentialType(),
+                event.getCredentialId(), event.getSourceIp(), event.getResource(), event.getAction(),
+                event.getOutcome(), event.getRequestId(), event.getCreatedAt());
+    }
+
     private static String bounded(String value, int maxLength) {
         if (value == null) return null;
         String normalized = value.trim();
@@ -83,5 +129,13 @@ public class SecurityEventRepository implements PanacheRepository<SecurityEventE
     }
 
     public record CleanupResult(long deleted, long remaining) {
+    }
+
+    public record ReportPage(List<Event> items, int page, int size, long total) {
+    }
+
+    public record Event(String id, String eventType, String actor, String credentialType, String credentialId,
+                        String sourceIp, String resource, String action, String outcome, String requestId,
+                        Instant createdAt) {
     }
 }

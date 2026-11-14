@@ -98,6 +98,29 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
                 .toList();
     }
 
+    /**
+     * 生成 API Key 生命周期报告。报告只返回计数，不返回密钥值、摘要或完整主体凭据。
+     * 单租户部署使用 userId 作为可选主体筛选条件；传入 null 表示当前租户全部主体。
+     */
+    public RotationReport rotationReport(String userId, int horizonDays) {
+        if (horizonDays < 1 || horizonDays > 90) {
+            throw new IllegalArgumentException("horizonDays must be between 1 and 90");
+        }
+        if (userId != null) userId = app.keystone.identity.UuidValues.requireCanonical(userId);
+        Instant now = Instant.now();
+        Instant horizon = now.plusSeconds(horizonDays * 24L * 60L * 60L);
+        long total = userId == null ? count() : count("userId", userId);
+        long active = userId == null
+                ? count("revokedAt is null and (expiresAt is null or expiresAt > ?1)", now)
+                : count("revokedAt is null and (expiresAt is null or expiresAt > ?1) and userId = ?2", now, userId);
+        long revoked = userId == null ? count("revokedAt is not null") : count("revokedAt is not null and userId = ?1", userId);
+        long rotated = userId == null ? count("rotatedTo is not null") : count("rotatedTo is not null and userId = ?1", userId);
+        long expiring = userId == null
+                ? count("revokedAt is null and expiresAt is not null and expiresAt > ?1 and expiresAt <= ?2", now, horizon)
+                : count("revokedAt is null and expiresAt is not null and expiresAt > ?1 and expiresAt <= ?2 and userId = ?3", now, horizon, userId);
+        return new RotationReport(total, active, revoked, rotated, expiring, horizonDays, now, horizon);
+    }
+
     /** 锁定旧记录后写入新密钥并撤销旧密钥，整个轮换过程由一个事务完成。 */
     @Transactional
     public IssuedApiKey rotate(String userId, String id) {
@@ -186,5 +209,9 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
 
     public record ApiKeyMetadata(String id, String name, String prefix, List<String> scopes, Instant expiresAt,
                                  Instant revokedAt, Instant lastUsedAt, Instant createdAt) {
+    }
+
+    public record RotationReport(long total, long active, long revoked, long rotated, long expiring,
+                                 int horizonDays, Instant generatedAt, Instant horizonAt) {
     }
 }
