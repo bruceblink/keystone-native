@@ -8,6 +8,7 @@ import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.hamcrest.Matchers.is;
 
 /** 通过真实 HTTP 验证角色成员的查询、分配、撤销和批量失败回滚边界。 */
@@ -104,6 +105,43 @@ class RoleResourceHttpTest extends AuthTestFixture {
                 given().auth().oauth2(admin).when().delete("/v1/roles/" + roleId).then().statusCode(200);
             }
         }
+    }
+
+    @Test
+    void administratorBatchRoleDeleteRollsBackMissingTargetAndDeduplicatesIds() {
+        String admin = login("admin", "password");
+        String firstId = null;
+        String secondId = null;
+        try {
+            firstId = createRole(admin, "HTTP_ROLE_BATCH_ONE_" + System.nanoTime());
+            secondId = createRole(admin, "HTTP_ROLE_BATCH_TWO_" + System.nanoTime());
+            String missing = UUID.randomUUID().toString();
+
+            given().auth().oauth2(admin)
+                    .when().delete("/v1/roles?ids=" + firstId + "," + missing + "," + secondId)
+                    .then().statusCode(404);
+            List<String> afterRejected = given().auth().oauth2(admin)
+                    .when().get("/v1/roles")
+                    .then().statusCode(200).extract().path("data.id");
+            assertTrue(afterRejected.contains(firstId));
+            assertTrue(afterRejected.contains(secondId));
+
+            given().auth().oauth2(admin)
+                    .when().delete("/v1/roles?ids=" + firstId + "," + firstId + "," + secondId)
+                    .then().statusCode(200)
+                    .body("data.deleted", is(2));
+            firstId = null;
+            secondId = null;
+        } finally {
+            if (firstId != null) given().auth().oauth2(admin).when().delete("/v1/roles/" + firstId);
+            if (secondId != null) given().auth().oauth2(admin).when().delete("/v1/roles/" + secondId);
+        }
+    }
+
+    private static String createRole(String admin, String code) {
+        return given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"code\":\"" + code + "\",\"name\":\"HTTP batch role\"}")
+                .when().post("/v1/roles").then().statusCode(201).extract().path("data.id");
     }
 
     private static String login(String username, String password) {

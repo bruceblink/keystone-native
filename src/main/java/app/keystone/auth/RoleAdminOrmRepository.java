@@ -9,6 +9,7 @@ import jakarta.transaction.Transactional;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 
 /** 使用 ORM 完成角色、权限和角色成员的事务更新。 */
 @ApplicationScoped
@@ -62,6 +63,26 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
     public void deleteRoleById(String id) {
         ApiKeyRoleEntity role = findRoleEntityById(id);
         if (role == null) throw new java.util.NoSuchElementException("role not found");
+        bumpPermissionVersion(role);
+        delete(role);
+    }
+
+    /** 在同一事务内锁定并删除全部角色，任何目标缺失时整体回滚。 */
+    @Transactional
+    public int deleteRolesByIds(List<String> ids) {
+        List<String> normalized = (ids == null ? List.<String>of() : ids).stream()
+                .map(app.keystone.identity.UuidValues::requireCanonical)
+                .distinct()
+                .toList();
+        if (normalized.isEmpty()) throw new IllegalArgumentException("ids is required");
+        List<UUID> values = normalized.stream().map(app.keystone.identity.UuidValues::parse).toList();
+        List<ApiKeyRoleEntity> roles = find("id in ?1", values).withLock(LockModeType.PESSIMISTIC_WRITE).list();
+        if (roles.size() != values.size()) throw new java.util.NoSuchElementException("role not found");
+        roles.forEach(this::deleteRoleEntity);
+        return roles.size();
+    }
+
+    private void deleteRoleEntity(ApiKeyRoleEntity role) {
         bumpPermissionVersion(role);
         delete(role);
     }

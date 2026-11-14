@@ -78,6 +78,12 @@ public class RoleRepository {
         ormRoles.deleteRoleById(id);
     }
 
+    /** 按 UUID 批量删除角色；仓储事务保证目标缺失时不产生部分结果。 */
+    public int deleteAll(AuthorizationContext context, List<String> ids) {
+        authorization.require(context, "role:delete", "role");
+        return ormRoles.deleteRolesByIds(ids);
+    }
+
     public Role findById(AuthorizationContext context, String id) {
         authorization.require(context, "role:read", "role");
         return ormRoles.findRoleById(id);

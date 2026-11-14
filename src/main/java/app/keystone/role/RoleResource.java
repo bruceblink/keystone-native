@@ -66,11 +66,26 @@ public class RoleResource {
 
     @DELETE @Path("/{id}") @RequiresPermission("role:delete") @RequiresMfaStepUp public Response delete(@PathParam("id") String id) { try { roles.deleteById(context(), id); logs.record(actor(), "DELETE", "role", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
 
+    /** 批量删除角色；请求包含非法或不存在目标时全部回滚。 */
+    @DELETE @RequiresPermission("role:delete") @RequiresMfaStepUp
+    public Response deleteBatch(@QueryParam("ids") String ids) {
+        try {
+            int deleted = roles.deleteAll(context(), splitIds(ids));
+            logs.record(actor(), "DELETE", "roles", null, "batch deleted=" + deleted);
+            return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", deleted))).build();
+        } catch (IllegalArgumentException e) {
+            return bad(e.getMessage());
+        } catch (NoSuchElementException e) {
+            return notFound();
+        }
+    }
+
     private AuthorizationContext context() { return authorization.context(identity); }
     private String actor() { return identity.getPrincipal().getName(); }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("role not found")).build(); }
     private static Response notFound(String message) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(message)).build(); }
+    private static List<String> splitIds(String raw) { return raw == null ? List.of() : java.util.Arrays.stream(raw.split(",")).map(String::trim).filter(value -> !value.isEmpty()).toList(); }
     public record RoleRequest(String code, String name, Boolean enabled) {}
     public record PermissionRequest(List<String> permissions) {}
     public record UserAssignmentRequest(List<String> userIds) {}
