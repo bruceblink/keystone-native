@@ -6,6 +6,8 @@ import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
@@ -32,6 +34,29 @@ class ApiKeyResourceTest extends AuthTestFixture {
         given().header("Authorization", "ApiKey invalid").when().get("/v1/operation-logs").then().statusCode(401);
         given().auth().oauth2(admin).when().delete("/v1/api-keys/" + id).then().statusCode(200);
         given().header("Authorization", "ApiKey " + key).when().get("/v1/operation-logs").then().statusCode(401);
+    }
+
+    @Test
+    void invalidApiKeysFromOneSourceAreBlockedAfterTheConfiguredFailureWindow() throws Exception {
+        clearApiKeyRateLimits();
+        String guessedValue = "ks_live_guess_" + System.nanoTime();
+        try {
+            for (int attempt = 0; attempt < 20; attempt++) {
+                given().header("Authorization", "ApiKey " + guessedValue)
+                        .when().get("/v1/operation-logs")
+                        .then().statusCode(401);
+            }
+            try (Connection connection = dataSource.getConnection();
+                 PreparedStatement statement = connection.prepareStatement(
+                         "SELECT COUNT(*) FROM sys_api_key_rate_limit WHERE blocked_until > CURRENT_TIMESTAMP AND attempt_count >= 20")) {
+                try (var result = statement.executeQuery()) {
+                    assertTrue(result.next());
+                    assertTrue(result.getInt(1) >= 1, "repeated invalid API keys must create a blocked rate-limit bucket");
+                }
+            }
+        } finally {
+            clearApiKeyRateLimits();
+        }
     }
 
     @Test
@@ -159,6 +184,13 @@ class ApiKeyResourceTest extends AuthTestFixture {
                 .then().statusCode(201)
                 .body("data.apiKey", startsWith("ks_live_"))
                 .extract();
+    }
+
+    private void clearApiKeyRateLimits() throws Exception {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement("DELETE FROM sys_api_key_rate_limit")) {
+            statement.executeUpdate();
+        }
     }
 
     private static void revoke(String admin, String id) {
