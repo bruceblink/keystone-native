@@ -24,6 +24,16 @@ public class LoginLogResource {
     @Inject SecurityIdentity identity;
     @Inject AuthorizationService authorization;
 
+    /** 返回已授权主体可见的登录审计记录。 */
+    @GET
+    @RequiresPermission("login-log:read")
+    public ApiResponse<LoginLogRepository.Page> list(@QueryParam("page") Integer page,
+                                                      @QueryParam("size") Integer size,
+                                                      @QueryParam("username") String username,
+                                                      @QueryParam("status") String status) {
+        return ApiResponse.ok(logs.list(context(), page == null ? 1 : page, size == null ? 20 : size, username, status));
+    }
+
     @GET @Path("/export") @Produces(ExcelExporter.CONTENT_TYPE) @RequiresPermission("login-log:export")
     public Response export(@QueryParam("username") String username, @QueryParam("status") String status) {
         byte[] workbook = LoginLogExcelExporter.export(logs.export(context(), username, status));

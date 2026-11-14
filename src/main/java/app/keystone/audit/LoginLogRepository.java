@@ -27,6 +27,17 @@ public class LoginLogRepository implements PanacheRepositoryBase<LoginLogEntity,
 
     @Transactional
     public Page list(int page, int size, String username, String status) {
+        return listPage(page, size, username, status);
+    }
+
+    /** 在审计资源范围内分页读取登录日志，避免列表入口绕过统一授权检查。 */
+    @Transactional
+    public Page list(AuthorizationContext context, int page, int size, String username, String status) {
+        authorization.require(context, "login-log:read", "audit");
+        return listPage(page, size, username, status);
+    }
+
+    private Page listPage(int page, int size, String username, String status) {
         int safePage = Math.max(1, page);
         int safeSize = Math.min(100, Math.max(1, size));
         var query = query(username, status);

@@ -72,6 +72,7 @@ class DataScopeResourceHttpTest {
         assertDeniedGet("/v1/dictionaries");
         assertDeniedPost("/v1/dictionaries");
         assertDeniedGet("/v1/operation-logs");
+        assertDeniedGet("/v1/login-logs");
         assertDeniedGet("/v1/login-logs/export");
         assertDeniedGet("/v1/operation-logs/export");
         assertDeniedGet("/v1/monitor/security");
