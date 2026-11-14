@@ -3,7 +3,10 @@ package app.keystone;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 
 import static io.restassured.RestAssured.given;
 import static org.hamcrest.Matchers.containsString;
@@ -19,5 +22,24 @@ class FileResourceTest extends AuthTestFixture {
                 .when().post("/v1/file/upload").then().statusCode(200).body("data.originalFilename", is("hello.txt")).extract().path("data.fileName");
         given().auth().oauth2(token).when().get("/v1/file/download?fileName=" + fileName).then().statusCode(200).header("Content-Disposition", containsString("attachment"));
         given().auth().oauth2(token).when().get("/v1/file/download?fileName=../application.properties").then().statusCode(422).body("success", is(false));
+    }
+
+    @Test
+    void authenticatedBatchUploadAndDownloadWork() throws Exception {
+        String token = given().contentType("application/json").body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
+                .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");
+        List<String> fileNames = given().auth().oauth2(token)
+                .multiPart("files", "first.txt", "first".getBytes(StandardCharsets.UTF_8), "text/plain")
+                .multiPart("files", "second.txt", "second".getBytes(StandardCharsets.UTF_8), "text/plain")
+                .when().post("/v1/file/uploads").then().statusCode(200)
+                .body("data.size()", is(2)).extract().jsonPath().getList("data.fileName");
+        try {
+            for (String fileName : fileNames) {
+                given().auth().oauth2(token).when().get("/v1/file/download?fileName=" + fileName)
+                        .then().statusCode(200).header("Content-Disposition", containsString("attachment"));
+            }
+        } finally {
+            for (String fileName : fileNames) Files.deleteIfExists(Path.of("build/test-files").resolve(fileName));
+        }
     }
 }

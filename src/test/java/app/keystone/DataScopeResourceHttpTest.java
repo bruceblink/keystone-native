@@ -85,6 +85,7 @@ class DataScopeResourceHttpTest {
         assertOwnerScopedPost("/v1/notices", "{\"title\":\"范围公告\",\"content\":\"scope\",\"noticeType\":\"NOTICE\"}");
         assertDeniedGet("/v1/file/download?fileName=missing.txt");
         assertDeniedFileUpload();
+        assertDeniedFileBatchUpload();
 
         given().auth().oauth2(accessToken)
                 .when().get("/v1/users/export")
@@ -124,6 +125,14 @@ class DataScopeResourceHttpTest {
                 .multiPart("file", "scope.txt", "scope test".getBytes(), "text/plain")
                 .when().post("/v1/file/upload")
                 .then().statusCode(403);
+    }
+
+    private void assertDeniedFileBatchUpload() {
+        given().auth().oauth2(accessToken)
+                .multiPart("files", "scope-a.txt", "scope a".getBytes(), "text/plain")
+                .multiPart("files", "scope-b.txt", "scope b".getBytes(), "text/plain")
+                .when().post("/v1/file/uploads")
+                .then().statusCode(403).body("error.code", is("data_scope_denied"));
     }
 
     private String login() {
