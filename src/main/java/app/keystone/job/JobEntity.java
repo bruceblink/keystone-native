@@ -6,6 +6,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Convert;
+import app.keystone.identity.UuidBinaryConverter;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -48,6 +50,10 @@ public class JobEntity {
     @Column(length = 255)
     private String remark;
 
+    @Column(name = "created_by", columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
+    private String createdBy;
+
     @Column(name = "last_status", length = 16)
     private String lastStatus;
 
@@ -58,7 +64,7 @@ public class JobEntity {
     }
 
     JobEntity(String code, String name, String jobGroup, String invokeTarget, String jobParams,
-              String cron, boolean concurrent, boolean enabled, String remark) {
+              String cron, boolean concurrent, boolean enabled, String remark, String createdBy) {
         this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.code = code;
         this.name = name;
@@ -69,6 +75,7 @@ public class JobEntity {
         this.concurrent = concurrent;
         this.enabled = enabled;
         this.remark = remark;
+        this.createdBy = createdBy;
     }
 
     void update(String newName, String newGroup, String newInvokeTarget, String newJobParams,
@@ -91,5 +98,13 @@ public class JobEntity {
     Job toModel() {
         return new Job(id == null ? null : id.toString(), code, name, jobGroup, invokeTarget, jobParams, cron, concurrent,
                 enabled, remark, lastStatus, lastRunAt);
+    }
+
+    String createdBy() {
+        return createdBy;
+    }
+
+    UUID idValue() {
+        return id;
     }
 }

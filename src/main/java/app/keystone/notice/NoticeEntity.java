@@ -4,6 +4,8 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Convert;
+import app.keystone.identity.UuidBinaryConverter;
 import org.hibernate.annotations.JdbcTypeCode;
 import org.hibernate.type.SqlTypes;
 
@@ -40,18 +42,23 @@ public class NoticeEntity {
     @Column(name = "created_by", nullable = false, length = 64)
     private String createdBy;
 
+    @Column(name = "owner_id", columnDefinition = "BINARY(16)", length = 16)
+    @Convert(converter = UuidBinaryConverter.class)
+    private String ownerId;
+
     @Column(name = "created_at", nullable = false, insertable = false, updatable = false)
     private Instant createdAt;
 
     protected NoticeEntity() {
     }
 
-    NoticeEntity(String title, String content, String type, String createdBy) {
+    NoticeEntity(String title, String content, String type, String createdBy, String ownerId) {
         this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.title = title.trim();
         this.content = content;
         this.noticeType = type == null ? "NOTICE" : type;
         this.createdBy = createdBy;
+        this.ownerId = ownerId;
         this.enabled = true;
     }
 
@@ -69,5 +76,9 @@ public class NoticeEntity {
 
     Notice toModel() {
         return new Notice(id.toString(), title, content, noticeType, published, enabled, publishAt, createdBy, createdAt);
+    }
+
+    String ownerId() {
+        return ownerId;
     }
 }

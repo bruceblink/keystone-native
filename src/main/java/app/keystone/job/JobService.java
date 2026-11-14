@@ -1,6 +1,7 @@
 package app.keystone.job;
 
 import app.keystone.auth.AuthorizationContext;
+import app.keystone.auth.AuthorizationDeniedException;
 import app.keystone.auth.AuthorizationService;
 import io.quarkus.scheduler.ScheduledExecution;
 import io.quarkus.scheduler.Scheduler;
@@ -40,26 +41,26 @@ public class JobService {
         validateCron(cron);
         String target = invokeTarget == null || invokeTarget.isBlank() ? "keystoneJob.heartbeat()" : invokeTarget;
         invocations.validate(target, jobParams);
-        Job job = jobs.create(code, name, group, target, jobParams, cron, concurrent, enabled, remark);
+        Job job = jobs.create(context, code, name, group, target, jobParams, cron, concurrent, enabled, remark);
         schedule(job);
         return job;
     }
 
     public List<Job> jobs(AuthorizationContext context) {
         authorization.require(context, "job:read", "job");
-        return jobs.list();
+        return jobs.list(context);
     }
 
     public Job update(AuthorizationContext context, String id, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
         authorization.require(context, "job:update", "job");
-        Job current = jobs.findById(id);
+        Job current = jobs.findById(context, id, "job:update");
         if (cron != null && !cron.isBlank()) validateCron(cron);
         String target = invokeTarget == null || invokeTarget.isBlank() ? current.invokeTarget() : invokeTarget;
         String params = jobParams == null ? current.jobParams() : jobParams;
         invocations.validate(target, params);
         unschedule(id);
         Job job;
-        try { job = jobs.update(id, name, group, invokeTarget, jobParams, cron, concurrent, enabled, remark); }
+        try { job = jobs.update(context, id, name, group, invokeTarget, jobParams, cron, concurrent, enabled, remark); }
         catch (RuntimeException e) { if (current.enabled()) schedule(current); throw e; }
         if (job.enabled()) schedule(job);
         return job;
@@ -67,14 +68,15 @@ public class JobService {
 
     public void delete(AuthorizationContext context, String id) {
         authorization.require(context, "job:delete", "job");
+        jobs.findById(context, id, "job:delete");
         unschedule(id);
-        jobs.delete(id);
+        jobs.delete(context, id);
         locks.remove(id);
     }
 
     public void trigger(AuthorizationContext context, String id) {
         authorization.require(context, "job:run", "job");
-        run(jobs.findById(id), MANUAL_TRIGGER);
+        run(jobs.findById(context, id, "job:run"), MANUAL_TRIGGER);
     }
 
     public List<JobInvocationService.JobTarget> targets(AuthorizationContext context) {
@@ -84,6 +86,15 @@ public class JobService {
 
     public JobLogRepository.Page logs(AuthorizationContext context, String jobId, int page, int size) {
         authorization.require(context, "job:read", "job");
+        if (jobId == null || jobId.isBlank()) {
+            return context.allScope() ? jobLogs.list(null, page, size) : jobLogs.listForOwner(context.subjectId(), page, size);
+        }
+        try {
+            jobs.findById(context, jobId);
+        } catch (java.util.NoSuchElementException e) {
+            throw new AuthorizationDeniedException("data_scope_denied", 403,
+                    "data scope does not allow this resource");
+        }
         return jobLogs.list(jobId, page, size);
     }
 

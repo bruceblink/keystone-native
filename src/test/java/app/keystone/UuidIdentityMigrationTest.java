@@ -70,6 +70,19 @@ class UuidIdentityMigrationTest {
     }
 
     @Test
+    void ownerScopeMigrationAddsNullableBinaryOwnersWithReplayGuards() throws Exception {
+        String sql = Files.readString(Path.of("src/main/resources/db/migration/V56__owner_scope_resources.sql"));
+        assertTrue(sql.contains("sys_notice"));
+        assertTrue(sql.contains("owner_id BINARY(16) NULL"));
+        assertTrue(sql.contains("sys_job"));
+        assertTrue(sql.contains("created_by BINARY(16) NULL"));
+        assertTrue(sql.contains("information_schema.columns"));
+        assertTrue(sql.contains("information_schema.statistics"));
+        assertTrue(sql.contains("information_schema.table_constraints"));
+        assertTrue(sql.contains("ON DELETE SET NULL"));
+    }
+
+    @Test
     void authIdentityMigrationUsesBinaryUuidIdsAndGuardedReplay() throws Exception {
         String sql = Files.readString(Path.of("src/main/resources/db/migration/V50__auth_identity_binary_uuid.sql"));
         assertTrue(sql.contains("sys_uuid_auth_identity_migration"));

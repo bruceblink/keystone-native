@@ -35,7 +35,9 @@ public final class DataScopePolicy {
     private static final Map<String, Set<String>> RESOURCE_SCOPES = Map.of(
             "user", Set.of(ALL, TENANT, SELF, DEPARTMENT, DEPARTMENT_AND_CHILDREN, CUSTOM),
             "department", Set.of(ALL, TENANT, DEPARTMENT, DEPARTMENT_AND_CHILDREN, CUSTOM),
-            "owned", Set.of(ALL, OWNER, MEMBER));
+            "owned", Set.of(ALL, OWNER, MEMBER),
+            "notice", Set.of(ALL, TENANT, SELF, OWNER),
+            "job", Set.of(ALL, TENANT, SELF, OWNER));
 
     /**
      * 统一资源范围矩阵。
@@ -57,7 +59,7 @@ public final class DataScopePolicy {
             Map.entry("dictionary", globalRule()),
             Map.entry("notice", ownerOrGlobalRule()),
             Map.entry("job", ownerOrGlobalRule()),
-            Map.entry("file", ownerOrGlobalRule()),
+            Map.entry("file", globalRule()),
             Map.entry("audit", globalRule()),
             Map.entry("session", globalRule())
     );
@@ -106,8 +108,8 @@ public final class DataScopePolicy {
     }
 
     private static ResourceRule ownerOrGlobalRule() {
-        // 当前模型未保存这些资源的稳定 owner/member 关系，先采用默认拒绝的全量范围规则。
-        return new ResourceRule(Set.of(ALL, TENANT), Enforcement.ALL_OR_TENANT);
+        // 资源保存 owner 后，SELF 由仓储按主体 ID 过滤；没有 owner 的旧记录只对全量范围可见。
+        return new ResourceRule(Set.of(ALL, TENANT, SELF, OWNER), Enforcement.OWNER_BOUND);
     }
 
     private static String normalizeResource(String value) {

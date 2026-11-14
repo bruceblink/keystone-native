@@ -30,12 +30,21 @@ public class AuthorizationService {
 
     /** 在业务命令内部执行权限和资源范围检查。 */
     public void require(AuthorizationContext context, String permission, String resource) {
+        require(context, permission, resource, null);
+    }
+
+    /** 在资源保存所有者时，额外核验主体与目标记录的所有者关系。 */
+    public void require(AuthorizationContext context, String permission, String resource, String ownerId) {
         if (context == null) throw denied("invalid_credential", 401, "authentication is required");
         if (!PermissionCatalog.contains(permission) || !context.hasPermission(permission)) {
             throw denied("permission_denied", 403, "permission denied");
         }
         DataScopePolicy.ResourceRule rule = DataScopePolicy.rule(resource);
         if (rule == null || !DataScopePolicy.allows(rule, context.allScope(), context.selfScope())) {
+            throw denied("data_scope_denied", 403, "data scope does not allow this resource");
+        }
+        if (ownerId != null && !context.isSystem() && !context.allScope()
+                && (!context.selfScope() || !context.subjectId().equals(ownerId))) {
             throw denied("data_scope_denied", 403, "data scope does not allow this resource");
         }
     }

@@ -73,10 +73,11 @@ class DataScopeResourceHttpTest {
         assertDeniedGet("/v1/monitor/security");
         assertDeniedGet("/v1/monitor/security/report");
         assertDeniedGet("/v1/monitor/onlineUsers");
-        assertDeniedGet("/v1/jobs");
-        assertDeniedPost("/v1/jobs");
-        assertDeniedGet("/v1/notices/manage");
-        assertDeniedPost("/v1/notices");
+        assertScopedEmptyGet("/v1/jobs");
+        assertOwnerScopedPost("/v1/jobs", "{\"code\":\"scope-job-" + username.substring(username.length() - 8)
+                + "\",\"name\":\"范围任务\",\"cron\":\"0/30 * * * * ?\",\"invokeTarget\":\"keystoneJob.heartbeat()\",\"enabled\":false}");
+        assertScopedEmptyGet("/v1/notices/manage");
+        assertOwnerScopedPost("/v1/notices", "{\"title\":\"范围公告\",\"content\":\"scope\",\"noticeType\":\"NOTICE\"}");
         assertDeniedGet("/v1/file/download?fileName=missing.txt");
         assertDeniedFileUpload();
     }
@@ -87,12 +88,25 @@ class DataScopeResourceHttpTest {
                 .then().statusCode(403);
     }
 
+    private void assertScopedEmptyGet(String path) {
+        given().auth().oauth2(accessToken)
+                .when().get(path)
+                .then().statusCode(200).body("data", org.hamcrest.Matchers.hasSize(0));
+    }
+
     private void assertDeniedPost(String path) {
         given().auth().oauth2(accessToken).contentType(JSON)
                 .body("{}")
                 .when().post(path)
                 .then().statusCode(403)
                 .body("error.code", is("data_scope_denied"));
+    }
+
+    private void assertOwnerScopedPost(String path, String body) {
+        given().auth().oauth2(accessToken).contentType(JSON)
+                .body(body)
+                .when().post(path)
+                .then().statusCode(201);
     }
 
     private void assertDeniedFileUpload() {

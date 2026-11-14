@@ -33,10 +33,14 @@ class DataScopePolicyTest {
     @Test
     void allowsSelfOnlyResourcesToUseAnExplicitSelfScope() {
         var apiKey = DataScopePolicy.rule("api-key");
+        var notice = DataScopePolicy.rule("notice");
 
         assertNotNull(apiKey);
+        assertNotNull(notice);
         assertEquals(DataScopePolicy.Enforcement.OWNER_BOUND, apiKey.enforcement());
+        assertEquals(DataScopePolicy.Enforcement.OWNER_BOUND, notice.enforcement());
         assertTrue(DataScopePolicy.allows(apiKey, false, true));
+        assertTrue(DataScopePolicy.allows(notice, false, true));
         assertFalse(DataScopePolicy.allows(apiKey, false, false));
     }
 

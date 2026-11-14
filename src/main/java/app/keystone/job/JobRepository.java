@@ -1,5 +1,7 @@
 package app.keystone.job;
 
+import app.keystone.auth.AuthorizationContext;
+import app.keystone.auth.AuthorizationService;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.LockModeType;
@@ -11,9 +13,25 @@ import java.util.List;
 /** 使用 ORM 管理计划任务，数据库结构由 Flyway 管理。 */
 @ApplicationScoped
 public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util.UUID> {
+    @jakarta.inject.Inject AuthorizationService authorization;
+
     @Transactional
     public List<Job> list() {
         return find("order by id").list().stream().map(JobEntity::toModel).toList();
+    }
+
+    /** 按主体范围查询任务；SELF 只读取由该主体创建的任务。 */
+    @Transactional
+    public List<Job> list(AuthorizationContext context) {
+        authorization.require(context, "job:read", "job");
+        var query = context.allScope() ? find("order by id")
+                : find("createdBy = ?1 order by id", context.subjectId());
+        return query.list().stream().map(JobEntity::toModel).toList();
+    }
+
+    /** 返回所有者创建的任务主键，供任务日志查询复用相同范围。 */
+    List<java.util.UUID> idsForOwner(String ownerId) {
+        return find("createdBy", ownerId).list().stream().map(JobEntity::idValue).toList();
     }
 
     @Transactional
@@ -22,8 +40,9 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
     }
 
     @Transactional
-    public Job create(String code, String name, String group, String invokeTarget, String jobParams,
+    public Job create(AuthorizationContext context, String code, String name, String group, String invokeTarget, String jobParams,
                       String cron, Boolean concurrent, Boolean enabled, String remark) {
+        authorization.require(context, "job:create", "job", context.subjectId());
         require(code, "code");
         require(name, "name");
         require(cron, "cron");
@@ -32,7 +51,7 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
             var job = new JobEntity(code.trim(), name.trim(),
                     group == null || group.isBlank() ? "DEFAULT" : group.trim(),
                     invokeTarget.trim(), jobParams, cron.trim(),
-                    concurrent == null || concurrent, enabled == null || enabled, remark);
+                    concurrent == null || concurrent, enabled == null || enabled, remark, context.subjectId());
             persistAndFlush(job);
             return job.toModel();
         } catch (RuntimeException e) {
@@ -42,9 +61,9 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
     }
 
     @Transactional
-    public Job update(String id, String name, String group, String invokeTarget, String jobParams,
+    public Job update(AuthorizationContext context, String id, String name, String group, String invokeTarget, String jobParams,
                       String cron, Boolean concurrent, Boolean enabled, String remark) {
-        JobEntity job = find("id = ?1", parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+        JobEntity job = findFor(context, "job:update", id, true);
         if (job == null) throw new java.util.NoSuchElementException("job not found");
         job.update(name, group, invokeTarget, jobParams, cron, concurrent, enabled, remark);
         return job.toModel();
@@ -62,17 +81,37 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
     }
 
     @Transactional
-    public void delete(String id) {
-        JobEntity job = find("id = ?1", parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    public void delete(AuthorizationContext context, String id) {
+        JobEntity job = findFor(context, "job:delete", id, true);
         if (job == null) throw new java.util.NoSuchElementException("job not found");
         delete(job);
     }
 
     @Transactional
-    public Job findById(String id) {
+    public Job findById(AuthorizationContext context, String id) {
+        return findById(context, id, "job:read");
+    }
+
+    @Transactional
+    public Job findById(AuthorizationContext context, String id, String permission) {
+        JobEntity job = findFor(context, permission, id, false);
+        if (job == null) throw new java.util.NoSuchElementException("job not found");
+        return job.toModel();
+    }
+
+    /** 调度器内部读取任务；调用方已经是受控系统主体。 */
+    Job findById(String id) {
         JobEntity job = find("id = ?1", parse(id)).firstResult();
         if (job == null) throw new java.util.NoSuchElementException("job not found");
         return job.toModel();
+    }
+
+    private JobEntity findFor(AuthorizationContext context, String permission, String id, boolean lock) {
+        authorization.require(context, permission, "job");
+        var query = context.allScope()
+                ? find("id = ?1", parse(id))
+                : find("id = ?1 and createdBy = ?2", parse(id), context.subjectId());
+        return (lock ? query.withLock(LockModeType.PESSIMISTIC_WRITE) : query).firstResult();
     }
 
     private static void require(String value, String field) {
