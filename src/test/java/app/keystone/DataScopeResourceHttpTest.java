@@ -60,6 +60,16 @@ class DataScopeResourceHttpTest {
     @Test
     void restrictedSubjectCannotReadOrWriteGlobalResources() {
         assertDeniedGet("/v1/roles");
+        // 角色成员批量入口必须沿用角色资源的全局范围限制，不能通过子路径绕过检查。
+        assertDeniedGet("/v1/roles/" + roleId + "/users");
+        given().auth().oauth2(accessToken).contentType(JSON)
+                .body("{\"userIds\":[]}")
+                .when().put("/v1/roles/" + roleId + "/users")
+                .then().statusCode(403).body("error.code", is("data_scope_denied"));
+        given().auth().oauth2(accessToken).contentType(JSON)
+                .body("{\"userIds\":[]}")
+                .when().delete("/v1/roles/" + roleId + "/users")
+                .then().statusCode(403).body("error.code", is("data_scope_denied"));
         assertDeniedGet("/v1/roles/export");
         assertDeniedPost("/v1/roles");
         assertDeniedGet("/v1/posts");
