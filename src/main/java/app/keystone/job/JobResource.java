@@ -69,10 +69,7 @@ public class JobResource {
     }
 
     @POST @Path("/{id}/trigger") @RequiresPermission("job:run")
-    public Response trigger(@PathParam("id") String id) { return run(id); }
-
-    @POST @Path("/{id}/run") @RequiresPermission("job:run")
-    public Response run(@PathParam("id") String id) {
+    public Response trigger(@PathParam("id") String id) {
         try { service.trigger(context(), id); logs.record(actor(), "TRIGGER", "job", String.valueOf(id), null); return Response.ok(ApiResponse.ok(java.util.Map.of("triggered", true))).build(); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }

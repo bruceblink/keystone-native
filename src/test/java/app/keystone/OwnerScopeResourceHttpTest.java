@@ -83,7 +83,7 @@ class OwnerScopeResourceHttpTest {
         given().auth().oauth2(otherToken).contentType(JSON)
                 .body("{\"title\":\"越界修改\",\"content\":\"deny\"}")
                 .when().put("/v1/notices/" + noticeId).then().statusCode(404);
-        given().auth().oauth2(otherToken).when().post("/v1/jobs/" + jobId + "/run")
+        given().auth().oauth2(otherToken).when().post("/v1/jobs/" + jobId + "/trigger")
                 .then().statusCode(404);
         given().auth().oauth2(otherToken).when().get("/v1/jobs/logs?jobId=" + jobId)
                 .then().statusCode(403).body("error.code", is("data_scope_denied"));
@@ -91,9 +91,9 @@ class OwnerScopeResourceHttpTest {
         given().auth().oauth2(otherToken).contentType(JSON)
                 .body("{\"title\":\"另一主体更新\",\"content\":\"updated\"}")
                 .when().put("/v1/notices/" + otherNoticeId).then().statusCode(200);
-        given().auth().oauth2(otherToken).when().post("/v1/jobs/" + otherJobId + "/run")
+        given().auth().oauth2(otherToken).when().post("/v1/jobs/" + otherJobId + "/trigger")
                 .then().statusCode(200);
-        given().auth().oauth2(ownerToken).when().post("/v1/jobs/" + jobId + "/run")
+        given().auth().oauth2(ownerToken).when().post("/v1/jobs/" + jobId + "/trigger")
                 .then().statusCode(200);
         List<String> ownerLogJobIds = given().auth().oauth2(ownerToken)
                 .when().get("/v1/jobs/logs")
@@ -113,7 +113,7 @@ class OwnerScopeResourceHttpTest {
         given().auth().oauth2(ownerToken).contentType(JSON)
                 .body("{\"title\":\"所有者更新\",\"content\":\"updated\"}")
                 .when().put("/v1/notices/" + noticeId).then().statusCode(200);
-        given().auth().oauth2(ownerToken).when().post("/v1/jobs/" + jobId + "/run")
+        given().auth().oauth2(ownerToken).when().post("/v1/jobs/" + jobId + "/trigger")
                 .then().statusCode(200).body("data.triggered", is(true));
         given().auth().oauth2(ownerToken).when().get("/v1/jobs/logs?jobId=" + jobId)
                 .then().statusCode(200).body("data.total", greaterThanOrEqualTo(1));

@@ -98,7 +98,7 @@ class OwnerBatchResourceHttpTest extends AuthTestFixture {
         ownerJobCode = code("batch-owner-job");
         ownerJobId = createJob(ownerToken, ownerJobCode);
         otherJobId = createJob(otherToken, code("batch-other-job"));
-        given().auth().oauth2(ownerToken).when().post("/v1/jobs/" + ownerJobId + "/run")
+        given().auth().oauth2(ownerToken).when().post("/v1/jobs/" + ownerJobId + "/trigger")
                 .then().statusCode(200);
         assertJobLogExists(ownerJobCode);
 

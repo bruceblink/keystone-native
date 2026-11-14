@@ -24,7 +24,7 @@ class JobResourceTest extends AuthTestFixture {
                 .when().post("/v1/jobs")
                 .then().statusCode(201).extract().path("data.id");
 
-        given().auth().oauth2(token).when().post("/v1/jobs/" + id + "/run").then().statusCode(200).body("data.triggered", is(true));
+        given().auth().oauth2(token).when().post("/v1/jobs/" + id + "/trigger").then().statusCode(200).body("data.triggered", is(true));
         given().auth().oauth2(token).when().get("/v1/jobs/logs?jobId=" + id).then().statusCode(200).body("data.total", greaterThanOrEqualTo(1));
         given().auth().oauth2(token).when().delete("/v1/jobs/" + id).then().statusCode(200);
     }
