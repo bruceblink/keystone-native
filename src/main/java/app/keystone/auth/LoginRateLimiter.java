@@ -37,12 +37,14 @@ public class LoginRateLimiter {
 
     /** 认证失败后原子增加两个维度的计数，达到阈值后写入阻断时间。 */
     @Transactional
-    public void recordFailure(String username, String ipAddress) {
+    public boolean recordFailure(String username, String ipAddress) {
         validateConfig();
         try {
             Instant now = Instant.now();
             repository.deleteExpired(now.minusSeconds(windowSeconds), now);
-            for (String key : keys(username, ipAddress)) increment(key, now);
+            boolean blocked = false;
+            for (String key : keys(username, ipAddress)) blocked |= increment(key, now);
+            return blocked;
         } catch (RuntimeException e) {
             throw new IllegalStateException("Could not record login failure", e);
         }
@@ -66,12 +68,12 @@ public class LoginRateLimiter {
                 hash("user:" + normalize(username, "unknown").toLowerCase(java.util.Locale.ROOT)));
     }
 
-    private void increment(String key, Instant now) {
+    private boolean increment(String key, Instant now) {
         var row = repository.findForUpdate(key);
         if (row == null) {
             Instant blockedUntil = maxFailures <= 1 ? now.plusSeconds(blockSeconds) : null;
             repository.persistAndFlush(new LoginRateLimitEntity(key, now, 1, blockedUntil));
-            return;
+            return blockedUntil != null && blockedUntil.isAfter(now);
         }
         boolean currentWindow = row.windowStartedAt() != null
                 && row.windowStartedAt().plusSeconds(windowSeconds).isAfter(now);
@@ -79,6 +81,7 @@ public class LoginRateLimiter {
         Instant windowStartedAt = currentWindow ? row.windowStartedAt() : now;
         Instant blockedUntil = attempts >= maxFailures ? now.plusSeconds(blockSeconds) : null;
         row.update(windowStartedAt, attempts, blockedUntil);
+        return blockedUntil != null && blockedUntil.isAfter(now);
     }
 
     private void validateConfig() {

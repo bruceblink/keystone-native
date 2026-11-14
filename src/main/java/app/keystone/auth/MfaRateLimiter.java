@@ -47,12 +47,14 @@ public class MfaRateLimiter {
 
     /** 在一个事务中原子增加主体和地址两个维度的失败次数。 */
     @Transactional
-    public void recordFailure(String userId, String ipAddress) {
+    public boolean recordFailure(String userId, String ipAddress) {
         validateConfig(userId);
         try {
             Instant now = Instant.now();
             repository.deleteExpired(now.minusSeconds(windowSeconds), now);
-            for (String key : keys(userId, ipAddress)) increment(key, now);
+            boolean blocked = false;
+            for (String key : keys(userId, ipAddress)) blocked |= increment(key, now);
+            return blocked;
         } catch (RuntimeException e) {
             throw new IllegalStateException("Could not record MFA failure rate", e);
         }
@@ -69,12 +71,12 @@ public class MfaRateLimiter {
         }
     }
 
-    private void increment(String key, Instant now) {
+    private boolean increment(String key, Instant now) {
         MfaRateLimitEntity row = repository.findForUpdate(key);
         if (row == null) {
             Instant blockedUntil = maxFailures <= 1 ? now.plusSeconds(blockSeconds) : null;
             repository.persistAndFlush(new MfaRateLimitEntity(key, now, 1, blockedUntil));
-            return;
+            return blockedUntil != null && blockedUntil.isAfter(now);
         }
         boolean currentWindow = row.windowStartedAt() != null
                 && row.windowStartedAt().plusSeconds(windowSeconds).isAfter(now);
@@ -82,6 +84,7 @@ public class MfaRateLimiter {
         Instant windowStartedAt = currentWindow ? row.windowStartedAt() : now;
         Instant blockedUntil = attempts >= maxFailures ? now.plusSeconds(blockSeconds) : null;
         row.update(windowStartedAt, attempts, blockedUntil);
+        return blockedUntil != null && blockedUntil.isAfter(now);
     }
 
     /** 测试和启动检查使用的配置边界；用户 ID 也必须绑定到已解析的主体。 */

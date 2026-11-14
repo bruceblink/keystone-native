@@ -36,13 +36,15 @@ public class ApiKeyRateLimiter {
     }
 
     @Transactional
-    public void recordFailure(String value, String ipAddress) {
+    public boolean recordFailure(String value, String ipAddress) {
         validate(value, ipAddress);
         validateConfig();
         try {
             Instant now = Instant.now();
             repository.deleteExpired(now.minusSeconds(windowSeconds), now);
-            for (String key : keys(value, ipAddress)) increment(key, now);
+            boolean blocked = false;
+            for (String key : keys(value, ipAddress)) blocked |= increment(key, now);
+            return blocked;
         } catch (RuntimeException e) {
             throw new IllegalStateException("Could not record API key failure", e);
         }
@@ -65,12 +67,12 @@ public class ApiKeyRateLimiter {
         return List.of(hash("ip:" + normalize(ipAddress, "unknown")), hash("key:" + normalize(value, "unknown")));
     }
 
-    private void increment(String key, Instant now) {
+    private boolean increment(String key, Instant now) {
         var row = repository.findForUpdate(key);
         if (row == null) {
             Instant blockedUntil = maxFailures <= 1 ? now.plusSeconds(blockSeconds) : null;
             repository.persistAndFlush(new ApiKeyRateLimitEntity(key, now, 1, blockedUntil));
-            return;
+            return blockedUntil != null && blockedUntil.isAfter(now);
         }
         boolean currentWindow = row.windowStartedAt() != null
                 && row.windowStartedAt().plusSeconds(windowSeconds).isAfter(now);
@@ -78,6 +80,7 @@ public class ApiKeyRateLimiter {
         Instant windowStartedAt = currentWindow ? row.windowStartedAt() : now;
         Instant blockedUntil = attempts >= maxFailures ? now.plusSeconds(blockSeconds) : null;
         row.update(windowStartedAt, attempts, blockedUntil);
+        return blockedUntil != null && blockedUntil.isAfter(now);
     }
 
     private void validateConfig() {

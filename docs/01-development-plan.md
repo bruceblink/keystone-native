@@ -46,6 +46,8 @@ Native 与 Phoenix 分别实现，但必须遵守统一架构中的 Principal、
 
 当前验证边界仍然明确：本地 MySQL 8.4.13 已完成 Flyway V51、健康检查、JWK、登录、刷新、旧令牌重放撤销、注销、非法 UUID 统一错误响应、基础数据范围矩阵、API Key 签发/业务访问/撤销和 MFA TOTP/恢复码/step-up HTTP 验收。MFA enrollment 时间步重放、恢复码重复消费和 API Key 人类认证入口拒绝均已验证。MFA enrollment、TOTP、恢复码和认证请求消费使用单数据库事务；成功后的限流清理采用提交后尽力处理，清理失败只记录不改变成功响应。`TRUSTED_PROXY_CIDRS` 为空时忽略 `X-Forwarded-For`，仅在 TCP 远端属于配置网段且转发链合法时使用原始客户端地址。账户锁定、刷新、API Key 和 MFA 并发、数据库故障回滚、代理链部署、OIDC、WebAuthn、密钥 registry 轮换和跨租户边界仍未完成。
 
+HTTP 安全策略已集中到 Quarkus 配置和 JAX-RS 过滤器：生产 profile 默认要求 HTTPS 并发送 HSTS，Docker Compose 本地入口显式关闭 HTTPS 强制以保持 HTTP 验收；CORS 默认关闭，启用时必须配置明确来源，禁止通配符来源配合凭据；API JSON 响应统一发送 `nosniff`、`DENY`、`no-referrer`、`Permissions-Policy`、`Cross-Origin-Resource-Policy` 和 `no-store`。安全事件清理按保留天数、最大事件数和单次批量执行，认证失败、限流阻断和清理结果提供运行期计数与审计读取接口。尚未完成真实生产 TLS 证书、反向代理链和浏览器 CSRF/Cookie 场景验收。
+
 ## 目标架构
 
 ```mermaid
@@ -225,7 +227,8 @@ API Key、角色、用户、在线会话、MFA enrollment/策略变更和恢复�
 
 ### P4：运营与发布
 
-- [ ] 增加安全事件指标、异常登录告警、API Key 轮换报告、事件容量限制和保留清理。
+- [x] 增加安全事件基础指标、异常登录和 MFA/API Key 限流告警、事件容量限制和保留清理；运行指标通过 `GET /api/v1/monitor/security` 提供给 `audit:read` 主体。
+- [ ] 增加 API Key 轮换报告和按租户的安全事件运营报表。
 - [ ] 进行 MySQL 8.4 并发刷新、故障恢复、备份还原和密钥轮换演练。
 - [x] 完成 MFA 因子消费的单事务实现，覆盖 enrollment、TOTP、恢复码和认证请求状态；MySQL 并发与故障验收仍待执行。
 - [x] 完成可信代理地址解析，默认使用连接远端地址，拒绝未验证的 `X-Forwarded-For` 链；真实 HTTP 注入和部署链验收仍待执行。
@@ -306,9 +309,9 @@ API Key 认证成功后创建统一的 `SecurityIdentity`，身份属性必须�
 | 授权 | 默认拒绝、权限码、显式拒绝、实时失效、服务层和查询层复核 | 部分完成：权限码和权限版本失效已实现，显式拒绝及全量服务层复核未完成 |
 | 数据范围 | ALL、TENANT、SELF、DEPARTMENT、DEPARTMENT_AND_CHILDREN、CUSTOM、OWNER、MEMBER 以及导出和批量操作无越权 | 部分完成：用户资源已接入，其他资源和运行验收未完成 |
 | MFA | 管理员强制 MFA、恢复码、重新验证和敏感操作升级认证 | 部分完成：TOTP enrollment、登录验证请求、恢复码、策略开关、主体/IP 限流、敏感写操作 step-up、恢复码轮换和因子单事务消费已实现；MySQL 并发、故障回滚和 HTTP 运行验收未完成 |
-| Web 与传输 | HTTPS、CORS、CSRF、Cookie 属性、浏览器存储、缓存控制 | 未完成 |
-| 审计 | 签发、使用、失败、撤销、重用、权限拒绝和管理员操作可追踪 | 部分完成：API Key 认证、权限拒绝和非秘密 credential ID 已记录；保留清理、容量控制、完整凭据生命周期和运行验收未完成 |
-| 运维 | 密钥托管、轮换、备份恢复、告警、限流、数据库故障行为 | 未完成 |
+| Web 与传输 | HTTPS、CORS、CSRF、Cookie 属性、浏览器存储、缓存控制 | 部分完成：生产默认 HTTPS/HSTS、显式 CORS、统一安全响应头和 API 缓存控制已实现；真实 TLS 终止、代理链和浏览器 CSRF/Cookie 验收未完成 |
+| 审计 | 签发、使用、失败、撤销、重用、权限拒绝和管理员操作可追踪 | 部分完成：API Key 认证、权限拒绝和非秘密 credential ID 已记录；事件按保留时间和总量清理，并提供基础指标；完整凭据生命周期和 MySQL 运行验收未完成 |
+| 运维 | 密钥托管、轮换、备份恢复、告警、限流、数据库故障行为 | 部分完成：认证失败阻断告警、限流和事件清理结果可观测；密钥托管、轮换、备份恢复和数据库故障行为仍未完成 |
 | 旧代码清理 | 旧根路由、旧 token 字段、旧测试和旧资源全部删除 | 未完成：一次性重构阶段统一删除 |
 
 ## 审查后的阶段调整

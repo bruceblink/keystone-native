@@ -2,6 +2,7 @@ package app.keystone.auth;
 
 import app.keystone.ApiResponse;
 import app.keystone.audit.LoginLogRepository;
+import app.keystone.audit.SecurityObservability;
 import app.keystone.user.UserRepository;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
@@ -29,6 +30,7 @@ public class AuthResource {
     @Inject AccessTokenService tokens;
     @Inject SecurityIdentity identity;
     @Inject LoginRateLimiter loginRateLimiter;
+    @Inject SecurityObservability securityObservability;
     @Inject MfaService mfa;
     @Inject MfaSessionRepository mfaSessions;
     @Inject ClientAddressResolver clientAddresses;
@@ -40,12 +42,19 @@ public class AuthResource {
             return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("username and password are required")).build();
         }
         String clientAddress = clientAddresses.resolve(routingContext, ipAddress);
-        try { if (loginRateLimiter.isBlocked(request.username(), clientAddress)) return Response.status(429).entity(ApiResponse.error("too many login attempts")).build(); }
+        try {
+            if (loginRateLimiter.isBlocked(request.username(), clientAddress)) {
+                securityObservability.loginFailure(true);
+                return Response.status(429).entity(ApiResponse.error("too many login attempts")).build();
+            }
+        }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         var user = users.authenticate(request.username(), request.password());
         if (user.isEmpty()) {
-            try { loginRateLimiter.recordFailure(request.username(), clientAddress); }
+            boolean blocked;
+            try { blocked = loginRateLimiter.recordFailure(request.username(), clientAddress); }
             catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
+            securityObservability.loginFailure(blocked);
             loginLogs.record(request.username(), "FAILURE", clientAddress, "invalid credentials", userAgent); return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid credentials")).build();
         }
         var u = user.get();

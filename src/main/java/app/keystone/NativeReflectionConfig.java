@@ -4,6 +4,7 @@ import app.keystone.audit.LoginLog;
 import app.keystone.audit.LoginLogRepository;
 import app.keystone.audit.OperationLog;
 import app.keystone.audit.OperationLogRepository;
+import app.keystone.audit.SecurityObservability;
 import app.keystone.auth.AuthResource;
 import app.keystone.auth.ApiKeyRepository;
 import app.keystone.auth.ApiKeyResource;
@@ -52,6 +53,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
         Post.class, PostResource.PostRequest.class,
         Job.class, JobLog.class, JobLogRepository.Page.class, JobInvocationService.JobTarget.class, JobResource.JobRequest.class, JobResource.StatusRequest.class,
         SessionRepository.OnlineSession.class, OperationLog.class, OperationLogRepository.Page.class, LoginLog.class, LoginLogRepository.Page.class,
+        SecurityObservability.Metrics.class,
         ProfileResource.ProfileRequest.class, ProfileResource.PasswordRequest.class, ProfileResource.AvatarRequest.class
 })
 public final class NativeReflectionConfig {

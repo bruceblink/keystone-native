@@ -6,6 +6,7 @@ import io.quarkus.security.identity.SecurityIdentity;
 import io.quarkus.security.identity.AuthenticationRequestContext;
 import io.quarkus.security.runtime.QuarkusSecurityIdentity;
 import app.keystone.audit.SecurityEventRepository;
+import app.keystone.audit.SecurityObservability;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import java.security.Principal;
@@ -15,6 +16,7 @@ public class ApiKeyIdentityProvider implements IdentityProvider<ApiKeyAuthentica
     @Inject ApiKeyRepository keys;
     @Inject ApiKeyRateLimiter rateLimiter;
     @Inject SecurityEventRepository securityEvents;
+    @Inject SecurityObservability securityObservability;
 
     @Override
     public Class<ApiKeyAuthenticationRequest> getRequestType() {
@@ -25,12 +27,13 @@ public class ApiKeyIdentityProvider implements IdentityProvider<ApiKeyAuthentica
     public io.smallrye.mutiny.Uni<SecurityIdentity> authenticate(ApiKeyAuthenticationRequest request, AuthenticationRequestContext context) {
         return context.runBlocking(() -> {
             if (rateLimiter.isBlocked(request.value(), request.clientAddress())) {
+                securityObservability.apiKeyFailure(true);
                 recordEvent(request, "BLOCKED", "API key rate limit exceeded");
                 throw new AuthenticationFailedException("API key rate limit exceeded");
             }
             var principal = keys.authenticate(request.value());
             if (principal == null) {
-                rateLimiter.recordFailure(request.value(), request.clientAddress());
+                securityObservability.apiKeyFailure(rateLimiter.recordFailure(request.value(), request.clientAddress()));
                 recordEvent(request, "FAILURE", "invalid API key");
                 throw new AuthenticationFailedException("invalid API key");
             }

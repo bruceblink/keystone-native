@@ -1,5 +1,6 @@
 package app.keystone.auth;
 
+import app.keystone.audit.SecurityObservability;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.jboss.logging.Logger;
@@ -31,6 +32,7 @@ public class MfaService {
     @Inject TotpService totp;
     @Inject MfaRecoveryCodeService recoveryCodes;
     @Inject MfaRateLimiter rateLimiter;
+    @Inject SecurityObservability securityObservability;
     @ConfigProperty(name = "keystone.security.mfa.challenge-lifetime-seconds", defaultValue = "300")
     long challengeLifetimeSeconds;
     @ConfigProperty(name = "keystone.security.mfa.issuer", defaultValue = "Keystone")
@@ -75,7 +77,10 @@ public class MfaService {
                                                         String sessionId, String code, String ipAddress) {
         String boundClientId = normalizeClientId(clientId);
         String boundSessionId = requiredSessionId(sessionId);
-        if (rateLimiter.isBlocked(userId, ipAddress)) return Optional.empty();
+        if (rateLimiter.isBlocked(userId, ipAddress)) {
+            securityObservability.mfaFailure(true);
+            return Optional.empty();
+        }
         var challenge = challenges.findActive(challengeId, userId, boundClientId,
                 MfaChallengeRepository.Purpose.ENROLL, boundSessionId);
         var status = status(userId);
@@ -106,18 +111,21 @@ public class MfaService {
     /** 带来源地址的登录验证请求校验；主体和地址失败次数同时受限。 */
     public Optional<LoginVerification> verifyLogin(String userId, String challengeId, String clientId, String code, String ipAddress) {
         String boundClientId = normalizeClientId(clientId);
-        if (rateLimiter.isBlocked(userId, ipAddress)) return Optional.empty();
+        if (rateLimiter.isBlocked(userId, ipAddress)) {
+            securityObservability.mfaFailure(true);
+            return Optional.empty();
+        }
         var challenge = challenges.findActive(challengeId, userId, boundClientId,
                 MfaChallengeRepository.Purpose.LOGIN, null);
         var status = status(userId);
         if (challenge.isEmpty()) {
-            rateLimiter.recordFailure(userId, ipAddress);
+            securityObservability.mfaFailure(rateLimiter.recordFailure(userId, ipAddress));
             return Optional.empty();
         }
         if (!status.required() || !status.enabled() || status.mfaId() == null) return Optional.empty();
         var stored = mfa.find(userId, status.mfaId()).orElse(null);
         if (stored == null) {
-            rateLimiter.recordFailure(userId, ipAddress);
+            securityObservability.mfaFailure(rateLimiter.recordFailure(userId, ipAddress));
             return Optional.empty();
         }
         String secret = secrets.decrypt(userId, stored.id(), stored.encrypted());
@@ -162,7 +170,7 @@ public class MfaService {
                                String sessionId, String mfaId, String ipAddress) {
         mfa.recordFailure(userId, mfaId);
         challenges.recordFailure(challengeId, userId, clientId, purpose, sessionId);
-        rateLimiter.recordFailure(userId, ipAddress);
+        securityObservability.mfaFailure(rateLimiter.recordFailure(userId, ipAddress));
     }
 
     /** 因子消费已经成功后，限流清理失败只记录主体和结果，不把成功响应改成失败。 */
