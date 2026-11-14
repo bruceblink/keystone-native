@@ -20,8 +20,6 @@ public final class UuidValues {
 
     private static final Pattern CANONICAL_PATTERN = Pattern.compile(
             "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$");
-    private static final SecureRandom RANDOM = new SecureRandom();
-
     private UuidValues() {
     }
 
@@ -36,9 +34,11 @@ public final class UuidValues {
         if ((timestamp & ~0xFFFFFFFFFFFFL) != 0) {
             throw new IllegalStateException("UUIDv7 timestamp exceeds 48 bits");
         }
-        int randomA = RANDOM.nextInt(1 << 12);
+        // 随机源在请求运行时创建，避免 native image 把带缓存种子的对象写入 image heap。
+        SecureRandom random = new SecureRandom();
+        int randomA = random.nextInt(1 << 12);
         long mostSignificantBits = (timestamp << 16) | 0x7000L | randomA;
-        long leastSignificantBits = RANDOM.nextLong() & 0x3FFFFFFFFFFFFFFFL;
+        long leastSignificantBits = random.nextLong() & 0x3FFFFFFFFFFFFFFFL;
         leastSignificantBits |= 0x8000000000000000L;
         return new UUID(mostSignificantBits, leastSignificantBits);
     }
