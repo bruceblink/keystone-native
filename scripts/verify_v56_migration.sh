@@ -86,7 +86,7 @@ APP_PID=$!
 
 ready=false
 for _attempt in $(seq 1 60); do
-  if curl --fail --silent "http://127.0.0.1:${APP_PORT}/api/v1/health" >/dev/null 2>&1; then
+  if curl --fail --silent "http://127.0.0.1:${APP_PORT}/api/q/health/ready" >/dev/null 2>&1; then
     ready=true
     break
   fi
