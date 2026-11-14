@@ -66,7 +66,7 @@ public class AccessTokenService {
                 .keyId(requireKeyId(keyId))
                 .sign();
         long refreshSeconds = Math.max(0, Duration.between(Instant.now(), refreshExpiresAt).getSeconds());
-        return new AuthResource.TokenResponse(accessToken, accessToken, refreshToken, "Bearer", ACCESS_LIFETIME.toSeconds(), refreshSeconds, user.username(), user.displayName(), user.roles(), sessionId, clientId);
+        return new AuthResource.TokenResponse(accessToken, refreshToken, "Bearer", ACCESS_LIFETIME.toSeconds(), refreshSeconds, user.username(), user.displayName(), user.roles(), sessionId, clientId);
     }
 
     /** 验证签名密钥标识，避免发行没有可轮换来源的匿名密钥令牌。 */

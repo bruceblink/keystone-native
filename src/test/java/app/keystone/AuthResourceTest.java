@@ -8,6 +8,7 @@ import static io.restassured.http.ContentType.JSON;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.emptyOrNullString;
+import static org.hamcrest.Matchers.nullValue;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -21,6 +22,7 @@ class AuthResourceTest extends AuthTestFixture {
                 .then().statusCode(200).body("success", is(true))
                 .body("data.accessToken", not(emptyOrNullString()))
                 .body("data.refreshToken", not(emptyOrNullString()))
+                .body("data.token", nullValue())
                 .body("data.sessionId", not(emptyOrNullString()))
                 .body("data.clientId", is("web"))
                 .body("data.roles[0]", is("ADMIN"));
@@ -70,7 +72,7 @@ class AuthResourceTest extends AuthTestFixture {
         given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\"}")
                 .when().post("/v1/auth/login").then().statusCode(409).body("success", is(false));
         given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
-                .when().post("/v1/auth/login").then().statusCode(200).body("data.token", not(emptyOrNullString()));
+                .when().post("/v1/auth/login").then().statusCode(200).body("data.accessToken", not(emptyOrNullString()));
     }
 
     @Test

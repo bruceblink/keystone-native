@@ -231,7 +231,7 @@ public class AuthResource {
     public record MfaCodeRequest(String challengeId, String code) {}
     public record MfaPolicyRequest(Boolean required) {}
     public record CurrentPasswordRequest(String currentPassword) {}
-    public record TokenResponse(String accessToken, String token, String refreshToken, String tokenType, long expiresIn, long refreshExpiresIn, String username, String displayName, java.util.List<String> roles, String sessionId, String clientId) {}
+    public record TokenResponse(String accessToken, String refreshToken, String tokenType, long expiresIn, long refreshExpiresIn, String username, String displayName, java.util.List<String> roles, String sessionId, String clientId) {}
 
     private CurrentHumanSession currentHumanSession() {
         if (identity == null || identity.isAnonymous() || !(identity.getPrincipal() instanceof JsonWebToken jwt)) throw new jakarta.ws.rs.NotAuthorizedException("authentication is required");
