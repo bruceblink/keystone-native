@@ -128,20 +128,26 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         delete(user);
     }
 
-    /** 按数据范围批量删除用户，跳过不存在和范围外记录。 */
+    /** 按数据范围批量删除用户；任一目标不存在或越界时整个事务回滚。 */
     @Transactional
     public int deleteUsers(List<String> userIds, DataScopeService.Scope scope, String subjectId) {
         if (userIds == null || userIds.isEmpty()) return 0;
-        int deleted = 0;
-        for (String userId : userIds) {
-            if (userId == null) continue;
-            ApiKeyUserEntity user = findScopedForUpdate(userId, scope, subjectId);
-            if (user != null) {
-                delete(user);
-                deleted++;
+        List<String> normalized = userIds.stream()
+                .filter(java.util.Objects::nonNull)
+                .map(app.keystone.identity.UuidValues::requireCanonical)
+                .distinct()
+                .toList();
+        if (normalized.isEmpty()) return 0;
+        List<ApiKeyUserEntity> usersToDelete = findUsersByIdsForUpdate(normalized);
+        if (usersToDelete.size() != normalized.size()) throw new java.util.NoSuchElementException("user not found");
+        for (ApiKeyUserEntity user : usersToDelete) {
+            if (!scope.all() && !scope.allowsUser(subjectId, user.id(), user.departmentId())) {
+                throw new AuthorizationDeniedException("data_scope_denied", 403,
+                        "data scope does not allow this user");
             }
         }
-        return deleted;
+        usersToDelete.forEach(this::delete);
+        return usersToDelete.size();
     }
 
     /**

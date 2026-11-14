@@ -205,6 +205,8 @@ public class UserRepository {
     private int deleteAll(List<String> ids, DataScopeService.Scope scope, String subjectId) {
         try {
             return ormUsers.deleteUsers(ids, scope, subjectId);
+        } catch (app.keystone.auth.AuthorizationDeniedException | java.util.NoSuchElementException e) {
+            throw e;
         } catch (RuntimeException e) {
             throw new IllegalStateException("Could not delete users", e);
         }

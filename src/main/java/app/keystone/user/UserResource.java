@@ -126,6 +126,7 @@ public class UserResource {
         if (ids == null || ids.isBlank()) return bad("ids is required");
         try { var values = java.util.Arrays.stream(ids.split(",")).map(String::trim).map(app.keystone.identity.UuidValues::requireCanonical).toList(); int deleted = users.deleteAll(context(), values); logs.record(context(), "DELETE", "users", ids, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", deleted))).build(); }
         catch (IllegalArgumentException e) { return bad("ids must be comma separated UUIDs"); }
+        catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
     private String actor() { return identity.getPrincipal().getName(); }
