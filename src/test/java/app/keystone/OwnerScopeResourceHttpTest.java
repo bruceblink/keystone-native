@@ -10,13 +10,17 @@ import org.junit.jupiter.api.Test;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.util.List;
 import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
 import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.hasSize;
+import static org.hamcrest.Matchers.hasItem;
 import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.not;
+import static org.hamcrest.MatcherAssert.assertThat;
 
 /** 通过真实 MySQL HTTP 链路验证公告和任务的 OWNER 数据范围。 */
 @QuarkusTest
@@ -82,13 +86,25 @@ class OwnerScopeResourceHttpTest {
         given().auth().oauth2(otherToken).when().post("/v1/jobs/" + jobId + "/run")
                 .then().statusCode(404);
         given().auth().oauth2(otherToken).when().get("/v1/jobs/logs?jobId=" + jobId)
-                .then().statusCode(403);
+                .then().statusCode(403).body("error.code", is("data_scope_denied"));
 
         given().auth().oauth2(otherToken).contentType(JSON)
                 .body("{\"title\":\"另一主体更新\",\"content\":\"updated\"}")
                 .when().put("/v1/notices/" + otherNoticeId).then().statusCode(200);
         given().auth().oauth2(otherToken).when().post("/v1/jobs/" + otherJobId + "/run")
                 .then().statusCode(200);
+        given().auth().oauth2(ownerToken).when().post("/v1/jobs/" + jobId + "/run")
+                .then().statusCode(200);
+        List<String> ownerLogJobIds = given().auth().oauth2(ownerToken)
+                .when().get("/v1/jobs/logs")
+                .then().statusCode(200).extract().path("data.items.jobId");
+        assertThat(ownerLogJobIds, hasItem(jobId));
+        assertThat(ownerLogJobIds, not(hasItem(otherJobId)));
+        List<String> otherLogJobIds = given().auth().oauth2(otherToken)
+                .when().get("/v1/jobs/logs")
+                .then().statusCode(200).extract().path("data.items.jobId");
+        assertThat(otherLogJobIds, hasItem(otherJobId));
+        assertThat(otherLogJobIds, not(hasItem(jobId)));
         given().auth().oauth2(otherToken).when().delete("/v1/notices/" + otherNoticeId)
                 .then().statusCode(200);
         given().auth().oauth2(otherToken).when().delete("/v1/jobs/" + otherJobId)
