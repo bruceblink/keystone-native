@@ -72,6 +72,17 @@ public class ClientAddressResolver {
         return format(chain.get(0));
     }
 
+    /** 判断 HTTP 连接的远端地址是否属于明确配置的受信代理网段。 */
+    public boolean isTrustedProxy(String remoteAddress) {
+        String normalized = normalizeLiteral(remoteAddress);
+        if (normalized == null) return false;
+        try {
+            return isTrusted(parseLiteral(normalized));
+        } catch (IllegalArgumentException e) {
+            return false;
+        }
+    }
+
     private boolean isTrusted(InetAddress address) {
         return trustedProxyCidrs.stream().anyMatch(cidr -> cidr.contains(address));
     }
