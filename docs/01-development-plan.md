@@ -188,6 +188,8 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 
 2026-11-14 角色成员分配切片：`RoleResource` 增加 `GET /v1/roles/{id}/users`、`PUT /v1/roles/{id}/users` 和 `DELETE /v1/roles/{id}/users`。写入口使用 `role:assign` 和角色范围检查，成员 ID 在同一事务内锁定并更新用户 `permission_version`。批量请求逐项校验 UUID 和目标用户；任一目标无效或不存在时整体失败，不写入其他成员。`RoleResourceHttpTest` 已通过真实 HTTP 验证无效批量回滚、重复分配、成员查询和撤销。该切片只开放已有角色资源的全局范围，未改变其他资源的 owner/member 关系定义。
 
+2026-11-14 自动任务主体边界切片：调度器启动加载和 cron 回调读取任务时统一使用固定 `AuthorizationContext.system()`，并通过 `job:read`、`job:run` 复用授权入口。任务仓储删除了无上下文的内部读取方法，避免请求主体或未认证调用进入后台执行路径。`JobOrmPersistenceTest` 检查调度器调用点和无上下文方法均不存在；定向测试、全量测试和 `quarkusBuild` 已通过。该切片只明确单节点自动调度的系统主体边界，不证明多节点调度互斥、生产容量或其他异步资源范围。
+
 2026-11-14 用户批量删除范围切片：`DELETE /v1/users?ids=...` 在同一事务中先锁定全部目标并逐项检查存在性和主体范围，再执行删除。任一目标不存在返回 `404`，任一目标越界返回 `403 data_scope_denied`，可见目标不会先被删除。`UserBatchDeletionResourceHttpTest` 已通过真实 HTTP 和 MySQL 验证越界、缺失目标的整体回滚，以及管理主体的成功删除。
 
 | 资源 | 支持范围 | 执行方式 | 当前入口 |

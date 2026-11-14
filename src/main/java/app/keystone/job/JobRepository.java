@@ -34,8 +34,10 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
         return find("createdBy", ownerId).list().stream().map(JobEntity::idValue).toList();
     }
 
+    /** 调度器只允许使用固定系统主体读取待执行任务，避免请求主体进入后台回调。 */
     @Transactional
-    public List<Job> enabled() {
+    public List<Job> enabled(AuthorizationContext context) {
+        authorization.require(context, "job:read", "job");
         return find("enabled = true order by id").list().stream().map(JobEntity::toModel).toList();
     }
 
@@ -95,13 +97,6 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
     @Transactional
     public Job findById(AuthorizationContext context, String id, String permission) {
         JobEntity job = findFor(context, permission, id, false);
-        if (job == null) throw new java.util.NoSuchElementException("job not found");
-        return job.toModel();
-    }
-
-    /** 调度器内部读取任务；调用方已经是受控系统主体。 */
-    Job findById(String id) {
-        JobEntity job = find("id = ?1", parse(id)).firstResult();
         if (job == null) throw new java.util.NoSuchElementException("job not found");
         return job.toModel();
     }

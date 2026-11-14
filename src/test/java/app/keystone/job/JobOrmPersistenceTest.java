@@ -35,4 +35,18 @@ class JobOrmPersistenceTest {
         assertTrue(log.contains("finished_at"));
         assertTrue(log.contains("duration_ms"));
     }
+
+    @Test
+    void schedulerReadsJobsWithTheFixedSystemContext() throws Exception {
+        String service = Files.readString(Path.of("src/main/java/app/keystone/job/JobService.java"));
+        String repository = Files.readString(Path.of("src/main/java/app/keystone/job/JobRepository.java"));
+        assertTrue(service.contains("AuthorizationContext.system()"));
+        assertTrue(service.contains("jobs.enabled(SCHEDULER_CONTEXT)"));
+        assertTrue(service.contains("jobs.findById(SCHEDULER_CONTEXT, id, \"job:run\")"));
+        assertFalse(service.contains("jobs.enabled()"));
+        assertFalse(service.contains("jobs.findById(id)"));
+        assertTrue(repository.contains("enabled(AuthorizationContext context)"));
+        assertFalse(repository.contains("List<Job> enabled()"));
+        assertFalse(repository.contains("Job findById(String id)"));
+    }
 }

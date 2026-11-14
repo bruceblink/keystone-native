@@ -19,6 +19,7 @@ import java.util.concurrent.locks.ReentrantLock;
 @ApplicationScoped
 public class JobService {
     private static final Logger LOG = Logger.getLogger(JobService.class);
+    private static final AuthorizationContext SCHEDULER_CONTEXT = AuthorizationContext.system();
     private static final int AUTO_TRIGGER = 1;
     private static final int MANUAL_TRIGGER = 2;
     private static final int SUCCESS = 1;
@@ -33,7 +34,7 @@ public class JobService {
     private final Map<String, ReentrantLock> locks = new ConcurrentHashMap<>();
 
     void onStart(@Observes StartupEvent ignored) {
-        for (Job job : jobs.enabled()) schedule(job);
+        for (Job job : jobs.enabled(SCHEDULER_CONTEXT)) schedule(job);
     }
 
     public Job create(AuthorizationContext context, String code, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
@@ -110,7 +111,7 @@ public class JobService {
     }
 
     private void run(String id, ScheduledExecution execution) {
-        try { run(jobs.findById(id), AUTO_TRIGGER); }
+        try { run(jobs.findById(SCHEDULER_CONTEXT, id, "job:run"), AUTO_TRIGGER); }
         catch (Exception e) { LOG.errorf(e, "Keystone job %s failed", id); }
     }
 
