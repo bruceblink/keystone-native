@@ -93,8 +93,8 @@ class ApiKeyResourceTest extends AuthTestFixture {
         String deleteId = deleter.path("data.id");
         given().header("Authorization", "ApiKey " + deleteKey)
                 .when().delete("/v1/operation-logs?ids=" + UuidValues.v7())
-                .then().statusCode(200)
-                .body("data.deleted", is(0));
+                .then().statusCode(404)
+                .body("error.code", is("validation_failed"));
         revoke(admin, deleteId);
     }
 

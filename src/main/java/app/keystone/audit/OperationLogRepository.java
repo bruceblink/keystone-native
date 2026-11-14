@@ -86,8 +86,13 @@ public class OperationLogRepository implements PanacheRepositoryBase<OperationLo
     public int delete(AuthorizationContext context, List<String> ids) {
         authorization.require(context, "operation-log:delete", "audit");
         if (ids == null || ids.isEmpty()) return 0;
-        var values = ids.stream().filter(java.util.Objects::nonNull).map(app.keystone.identity.UuidValues::parse).toList();
-        return values.isEmpty() ? 0 : (int) delete("id in ?1", values);
+        var values = ids.stream().filter(java.util.Objects::nonNull).map(app.keystone.identity.UuidValues::parse).distinct().toList();
+        if (values.isEmpty()) return 0;
+        long existing = count("id in ?1", values);
+        if (existing != values.size()) throw new java.util.NoSuchElementException("operation log not found");
+        int deleted = (int) delete("id in ?1", values);
+        if (deleted != values.size()) throw new java.util.NoSuchElementException("operation log not found");
+        return deleted;
     }
 
     public record Page(List<OperationLog> items, int page, int size, long total) {

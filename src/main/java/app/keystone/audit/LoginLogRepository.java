@@ -43,14 +43,18 @@ public class LoginLogRepository implements PanacheRepositoryBase<LoginLogEntity,
         return query(username, status).list().stream().map(LoginLogEntity::toModel).toList();
     }
 
+    /** 在授权范围内原子删除登录日志；目标缺失时整个事务回滚。 */
     @Transactional
-    public int delete(List<String> ids) {
+    public int delete(AuthorizationContext context, List<String> ids) {
+        authorization.require(context, "login-log:delete", "audit");
         if (ids == null || ids.isEmpty()) return 0;
-        int total = 0;
-        for (String id : ids) {
-            if (id != null && delete("id", app.keystone.identity.UuidValues.parse(id)) > 0) total++;
-        }
-        return total;
+        var values = ids.stream().filter(java.util.Objects::nonNull).map(app.keystone.identity.UuidValues::parse).distinct().toList();
+        if (values.isEmpty()) return 0;
+        long existing = count("id in ?1", values);
+        if (existing != values.size()) throw new java.util.NoSuchElementException("login log not found");
+        int deleted = (int) delete("id in ?1", values);
+        if (deleted != values.size()) throw new java.util.NoSuchElementException("login log not found");
+        return deleted;
     }
 
     private PanacheQuery<LoginLogEntity> query(String username, String status) {

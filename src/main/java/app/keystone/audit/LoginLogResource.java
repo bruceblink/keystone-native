@@ -1,5 +1,6 @@
 package app.keystone.audit;
 
+import app.keystone.ApiResponse;
 import app.keystone.ExcelExporter;
 import app.keystone.auth.AuthorizationContext;
 import app.keystone.auth.AuthorizationService;
@@ -29,6 +30,21 @@ public class LoginLogResource {
         return Response.ok(workbook).type(ExcelExporter.CONTENT_TYPE)
                 .header("Content-Disposition", "attachment; filename=login-logs.xlsx")
                 .build();
+    }
+
+    /** 删除指定登录日志；混合目标缺失时由仓储事务整体回滚。 */
+    @jakarta.ws.rs.DELETE @RequiresPermission("login-log:delete")
+    public Response delete(@QueryParam("ids") String ids) {
+        if (ids == null || ids.isBlank()) return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("ids is required")).build();
+        try {
+            var values = java.util.Arrays.stream(ids.split(",")).map(String::trim).toList();
+            values.forEach(app.keystone.identity.UuidValues::requireCanonical);
+            return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", logs.delete(context(), values)))).build();
+        } catch (IllegalArgumentException e) {
+            return Response.status(Response.Status.BAD_REQUEST).entity(ApiResponse.error("ids must be comma separated UUIDs")).build();
+        } catch (java.util.NoSuchElementException e) {
+            return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(e.getMessage())).build();
+        }
     }
 
     private AuthorizationContext context() {
