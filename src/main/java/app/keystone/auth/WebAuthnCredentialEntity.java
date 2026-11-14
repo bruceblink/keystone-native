@@ -25,7 +25,8 @@ public class WebAuthnCredentialEntity {
     @Column(nullable = false, length = 64)
     private String username;
 
-    @Column(name = "public_key", nullable = false, columnDefinition = "VARBINARY(4096)")
+    @JdbcTypeCode(SqlTypes.VARBINARY)
+    @Column(name = "public_key", nullable = false, length = 4096, columnDefinition = "VARBINARY(4096)")
     private byte[] publicKey;
 
     @Column(name = "public_key_algorithm", nullable = false)

@@ -56,13 +56,13 @@ public class ApiKeyUserEntity {
     @Column(name = "last_password_changed_at")
     private java.time.Instant lastPasswordChangedAt;
 
-    @Column(name = "mfa_required", nullable = false)
+    @Column(name = "mfa_required", nullable = false, columnDefinition = "TINYINT")
     private boolean mfaRequired;
 
     @Column(name = "mfa_grace_until")
     private java.time.Instant mfaGraceUntil;
 
-    @Column(name = "dept_id")
+    @Column(name = "dept_id", columnDefinition = "BINARY(16)", length = 16)
     @Convert(converter = UuidBinaryConverter.class)
     private String deptId;
 
@@ -82,7 +82,7 @@ public class ApiKeyUserEntity {
     @Column(name = "phone_number", length = 32)
     private String phoneNumber;
 
-    @Column
+    @Column(columnDefinition = "TINYINT")
     private Integer sex;
 
     @Column(length = 512)

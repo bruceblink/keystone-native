@@ -43,10 +43,10 @@ public class JobLogEntity {
     @Column(nullable = false, length = 128)
     private String cron;
 
-    @Column(name = "trigger_type", nullable = false)
+    @Column(name = "trigger_type", nullable = false, columnDefinition = "TINYINT")
     private int triggerType;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TINYINT")
     private int status;
 
     @Column(name = "job_message", nullable = false, length = 500)

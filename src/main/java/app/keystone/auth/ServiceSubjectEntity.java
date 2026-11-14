@@ -27,7 +27,7 @@ public class ServiceSubjectEntity {
     @Column(nullable = false, length = 128)
     private String name;
 
-    @Column(name = "owner_user_id")
+    @Column(name = "owner_user_id", columnDefinition = "BINARY(16)", length = 16)
     @Convert(converter = UuidBinaryConverter.class)
     private String ownerUserId;
 

@@ -3,7 +3,6 @@ package app.keystone.auth;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
-import jakarta.persistence.Lob;
 import jakarta.persistence.Table;
 import jakarta.persistence.Convert;
 import app.keystone.identity.UuidBinaryConverter;
@@ -29,8 +28,7 @@ public class UserMfaEntity {
     @Column(name = "mfa_type", nullable = false, length = 16)
     private String mfaType;
 
-    @Lob
-    @Column(name = "secret_ciphertext", nullable = false)
+    @Column(name = "secret_ciphertext", nullable = false, columnDefinition = "BLOB")
     private byte[] secretCiphertext;
 
     @Column(name = "secret_nonce", nullable = false, columnDefinition = "VARBINARY(12)", length = 12)
@@ -39,7 +37,7 @@ public class UserMfaEntity {
     @Column(name = "key_version", nullable = false)
     private int keyVersion;
 
-    @Column(nullable = false)
+    @Column(nullable = false, columnDefinition = "TINYINT")
     private boolean enabled;
 
     @Column(name = "enrolled_at")

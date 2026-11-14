@@ -1,10 +1,13 @@
 package app.keystone.auth;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.annotation.PostConstruct;
+import io.quarkus.runtime.Startup;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 /** 控制 Passkey 功能是否开放，并检查启用时必须存在的可信 WebAuthn 参数。 */
 @ApplicationScoped
+@Startup
 public class WebAuthnConfiguration {
     @ConfigProperty(name = "keystone.security.webauthn.enabled", defaultValue = "false")
     boolean enabled;
@@ -17,6 +20,11 @@ public class WebAuthnConfiguration {
 
     public boolean enabled() {
         return enabled;
+    }
+
+    @PostConstruct
+    void validateAtStartup() {
+        if (enabled) validate();
     }
 
     public String rpId() {
@@ -34,7 +42,7 @@ public class WebAuthnConfiguration {
             throw new IllegalStateException("WebAuthn origin must use HTTPS or localhost");
         }
         rpId();
-        if (sessionEncryptionKey == null || sessionEncryptionKey.length() < 32) {
+        if (sessionEncryptionKey == null || sessionEncryptionKey.length() < 32 || "__disabled__".equals(sessionEncryptionKey)) {
             throw new IllegalStateException("WebAuthn session encryption key is not configured");
         }
     }

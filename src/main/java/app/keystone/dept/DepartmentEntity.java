@@ -19,7 +19,7 @@ public class DepartmentEntity {
     @Column(columnDefinition = "BINARY(16)", nullable = false, length = 16)
     private UUID id;
 
-    @Column(name = "parent_id")
+    @Column(name = "parent_id", columnDefinition = "BINARY(16)", length = 16)
     @Convert(converter = UuidBinaryConverter.class)
     private String parentId;
 

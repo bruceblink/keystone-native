@@ -29,7 +29,7 @@ public class ApiKeyEntity {
     @Convert(converter = UuidBinaryConverter.class)
     private String subjectId;
 
-    @Column(name = "created_by")
+    @Column(name = "created_by", columnDefinition = "BINARY(16)", length = 16)
     @Convert(converter = UuidBinaryConverter.class)
     private String createdBy;
 
