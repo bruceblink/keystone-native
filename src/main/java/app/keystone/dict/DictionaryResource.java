@@ -13,6 +13,7 @@ import java.util.List;
 @Path("/v1/dictionaries")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
+@app.keystone.auth.RequiresDataScope("dictionary")
 public class DictionaryResource {
     @Inject DictionaryRepository dictionaries;
     @Inject OperationLogRepository logs;

@@ -11,6 +11,7 @@ import jakarta.ws.rs.core.MediaType;
 
 @Path("/v1/operation-logs")
 @Produces(MediaType.APPLICATION_JSON)
+@app.keystone.auth.RequiresDataScope("audit")
 public class OperationLogResource {
     @Inject OperationLogRepository logs;
 

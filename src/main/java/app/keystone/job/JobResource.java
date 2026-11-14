@@ -12,6 +12,7 @@ import java.util.List;
 
 @Path("/v1/jobs")
 @Produces(MediaType.APPLICATION_JSON)
+@app.keystone.auth.RequiresDataScope("job")
 public class JobResource {
     @Inject JobService service;
     @Inject OperationLogRepository logs;

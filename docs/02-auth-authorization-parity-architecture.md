@@ -107,6 +107,18 @@ Phoenix 的 API Key 领域与 HTTP PEP 已实现。Native 与 Phoenix 都使用 
 
 Phoenix 的 LiveView 事件总线属于管理界面能力。Native 当前只提供后端 API；若后续需要管理界面，单独定义客户端和事件协议，不把 LiveView 行为强行复制到 Quarkus 服务。
 
+## Native 资源范围执行矩阵
+
+Native 使用 `DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor` 固定入口规则。`user` 和 `department` 在仓储查询、详情和写入条件中执行范围过滤；`profile` 和 `api-key` 只允许当前主体的 `SELF` 范围或 `ALL`/`TENANT`。`role`、`post`、`menu`、`config`、`dictionary`、`audit` 和 `session` 没有稳定 owner/member 关系，入口要求 `ALL` 或 `TENANT`。`file`、`notice` 和 `job` 当前也没有可核验的 owner/member 字段，先采用同样的默认拒绝规则；请求主体没有全量范围时返回 `403 data_scope_denied`。后续增加关系字段后，必须同时修改矩阵、仓储条件和越权测试，不能只修改页面或权限注解。
+
+| 资源 | 范围 | 执行边界 |
+| --- | --- | --- |
+| `user` | `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` | 查询和写入条件 |
+| `department` | `ALL`、`TENANT`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` | 查询、父节点和目标检查 |
+| `profile`、`api-key` | `ALL`、`TENANT`、`SELF` | 当前主体关系 |
+| `role`、`post`、`menu`、`config`、`dictionary`、`audit`、`session` | `ALL`、`TENANT` | 入口默认拒绝 |
+| `file`、`notice`、`job` | `ALL`、`TENANT` | owner/member 关系补齐前默认拒绝 |
+
 ## 设计决策
 
 1. 两项目使用同一权限语义、错误代码、HTTP 状态和响应字段。

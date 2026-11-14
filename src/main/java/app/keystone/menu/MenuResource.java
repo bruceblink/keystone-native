@@ -14,6 +14,7 @@ import java.util.stream.Collectors;
 @Path("/v1/menus")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
+@app.keystone.auth.RequiresDataScope("menu")
 public class MenuResource {
     @Inject MenuRepository menus;
     @Inject OperationLogRepository logs;

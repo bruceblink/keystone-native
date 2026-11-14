@@ -15,6 +15,7 @@ import java.util.Map;
 
 @Path("/v1/monitor")
 @Produces(MediaType.APPLICATION_JSON)
+@app.keystone.auth.RequiresDataScope("session")
 public class MonitorResource {
     @Inject SessionRepository sessions;
     @Inject LoginLogRepository loginLogs;

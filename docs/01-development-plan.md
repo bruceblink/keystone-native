@@ -176,6 +176,16 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 当前已增加统一 `DataScopeService`，并把用户接口的列表、详情、更新、密码、状态、删除、批量删除、导出和导入路径接入范围条件。新系统使用 `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`、`OWNER` 和 `MEMBER`；岗位资源没有 `dept_id`，因此需要为其定义 `OWNER` 或 `MEMBER` 规则。其他资源、异步任务和跨部门集成测试仍未完成。
 核心资源的新权限码已覆盖用户、角色、会话、审计、部门、字典、岗位、配置、菜单、任务、文件、个人资料、通知和日志资源。公开健康检查、验证码和公告列表继续使用 `@PermitAll`。授权决策和访问令牌签发的主体权限读取已使用 ORM 用户、角色和权限映射。权限缓存失效、显式拒绝和跨租户范围仍未完成。
 
+2026-11-14 已建立 Native 资源范围执行矩阵。`DataScopePolicy` 登记资源适用范围，`RequiresDataScope` 和 `DataScopeInterceptor` 在资源入口执行默认拒绝规则。用户和部门继续由仓储查询条件执行 `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM`；个人资料和 API Key 只允许 `ALL`、`TENANT` 或 `SELF`。角色、岗位、菜单、配置、字典、审计和会话没有稳定 owner/member 关系，要求 `ALL` 或 `TENANT`。文件、公告和任务当前没有可验证的 owner/member 字段，也采用 `ALL` 或 `TENANT`，直到领域模型补充关系。普通部门范围主体访问这些资源会返回 `403 data_scope_denied`，不会因为接口存在权限码而扩大访问范围。
+
+| 资源 | 支持范围 | 执行方式 | 当前入口 |
+| --- | --- | --- | --- |
+| `user` | `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` | 用户查询、详情和写入条件 | `UserResource`、`ApiKeyUserRepository` |
+| `department` | `ALL`、`TENANT`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` | 部门查询、父节点和目标检查 | `DepartmentResource`、`DepartmentRepository` |
+| `profile`、`api-key` | `ALL`、`TENANT`、`SELF` | 当前主体关系检查 | `ProfileResource`、`ApiKeyResource` |
+| `role`、`post`、`menu`、`config`、`dictionary`、`audit`、`session` | `ALL`、`TENANT` | 入口默认拒绝 | 对应 REST resource |
+| `file`、`notice`、`job` | `ALL`、`TENANT` | owner/member 关系缺失时入口默认拒绝 | 对应 REST resource |
+
 ### P3：多因素和外部身份
 
 - [x] 完成管理员 TOTP 第一版：enrollment、登录验证请求、恢复码一次性消费、会话认证强度和强制策略开关。

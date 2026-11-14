@@ -14,6 +14,7 @@ import java.util.NoSuchElementException;
 @Path("/v1/posts")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
+@app.keystone.auth.RequiresDataScope("post")
 public class PostResource {
     @Inject PostRepository posts;
     @Inject OperationLogRepository logs;

@@ -13,6 +13,7 @@ import java.util.List;
 @Path("/v1/configs")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
+@app.keystone.auth.RequiresDataScope("config")
 public class SystemConfigResource {
     @Inject SystemConfigRepository configs;
     @Inject OperationLogRepository logs;

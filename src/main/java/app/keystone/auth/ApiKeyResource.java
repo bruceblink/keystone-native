@@ -15,6 +15,7 @@ import java.util.NoSuchElementException;
 @Path("/v1/api-keys")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
+@RequiresDataScope("api-key")
 public class ApiKeyResource {
     @Inject ApiKeyRepository keys;
     @Inject UserRepository users;

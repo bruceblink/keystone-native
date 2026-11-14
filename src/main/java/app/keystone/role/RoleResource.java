@@ -14,6 +14,7 @@ import java.util.NoSuchElementException;
 
 @Path("/v1/roles")
 @Produces(MediaType.APPLICATION_JSON)
+@app.keystone.auth.RequiresDataScope("role")
 public class RoleResource {
     @Inject RoleRepository roles;
     @Inject OperationLogRepository logs;

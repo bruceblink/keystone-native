@@ -18,6 +18,7 @@ import java.util.List;
 import java.util.UUID;
 
 @Path("/v1/file")
+@app.keystone.auth.RequiresDataScope("file")
 public class FileResource {
     private final java.nio.file.Path root;
 

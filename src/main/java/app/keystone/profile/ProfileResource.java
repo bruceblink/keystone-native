@@ -17,6 +17,7 @@ import jakarta.ws.rs.core.Response;
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @RejectApiKey
+@app.keystone.auth.RequiresDataScope("profile")
 public class ProfileResource {
     @Inject UserRepository users;
     @Inject OperationLogRepository logs;
