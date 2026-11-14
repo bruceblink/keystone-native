@@ -42,7 +42,7 @@ public class MonitorResource {
 
     @GET @Path("/cacheInfo") @RequiresPermission("audit:read")
     public ApiResponse<Map<String, Object>> cacheInfo() {
-        return ApiResponse.ok(Map.of("provider", "database", "activeSessions", sessions.activeSessions(null, null).size(), "loginLogEntries", loginLogs.list(1, 1, null, null).total()));
+        return ApiResponse.ok(Map.of("provider", "database", "activeSessions", sessions.activeSessions(null, null).size(), "loginLogEntries", loginLogs.countAll()));
     }
 
     public record Page(List<SessionRepository.OnlineSession> items, int page, int size, long total) {}

@@ -25,9 +25,9 @@ public class LoginLogRepository implements PanacheRepositoryBase<LoginLogEntity,
         }
     }
 
-    @Transactional
-    public Page list(int page, int size, String username, String status) {
-        return listPage(page, size, username, status);
+    /** 为监控摘要返回总量；监控统计不应暴露无授权的分页查询入口。 */
+    public long countAll() {
+        return count();
     }
 
     /** 在审计资源范围内分页读取登录日志，避免列表入口绕过统一授权检查。 */
