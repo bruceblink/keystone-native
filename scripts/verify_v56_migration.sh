@@ -138,12 +138,20 @@ assert_v56_shape() {
     "SELECT COUNT(*) FROM information_schema.columns WHERE table_schema=DATABASE() AND table_name='sys_job' AND column_name='created_by' AND column_type='binary(16)'"
   assert_count "notice owner index" 3 \
     "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='sys_notice' AND index_name='idx_notice_owner_time'"
+  assert_count "notice owner index columns" 1 \
+    "SELECT COUNT(*) FROM (SELECT index_name, GROUP_CONCAT(column_name ORDER BY seq_in_index) AS index_columns FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='sys_notice' AND index_name='idx_notice_owner_time' GROUP BY index_name HAVING index_columns='owner_id,created_at,id') AS indexes"
   assert_count "job creator index" 2 \
     "SELECT COUNT(*) FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='sys_job' AND index_name='idx_job_created_by'"
+  assert_count "job creator index columns" 1 \
+    "SELECT COUNT(*) FROM (SELECT index_name, GROUP_CONCAT(column_name ORDER BY seq_in_index) AS index_columns FROM information_schema.statistics WHERE table_schema=DATABASE() AND table_name='sys_job' AND index_name='idx_job_created_by' GROUP BY index_name HAVING index_columns='created_by,id') AS indexes"
   assert_count "notice owner foreign key" 1 \
     "SELECT COUNT(*) FROM information_schema.table_constraints WHERE table_schema=DATABASE() AND table_name='sys_notice' AND constraint_name='fk_notice_owner'"
+  assert_count "notice owner foreign key target" 1 \
+    "SELECT COUNT(*) FROM information_schema.referential_constraints AS rc JOIN information_schema.key_column_usage AS kcu ON kcu.constraint_schema=rc.constraint_schema AND kcu.constraint_name=rc.constraint_name AND kcu.table_name=rc.table_name WHERE rc.constraint_schema=DATABASE() AND rc.table_name='sys_notice' AND rc.constraint_name='fk_notice_owner' AND rc.delete_rule='SET NULL' AND kcu.column_name='owner_id' AND kcu.referenced_table_name='sys_user'"
   assert_count "job creator foreign key" 1 \
     "SELECT COUNT(*) FROM information_schema.table_constraints WHERE table_schema=DATABASE() AND table_name='sys_job' AND constraint_name='fk_job_created_by'"
+  assert_count "job creator foreign key target" 1 \
+    "SELECT COUNT(*) FROM information_schema.referential_constraints AS rc JOIN information_schema.key_column_usage AS kcu ON kcu.constraint_schema=rc.constraint_schema AND kcu.constraint_name=rc.constraint_name AND kcu.table_name=rc.table_name WHERE rc.constraint_schema=DATABASE() AND rc.table_name='sys_job' AND rc.constraint_name='fk_job_created_by' AND rc.delete_rule='SET NULL' AND kcu.column_name='created_by' AND kcu.referenced_table_name='sys_user'"
 }
 
 # 应用启动已证明 V56 可以在空库中首次执行，先核对最终结构。
