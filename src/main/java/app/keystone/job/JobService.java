@@ -75,6 +75,21 @@ public class JobService {
         locks.remove(id);
     }
 
+    /** 先停用全部调度，再以单事务删除任务；数据库失败时恢复原有调度。 */
+    public int deleteAll(AuthorizationContext context, List<String> ids) {
+        authorization.require(context, "job:delete", "job");
+        List<Job> targets = jobs.findAll(context, ids, "job:delete");
+        targets.forEach(job -> unschedule(job.id()));
+        try {
+            List<Job> deleted = jobs.deleteAll(context, ids);
+            deleted.forEach(job -> locks.remove(job.id()));
+            return deleted.size();
+        } catch (RuntimeException failure) {
+            targets.stream().filter(Job::enabled).forEach(this::schedule);
+            throw failure;
+        }
+    }
+
     public void trigger(AuthorizationContext context, String id) {
         authorization.require(context, "job:run", "job");
         run(jobs.findById(context, id, "job:run"), MANUAL_TRIGGER);

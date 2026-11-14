@@ -84,10 +84,23 @@ public class JobResource {
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
+    @DELETE @RequiresPermission("job:delete")
+    public Response deleteBatch(@QueryParam("jobIds") String jobIds, @QueryParam("ids") String ids) {
+        String rawIds = firstNonBlank(jobIds, ids);
+        try {
+            int deleted = service.deleteAll(context(), splitIds(rawIds));
+            logs.record(actor(), "DELETE", "jobs", null, "batch deleted=" + deleted);
+            return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", deleted))).build();
+        } catch (IllegalArgumentException e) { return bad("ids must be comma separated UUIDs"); }
+        catch (java.util.NoSuchElementException e) { return notFound(); }
+    }
+
     private String actor() { return identity.getPrincipal().getName(); }
     private AuthorizationContext context() { return authorization.context(identity); }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("job not found")).build(); }
+    private static String firstNonBlank(String primary, String fallback) { return primary == null || primary.isBlank() ? fallback : primary; }
+    private static List<String> splitIds(String ids) { if (ids == null || ids.isBlank()) throw new IllegalArgumentException("ids is required"); return java.util.Arrays.stream(ids.split(",")).map(String::trim).toList(); }
     public record JobRequest(String code, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {}
     public record StatusRequest(Boolean enabled) {}
 }

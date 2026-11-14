@@ -89,6 +89,21 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
         delete(job);
     }
 
+    /** 在同一事务内锁定并删除全部任务；缺失或越界时不允许部分删除。 */
+    @Transactional
+    public List<Job> deleteAll(AuthorizationContext context, List<String> ids) {
+        authorization.require(context, "job:delete", "job");
+        List<java.util.UUID> uniqueIds = parseIds(ids);
+        var query = context.allScope()
+                ? find("id in ?1", uniqueIds)
+                : find("id in ?1 and createdBy = ?2", uniqueIds, context.subjectId());
+        List<JobEntity> entities = query.withLock(LockModeType.PESSIMISTIC_WRITE).list();
+        if (entities.size() != uniqueIds.size()) throw new java.util.NoSuchElementException("job not found");
+        List<Job> deleted = entities.stream().map(JobEntity::toModel).toList();
+        entities.forEach(this::delete);
+        return deleted;
+    }
+
     @Transactional
     public Job findById(AuthorizationContext context, String id) {
         return findById(context, id, "job:read");
@@ -99,6 +114,19 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
         JobEntity job = findFor(context, permission, id, false);
         if (job == null) throw new java.util.NoSuchElementException("job not found");
         return job.toModel();
+    }
+
+    /** 预读并锁定批量目标的范围；任何一个目标缺失或越界都会整体失败。 */
+    @Transactional
+    public List<Job> findAll(AuthorizationContext context, List<String> ids, String permission) {
+        authorization.require(context, permission, "job");
+        List<java.util.UUID> uniqueIds = parseIds(ids);
+        var query = context.allScope()
+                ? find("id in ?1", uniqueIds)
+                : find("id in ?1 and createdBy = ?2", uniqueIds, context.subjectId());
+        List<JobEntity> entities = query.withLock(LockModeType.PESSIMISTIC_WRITE).list();
+        if (entities.size() != uniqueIds.size()) throw new java.util.NoSuchElementException("job not found");
+        return entities.stream().map(JobEntity::toModel).toList();
     }
 
     private JobEntity findFor(AuthorizationContext context, String permission, String id, boolean lock) {
@@ -124,5 +152,14 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
             if (name.contains("constraint") || message.contains("duplicate") || message.contains("unique")) return true;
         }
         return false;
+    }
+
+    /** 规范化批量主键并去重，保持重复请求的幂等删除语义。 */
+    private static List<java.util.UUID> parseIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) throw new IllegalArgumentException("ids is required");
+        var unique = new java.util.LinkedHashSet<java.util.UUID>();
+        for (String id : ids) unique.add(app.keystone.identity.UuidValues.parse(id));
+        if (unique.isEmpty()) throw new IllegalArgumentException("ids is required");
+        return List.copyOf(unique);
     }
 }

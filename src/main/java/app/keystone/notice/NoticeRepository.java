@@ -69,6 +69,20 @@ public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, jav
         delete(entity);
     }
 
+    /** 在同一事务内锁定并删除全部目标；缺失或越界时不允许部分删除。 */
+    @Transactional
+    public int deleteAll(AuthorizationContext context, List<String> ids) {
+        authorization.require(context, "notice:delete", "notice");
+        List<java.util.UUID> uniqueIds = parseIds(ids);
+        var query = context.allScope()
+                ? find("id in ?1", uniqueIds)
+                : find("id in ?1 and ownerId = ?2", uniqueIds, context.subjectId());
+        List<NoticeEntity> entities = query.withLock(LockModeType.PESSIMISTIC_WRITE).list();
+        if (entities.size() != uniqueIds.size()) throw new java.util.NoSuchElementException("notice not found");
+        entities.forEach(this::delete);
+        return entities.size();
+    }
+
     /** 按主体范围读取公告；SELF 主体只能看到自己创建的新记录。 */
     private NoticeEntity findFor(AuthorizationContext context, String id, boolean lock) {
         var query = context.allScope()
@@ -84,5 +98,14 @@ public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, jav
 
     private static void require(String value, String field) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException(field + " is required");
+    }
+
+    /** 规范化批量主键并去重，保持重复请求的幂等删除语义。 */
+    private static List<java.util.UUID> parseIds(List<String> ids) {
+        if (ids == null || ids.isEmpty()) throw new IllegalArgumentException("ids is required");
+        var unique = new java.util.LinkedHashSet<java.util.UUID>();
+        for (String id : ids) unique.add(app.keystone.identity.UuidValues.parse(id));
+        if (unique.isEmpty()) throw new IllegalArgumentException("ids is required");
+        return List.copyOf(unique);
     }
 }
