@@ -99,6 +99,19 @@ public class UserRepository {
         return create(username, password, displayName, deptId, postId, email, phoneNumber, sex, avatar, remark, roleCodes);
     }
 
+    /** 使用 Excel 导入记录创建用户；每行独立事务，范围和角色关系在写入前校验。 */
+    public User importUser(AuthorizationContext context, UserExcelImporter.Record record) {
+        authorization.require(context, "user:import", "user");
+        if (!context.scope().allowsDepartment(record.deptId())) throw new app.keystone.auth.AuthorizationDeniedException(
+                "data_scope_denied", 403, "data scope does not allow this department");
+        if (!record.roleIds().isEmpty() && !context.hasPermission("role:manage") && !context.hasPermission("permission:manage")) {
+            throw new app.keystone.auth.AuthorizationDeniedException("permission_denied", 403, "role assignment is not allowed");
+        }
+        return create(record.username(), record.password(), record.displayName(), record.deptId(), record.postId(),
+                record.email(), record.phoneNumber(), record.sex(), record.avatar(), record.remark(),
+                ormUsers.resolveRoleCodes(record.roleIds()));
+    }
+
     private User create(String username, String password, String displayName, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, List<String> roleCodes) {
         if (username == null || username.isBlank() || password == null || password.isBlank() || displayName == null || displayName.isBlank()) throw new IllegalArgumentException("username, password and displayName are required");
         passwordPolicy.validate(username, password);

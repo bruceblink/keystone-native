@@ -14,6 +14,8 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.jboss.resteasy.reactive.RestForm;
+import org.jboss.resteasy.reactive.multipart.FileUpload;
 import java.util.List;
 
 @Path("/v1/users")
@@ -41,6 +43,31 @@ public class UserResource {
             return Response.ok(workbook).type(ExcelExporter.CONTENT_TYPE)
                     .header("Content-Disposition", "attachment; filename=users.xlsx")
                     .build();
+        } catch (IllegalArgumentException e) {
+            return bad(e.getMessage());
+        }
+    }
+
+    /** 从 XLSX 第一张工作表逐行创建用户；失败行返回行号和脱敏原因。 */
+    @POST @Path("/import") @Consumes(MediaType.MULTIPART_FORM_DATA)
+    @RequiresPermission("user:import") @RequiresMfaStepUp @RejectApiKey
+    public Response importUsers(@RestForm("file") FileUpload file) {
+        if (file == null || file.uploadedFile() == null) return bad("file is required");
+        try {
+            var records = UserExcelImporter.read(file.uploadedFile(), file.fileName());
+            int success = 0;
+            List<ImportFailure> failures = new java.util.ArrayList<>();
+            AuthorizationContext authorizationContext = context();
+            for (var record : records) {
+                try {
+                    var created = users.importUser(authorizationContext, record);
+                    logs.record(authorizationContext, "CREATE", "user", String.valueOf(created.id()), created.username());
+                    success++;
+                } catch (RuntimeException error) {
+                    failures.add(new ImportFailure(record.row(), record.username(), importFailure(error)));
+                }
+            }
+            return Response.ok(ApiResponse.ok(new ImportResult(records.size(), success, failures))).build();
         } catch (IllegalArgumentException e) {
             return bad(e.getMessage());
         }
@@ -110,4 +137,14 @@ public class UserResource {
     }
     public record PasswordRequest(String password) {}
     public record StatusRequest(Boolean enabled) {}
+    public record ImportResult(int total, int success, List<ImportFailure> failed) {}
+    public record ImportFailure(int row, String username, String reason) {}
+
+    private static String importFailure(RuntimeException error) {
+        if (error instanceof app.keystone.auth.AuthorizationDeniedException denied) return denied.code();
+        if (error instanceof java.util.NoSuchElementException) return "record not found";
+        if (error instanceof IllegalArgumentException argument && argument.getMessage() != null
+                && !argument.getMessage().isBlank()) return argument.getMessage();
+        return "user import failed";
+    }
 }

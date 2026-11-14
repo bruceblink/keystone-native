@@ -266,6 +266,15 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         return new LinkedHashSet<>(found);
     }
 
+    /** 将 Excel 中的角色 UUID 转换为内部角色编码，并拒绝不存在或已停用的角色。 */
+    public List<String> resolveRoleCodes(List<String> roleIds) {
+        if (roleIds == null || roleIds.isEmpty()) return List.of();
+        var ids = roleIds.stream().map(app.keystone.identity.UuidValues::parse).distinct().toList();
+        var found = roles.findEnabledByIds(ids);
+        if (found.size() != ids.size()) throw new IllegalArgumentException("unknown or disabled role");
+        return found.stream().map(ApiKeyRoleEntity::code).sorted().toList();
+    }
+
     private ApiKeyUserEntity findScopedForUpdate(String userId, DataScopeService.Scope scope, String subjectId) {
         var query = new StringBuilder("id = ?1");
         var parameters = new java.util.ArrayList<Object>();

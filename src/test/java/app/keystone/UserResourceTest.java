@@ -79,6 +79,33 @@ class UserResourceTest extends AuthTestFixture {
         given().auth().oauth2(admin).when().delete("/v1/users/" + id).then().statusCode(200);
     }
 
+    @Test
+    void adminCanImportUsersFromXlsxAndReceivesPerRowResult() {
+        String admin = login("admin", "password");
+        String username = "import_" + System.nanoTime();
+        byte[] workbook = ExcelExporter.export(
+                java.util.List.of("部门ID", "用户名", "昵称", "密码", "状态"),
+                java.util.List.of(
+                        java.util.List.of("", username, "导入用户", "password", true),
+                        java.util.List.of("", username + "_invalid", "缺少密码", "", true)));
+
+        given().auth().oauth2(admin)
+                .multiPart("file", "users.xlsx", workbook,
+                        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+                .when().post("/v1/users/import")
+                .then().statusCode(200)
+                .body("data.total", is(2))
+                .body("data.success", is(1))
+                .body("data.failed.size()", is(1))
+                .body("data.failed[0].row", is(3));
+
+        given().auth().oauth2(admin).when().get("/v1/users?username=" + username)
+                .then().statusCode(200).body("data.items.size()", is(1));
+        String importedId = given().auth().oauth2(admin).when().get("/v1/users?username=" + username)
+                .then().statusCode(200).extract().path("data.items[0].id");
+        given().auth().oauth2(admin).when().delete("/v1/users/" + importedId).then().statusCode(200);
+    }
+
     private static String readWorksheet(byte[] workbook) {
         try (var zip = new ZipInputStream(new ByteArrayInputStream(workbook), StandardCharsets.UTF_8)) {
             for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {
