@@ -14,7 +14,7 @@ import jakarta.ws.rs.core.Response;
 @Produces(MediaType.APPLICATION_JSON)
 @PermitAll
 public class JwkSetResource {
-    @Inject JwkSetService keys;
+    @Inject JwtKeyRegistryService keys;
 
     @GET
     public Response get() {

@@ -9,6 +9,7 @@ import app.keystone.auth.AuthResource;
 import app.keystone.auth.ApiKeyRepository;
 import app.keystone.auth.ApiKeyResource;
 import app.keystone.auth.ApiKeyAuthenticationRequest;
+import app.keystone.auth.JwkSetService;
 import app.keystone.auth.SessionRepository;
 import app.keystone.config.SystemConfig;
 import app.keystone.config.SystemConfigResource;
@@ -42,6 +43,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
         AuthResource.LoginRequest.class, AuthResource.RefreshRequest.class, AuthResource.InitialPasswordRequest.class, AuthResource.TokenResponse.class,
         ApiKeyRepository.IssuedApiKey.class, ApiKeyResource.Request.class,
         ApiKeyRepository.ApiKeyMetadata.class, ApiKeyAuthenticationRequest.class,
+        JwkSetService.JwkSet.class, JwkSetService.RsaJwk.class,
         User.class, UserRepository.AuthUser.class, UserRepository.Page.class,
         UserResource.UserRequest.class, UserResource.PasswordRequest.class, UserResource.StatusRequest.class,
         Role.class, RoleResource.RoleRequest.class, RoleResource.PermissionRequest.class,

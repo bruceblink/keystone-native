@@ -18,12 +18,27 @@ import org.eclipse.microprofile.jwt.JsonWebToken;
 public class AccessSessionFilter implements ContainerRequestFilter {
     @Inject SecurityIdentity identity;
     @Inject SessionRepository sessions;
+    @Inject JwtKeyRegistryService keyRegistry;
     @Inject ObjectMapper objectMapper;
 
     @Override
     public void filter(ContainerRequestContext context) {
         if (!(identity.getPrincipal() instanceof JsonWebToken jwt)) return;
         String accessTokenId = jwt.getClaim("jti");
+        String keyId = headerClaim(jwt);
+        if (keyId == null) {
+            context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "access token signing key is not registered"));
+            return;
+        }
+        try {
+            if (!keyRegistry.accepts(keyId)) {
+                context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "access token signing key is not registered"));
+                return;
+            }
+        } catch (IllegalStateException e) {
+            context.abortWith(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), "authorization_unavailable", "authentication state is unavailable"));
+            return;
+        }
         // JWT 已经通过签名校验后仍必须绑定到活动会话，缺少 jti 时直接拒绝。
         if (accessTokenId == null || accessTokenId.isBlank()) {
             context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "access token session identifier is required"));
@@ -75,6 +90,21 @@ public class AccessSessionFilter implements ContainerRequestFilter {
             var node = objectMapper.readTree(payload).get(name);
             if (node == null || node.isNull()) return null;
             return node.isNumber() ? node.numberValue() : node.asText();
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /** 从已验签令牌的原始头读取 kid；kid 不属于 JWT claims。 */
+    private String headerClaim(JsonWebToken jwt) {
+        try {
+            String raw = jwt.getRawToken();
+            if (raw == null) return null;
+            String[] parts = raw.split("\\.", -1);
+            if (parts.length != 3) return null;
+            String header = new String(java.util.Base64.getUrlDecoder().decode(parts[0]), java.nio.charset.StandardCharsets.UTF_8);
+            var node = objectMapper.readTree(header).get("kid");
+            return node == null || node.isNull() ? null : node.asText();
         } catch (Exception e) {
             return null;
         }
