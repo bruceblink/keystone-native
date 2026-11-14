@@ -126,7 +126,7 @@ class DataScopeResourceHttpTest {
 
     private void insertRole(Connection connection) throws Exception {
         try (PreparedStatement statement = connection.prepareStatement(
-                "INSERT INTO sys_role (id, code, name, enabled, data_scope) VALUES (UUID_TO_BIN(?, 0), ?, ?, TRUE, 'SELF')")) {
+                "INSERT INTO sys_role (id, code, name, enabled, data_scope) VALUES (UUID_TO_BIN(?, 0), ?, ?, TRUE, 'OWNER')")) {
             statement.setString(1, roleId);
             statement.setString(2, "SCOPE_HTTP_" + roleId.substring(0, 8));
             statement.setString(3, "HTTP scope test role");

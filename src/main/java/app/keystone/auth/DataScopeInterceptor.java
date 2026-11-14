@@ -16,8 +16,8 @@ import jakarta.ws.rs.core.Response;
 /**
  * 在资源入口执行公共数据范围矩阵。
  *
- * <p>用户和部门资源由仓储查询条件继续细分；没有稳定 owner/member 关系的资源要求
- * ALL 或 TENANT，避免普通部门角色通过列表、详情或写入口访问全局数据。</p>
+ * <p>用户和部门资源由仓储查询条件继续细分；公告和任务使用 OWNER 关系过滤，其他没有稳定
+ * owner/member 关系的资源要求 ALL 或 TENANT，避免普通部门角色通过列表、详情或写入口访问全局数据。</p>
  */
 @RequiresDataScope("")
 @Interceptor
@@ -38,7 +38,7 @@ public class DataScopeInterceptor {
             String subjectId = subjectId();
             DataScopeService.Scope scope = dataScopes.forUser(subjectId);
             DataScopePolicy.ResourceRule rule = DataScopePolicy.rule(requirement.value());
-            if (!DataScopePolicy.allows(rule, scope.all(), scope.self())) {
+            if (!DataScopePolicy.allows(rule, scope.all(), scope.self(), scope.owner())) {
                 throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "data_scope_denied", "data scope does not allow this resource"));
             }
             return context.proceed();

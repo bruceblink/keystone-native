@@ -129,7 +129,7 @@ class OwnerScopeResourceHttpTest {
     }
 
     private void insertRole(Connection c, String id, String code) throws Exception {
-        try (PreparedStatement s = c.prepareStatement("INSERT INTO sys_role (id, code, name, enabled, data_scope) VALUES (UUID_TO_BIN(?, 0), ?, ?, TRUE, 'SELF')")) {
+        try (PreparedStatement s = c.prepareStatement("INSERT INTO sys_role (id, code, name, enabled, data_scope) VALUES (UUID_TO_BIN(?, 0), ?, ?, TRUE, 'OWNER')")) {
             s.setString(1, id); s.setString(2, code + "_" + id.substring(0, 8)); s.setString(3, code); s.executeUpdate();
         }
     }

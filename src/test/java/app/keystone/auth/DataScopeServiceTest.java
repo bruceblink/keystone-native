@@ -29,6 +29,15 @@ class DataScopeServiceTest {
     }
 
     @Test
+    void ownerScopeIsKeptSeparateFromSelfScope() {
+        var scope = new DataScopeService.Scope(false, false, true, Set.of(), null);
+
+        assertTrue(scope.owner());
+        assertFalse(scope.self());
+        assertFalse(scope.isEmpty());
+    }
+
+    @Test
     void restrictedScopeCanCreateOnlyUnderAnAllowedDepartment() {
         var scope = new DataScopeService.Scope(false, true, Set.of(), DEPT_7);
 

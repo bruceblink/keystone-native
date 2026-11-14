@@ -36,14 +36,14 @@ public final class DataScopePolicy {
             "user", Set.of(ALL, TENANT, SELF, DEPARTMENT, DEPARTMENT_AND_CHILDREN, CUSTOM),
             "department", Set.of(ALL, TENANT, DEPARTMENT, DEPARTMENT_AND_CHILDREN, CUSTOM),
             "owned", Set.of(ALL, OWNER, MEMBER),
-            "notice", Set.of(ALL, TENANT, SELF, OWNER),
-            "job", Set.of(ALL, TENANT, SELF, OWNER));
+            "notice", Set.of(ALL, TENANT, OWNER),
+            "job", Set.of(ALL, TENANT, OWNER));
 
     /**
      * 统一资源范围矩阵。
      *
-     * <p>QUERY_FILTERED 由用户和部门仓储使用查询条件落实；OWNER_BOUND 只允许全部范围
-     * 或本人范围；ALL_OR_TENANT 对没有明确主体关系的资源默认要求全部或租户范围。
+     * <p>QUERY_FILTERED 由用户和部门仓储使用查询条件落实；OWNER_BOUND 对当前主体资源使用
+     * SELF，对明确所有者关系的资源使用 OWNER；ALL_OR_TENANT 对没有明确主体关系的资源默认要求全部或租户范围。
      * 单租户部署中 ALL 和 TENANT 都由 Scope.all 表示。</p>
      */
     private static final Map<String, ResourceRule> RESOURCE_RULES = Map.ofEntries(
@@ -89,11 +89,11 @@ public final class DataScopePolicy {
     }
 
     /** 检查主体是否满足资源入口的范围要求。 */
-    public static boolean allows(ResourceRule rule, boolean allScope, boolean selfScope) {
+    public static boolean allows(ResourceRule rule, boolean allScope, boolean selfScope, boolean ownerScope) {
         if (rule == null) return false;
         return switch (rule.enforcement()) {
             case QUERY_FILTERED -> true;
-            case OWNER_BOUND -> allScope || selfScope;
+            case OWNER_BOUND -> allScope || (rule.scopes().contains(OWNER) ? ownerScope : selfScope);
             case ALL_OR_TENANT -> allScope;
         };
     }
@@ -108,8 +108,8 @@ public final class DataScopePolicy {
     }
 
     private static ResourceRule ownerOrGlobalRule() {
-        // 资源保存 owner 后，SELF 由仓储按主体 ID 过滤；没有 owner 的旧记录只对全量范围可见。
-        return new ResourceRule(Set.of(ALL, TENANT, SELF, OWNER), Enforcement.OWNER_BOUND);
+        // 资源保存 owner 后，OWNER 由仓储按主体 ID 过滤；没有 owner 的记录只对全量范围可见。
+        return new ResourceRule(Set.of(ALL, TENANT, OWNER), Enforcement.OWNER_BOUND);
     }
 
     private static String normalizeResource(String value) {

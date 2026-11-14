@@ -25,19 +25,21 @@ public class DataScopeService {
             String ownDepartment = user.departmentId();
             boolean all = false;
             boolean self = false;
+            boolean owner = false;
             var allowedDepartments = new LinkedHashSet<String>();
             for (ApiKeyRoleEntity role : user.roles()) {
                 if (!role.enabled()) continue;
                 switch (normalizeScope(role.dataScope())) {
                     case DataScopePolicy.ALL, DataScopePolicy.TENANT -> all = true;
                     case "SELF" -> self = true;
+                    case DataScopePolicy.OWNER -> owner = true;
                     case "DEPARTMENT" -> addIfPresent(allowedDepartments, ownDepartment);
                     case "DEPARTMENT_AND_CHILDREN" -> allowedDepartments.addAll(descendants(ownDepartment));
                     case "CUSTOM" -> allowedDepartments.addAll(parseDepartments(role.deptScope()));
                     default -> throw new IllegalStateException("Unsupported data scope");
                 }
             }
-            return new Scope(all, self, allowedDepartments, ownDepartment);
+            return new Scope(all, self, owner, allowedDepartments, ownDepartment);
         } catch (RuntimeException e) {
             throw new IllegalStateException("Could not resolve user data scope", e);
         }
@@ -87,21 +89,26 @@ public class DataScopeService {
     }
 
     /** 范围只允许并集；没有有效角色时返回空范围。 */
-    public record Scope(boolean all, boolean self, Set<String> departments, String ownDepartment) {
+    public record Scope(boolean all, boolean self, boolean owner, Set<String> departments, String ownDepartment) {
         public Scope {
             departments = Set.copyOf(departments == null ? Set.of() : departments);
         }
 
+        /** 保留用户和部门范围构造方式；owner 只用于具有所有者关系的资源。 */
+        public Scope(boolean all, boolean self, Set<String> departments, String ownDepartment) {
+            this(all, self, false, departments, ownDepartment);
+        }
+
         public Scope(boolean all, boolean self, Set<String> departments) {
-            this(all, self, departments, null);
+            this(all, self, false, departments, null);
         }
 
         public static Scope none() {
-            return new Scope(false, false, Set.of());
+            return new Scope(false, false, false, Set.of(), null);
         }
 
         public static Scope unrestricted() {
-            return new Scope(true, false, Set.of());
+            return new Scope(true, false, false, Set.of(), null);
         }
 
         public boolean allowsUser(String subjectId, String targetId, String targetDepartment) {
@@ -127,7 +134,7 @@ public class DataScopeService {
 
 
         public boolean isEmpty() {
-            return !all && !self && departments.isEmpty();
+            return !all && !self && !owner && departments.isEmpty();
         }
     }
 }

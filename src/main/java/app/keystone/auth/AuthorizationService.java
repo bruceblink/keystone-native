@@ -40,11 +40,11 @@ public class AuthorizationService {
             throw denied("permission_denied", 403, "permission denied");
         }
         DataScopePolicy.ResourceRule rule = DataScopePolicy.rule(resource);
-        if (rule == null || !DataScopePolicy.allows(rule, context.allScope(), context.selfScope())) {
+        if (rule == null || !DataScopePolicy.allows(rule, context.allScope(), context.selfScope(), context.ownerScope())) {
             throw denied("data_scope_denied", 403, "data scope does not allow this resource");
         }
         if (ownerId != null && !context.isSystem() && !context.allScope()
-                && (!context.selfScope() || !context.subjectId().equals(ownerId))) {
+                && (!(context.selfScope() || context.ownerScope()) || !context.subjectId().equals(ownerId))) {
             throw denied("data_scope_denied", 403, "data scope does not allow this resource");
         }
     }

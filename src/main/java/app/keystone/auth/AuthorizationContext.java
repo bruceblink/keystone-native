@@ -18,6 +18,7 @@ public final class AuthorizationContext {
     private final Set<String> permissions;
     private final boolean allScope;
     private final boolean selfScope;
+    private final boolean ownerScope;
     private final DataScopeService.Scope scope;
 
     private AuthorizationContext(String subjectId, String username, String credentialType, Object capability,
@@ -30,6 +31,7 @@ public final class AuthorizationContext {
         this.scope = scope == null ? DataScopeService.Scope.none() : scope;
         this.allScope = this.scope.all();
         this.selfScope = this.scope.self();
+        this.ownerScope = this.scope.owner();
     }
 
     /** 创建内部系统主体；只有固定能力标记可以满足系统主体判断。 */
@@ -48,6 +50,7 @@ public final class AuthorizationContext {
     public boolean isSystem() { return capability == SYSTEM_CAPABILITY; }
     public boolean allScope() { return allScope; }
     public boolean selfScope() { return selfScope; }
+    public boolean ownerScope() { return ownerScope; }
     public DataScopeService.Scope scope() { return scope; }
     public boolean hasPermission(String permission) { return isSystem() || permissions.contains(permission); }
 }
