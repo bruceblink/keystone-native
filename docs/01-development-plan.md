@@ -107,7 +107,7 @@ API Key 使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存 SHA-256 �
 ### JWT 公钥发现
 
 - `GET /api/.well-known/jwks.json`：公开返回当前外部 RSA 公钥的 RFC 7517 JWK Set。响应只包含 `kty`、`kid`、`alg`、`use`、`n` 和 `e`，公钥读取失败返回 `503`。缺少或非法的 `JWT_KEY_ID` 属于启动配置错误，应用应在就绪检查中失败。
-- 当前实现默认发布一个配置 key，也支持通过 `JWT_JWK_KEYS` 以 `kid=location;kid=location` 配置多个重叠公钥，并使用 `JWT_JWK_CACHE_SECONDS` 控制 1 至 3600 秒的已校验快照缓存。启用多个 key 时，`JWT_VERIFY_PUBLIC_KEY_LOCATION` 必须指向包含全部公钥的 JWK Set 文件或 HTTPS JWK Set URL；继续使用单个 PEM 会在启动检查阶段失败。缓存过期后的读取、解析和 JWK 组装全部成功时才替换快照；失败时继续提供上一个有效快照，直到缓存过期后请求失败。持久化 key registry、旧 key 到期清理和旧 key HTTP 验收仍需后续实现。
+- 当前实现默认发布一个配置 key，也支持通过 `JWT_JWK_KEYS` 以 `kid=location;kid=location` 配置多个重叠公钥，并使用 `JWT_JWK_CACHE_SECONDS` 控制 1 至 3600 秒的已校验快照缓存。启用多个 key 时，`JWT_VERIFY_PUBLIC_KEY_LOCATION` 必须指向包含全部公钥的 JWK Set 文件或 HTTPS JWK Set URL；继续使用单个 PEM 会在启动检查阶段失败。缓存过期后的读取、解析和 JWK 组装全部成功时才替换快照；失败时继续提供上一个有效快照，直到缓存过期后请求失败。持久化 key registry、旧 key 到期清理和旧 key HTTP 验收已完成；真实密钥轮换演练仍待独立执行。
 - 新客户端只调用 `/api/.well-known/jwks.json` 获取公钥，不提供旧公钥路由。
 
 ## 数据模型变更
@@ -118,7 +118,7 @@ API Key 使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存 SHA-256 �
 
 Flyway 继续负责数据库结构迁移，Hibernate ORM 设置为不自动创建或修改表结构。新增业务数据访问代码不得直接注入 `DataSource`、拼接 SQL 或使用 `PreparedStatement`。只有 Flyway 迁移文件和经过单独记录的数据库特定并发操作可以保留原生 SQL。
 
-第一阶段已将 `sys_security_event` 迁移到 `SecurityEventEntity` 和 `SecurityEventRepository`；登录审计已使用 `LoginLogEntity` 和 `LoginLogRepository`，操作日志已使用 `OperationLogEntity` 和 `OperationLogRepository`，登录、API Key 和 MFA 限流已分别使用 `LoginRateLimitEntity`、`ApiKeyRateLimitEntity`、`MfaRateLimitEntity` 及对应的 Panache Repository，API Key 主记录已使用 `ApiKeyEntity`、`ServiceSubjectEntity` 和对应的 Panache Repository，API Key 认证和签发权限读取已使用独立的用户、角色和权限 ORM 映射，会话已使用 `AuthSessionEntity`、`RefreshTokenEntity`、`RefreshTokenEventEntity` 和对应的 Panache Repository，MFA 会话状态已复用 `AuthSessionEntity`，MFA 认证请求、TOTP 状态和恢复码已使用 ORM Repository，OIDC 授权请求和外部身份映射已使用 `OidcAuthRequestEntity`、`OidcAuthRequestRepository`，WebAuthn 凭据已使用 `WebAuthnCredentialEntity` 和 `NativeWebAuthnUserProvider`，用户创建、认证、失败登录锁定、密码修改、用户资料与角色综合更新、用户删除、列表和范围查询、数据范围读取、权限读取、权限版本和登录元数据已使用 ORM 用户和授权 Repository，角色管理、部门管理、配置、字典、任务、菜单、通知和岗位管理已使用 ORM Repository。业务仓储不再直接使用 JDBC；剩余工作集中在真实外部身份、生产传输链和应用进程故障恢复证据。迁移期间不得在同一业务职责中新增两套持久化实现。
+第一阶段已将 `sys_security_event` 迁移到 `SecurityEventEntity` 和 `SecurityEventRepository`；登录审计已使用 `LoginLogEntity` 和 `LoginLogRepository`，操作日志已使用 `OperationLogEntity` 和 `OperationLogRepository`，登录、API Key 和 MFA 限流已分别使用 `LoginRateLimitEntity`、`ApiKeyRateLimitEntity`、`MfaRateLimitEntity` 及对应的 Panache Repository，API Key 主记录已使用 `ApiKeyEntity`、`ServiceSubjectEntity` 和对应的 Panache Repository，API Key 认证和签发权限读取已使用独立的用户、角色和权限 ORM 映射，会话已使用 `AuthSessionEntity`、`RefreshTokenEntity`、`RefreshTokenEventEntity` 和对应的 Panache Repository，MFA 会话状态已复用 `AuthSessionEntity`，MFA 认证请求、TOTP 状态和恢复码已使用 ORM Repository，OIDC 授权请求和外部身份映射已使用 `OidcAuthRequestEntity`、`OidcAuthRequestRepository`，WebAuthn 凭据已使用 `WebAuthnCredentialEntity` 和 `NativeWebAuthnUserProvider`，用户创建、认证、失败登录锁定、密码修改、用户资料与角色综合更新、用户删除、列表和范围查询、数据范围读取、权限读取、权限版本和登录元数据已使用 ORM 用户和授权 Repository，角色管理、部门管理、配置、字典、任务、菜单、通知和岗位管理已使用 ORM Repository。业务仓储不再直接使用 JDBC；剩余工作集中在真实外部身份、生产传输链和多节点故障恢复证据。迁移期间不得在同一业务职责中新增两套持久化实现。
 
 当前已新增 `sys_api_key`、`sys_auth_session`、MFA 基础表和相关用户字段。后续仍需要补充以下表或字段：
 
@@ -146,13 +146,13 @@ Flyway 继续负责数据库结构迁移，Hibernate ORM 设置为不自动创�
 - [x] 增加 API Key 列表、轮换、幂等撤销、过期上限和使用时间更新限速。
 - [x] 按 IP 和用户名双维度限制登录失败请求，并在成功登录后清除计数。
 - [x] 增加 API Key 按权限码的接口测试和日志脱敏测试用例；Quarkus/MySQL 签发、业务访问、撤销和过期运行验收已完成。
-- [x] 增加失败登录、账户锁定指数退避、管理员 MFA 第一版运行边界和 MFA 主体/IP 双维度限流；API Key 轮换并发已通过，凭据猜测专项和应用进程故障验收仍待执行。
+- [x] 增加失败登录、账户锁定指数退避、管理员 MFA 第一版运行边界和 MFA 主体/IP 双维度限流；API Key 轮换并发、同一来源凭据猜测限流和应用进程数据库断开/崩溃重启验收已通过。
 
 当前已增加密码策略、第五次失败起指数账户锁定、成功登录清零失败计数、密码更新重置锁定状态并递增 `credential_version`，并在新登录入口增加数据库限流。API Key 认证失败现在按来源地址和凭据摘要双维度限流，失败窗口只保存哈希键；成功认证只清理当前凭据桶，来源地址桶保留到窗口结束。`sys_security_event` 已统一记录 API Key 认证结果和权限拒绝结果，并保存非秘密 `credential_id` 和来源地址，事件不保存令牌、密码或完整 API Key。管理员 MFA 已完成第一版 TOTP enrollment、登录验证请求、恢复码、策略开关和主体/IP 双维度失败限流；生产运行验收仍未完成。
 
 2026-11-14 API Key 猜测限流验收：`15aeacc` 使用真实 HTTP 请求从同一来源连续发送 20 次无效 API Key，确认每次返回 `401`，并查询 MySQL `sys_api_key_rate_limit` 验证 `attempt_count >= 20` 且 `blocked_until` 晚于当前时间；测试结束后删除限流记录。
 
-当前代码已完成 API Key 的统一 Quarkus 身份入口、服务主体回填、scope 格式和签发者权限交集、元数据列表、轮换、幂等撤销、操作日志记录、`last_used_at` 最小更新间隔、API Key 人类入口拒绝和真实 HTTP 生命周期验收。真实 MySQL 轮换并发和同一来源凭据猜测限流已通过；备份还原和应用进程故障验收仍待执行。
+当前代码已完成 API Key 的统一 Quarkus 身份入口、服务主体回填、scope 格式和签发者权限交集、元数据列表、轮换、幂等撤销、操作日志记录、`last_used_at` 最小更新间隔、API Key 人类入口拒绝和真实 HTTP 生命周期验收。真实 MySQL 轮换并发和同一来源凭据猜测限流已通过；备份还原、应用进程数据库断开恢复和整进程崩溃重启后的旧访问令牌恢复已通过，多节点恢复仍待执行。
 
 ### P1：用户会话
 
@@ -167,7 +167,7 @@ Flyway 继续负责数据库结构迁移，Hibernate ORM 设置为不自动创�
 - [x] 密码变更和禁用用户触发会话撤销。
 - [x] 权限变更触发会话或权限版本失效。
 
-P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期限、绝对刷新期限、旧令牌重用撤销、刷新事件记录、五分钟访问令牌、客户端绑定、批准范围绑定、权限版本校验以及 `sub/aud/sid/jti` 声明。缺少 `jti` 的 JWT 现在会直接返回 `401`，访问令牌还必须对应活动会话。真实 MySQL 并发刷新已通过；应用进程断开后的自动重连仍待执行。
+P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期限、绝对刷新期限、旧令牌重用撤销、刷新事件记录、五分钟访问令牌、客户端绑定、批准范围绑定、权限版本校验以及 `sub/aud/sid/jti` 声明。缺少 `jti` 的 JWT 现在会直接返回 `401`，访问令牌还必须对应活动会话。真实 MySQL 并发刷新、应用进程数据库断开后的自动重连和整进程崩溃重启后的旧访问令牌恢复已通过；多节点恢复仍待执行。
 
 ### P2：权限和数据范围
 
@@ -241,14 +241,14 @@ TOTP 使用 RFC 6238 的 30 秒时间步、六位数字和允许前后一个时�
 
 API Key、角色、用户、在线会话、MFA enrollment/策略变更和恢复码轮换均已接入 step-up。恢复码轮换还必须提供当前密码。API Key 不能执行这些人类用户 MFA 管理路径。
 
-实现验收必须证明：未完成 enrollment 的用户不获得强制 MFA 令牌；正确 TOTP 才能创建会话；错误、过期、错误客户端和重复认证请求统一失败；恢复码只能消费一次；同一时间步并发请求只有一次成功；密钥、恢复码和完整 `otpauth` 数据不出现在日志、错误响应或数据库明文。当前已完成单事务代码、固定向量、输入边界 smoke、MySQL 8.4 迁移、真实 HTTP 生命周期和恢复码并发消费验收；应用进程故障恢复和真实部署链仍未完成。
+实现验收必须证明：未完成 enrollment 的用户不获得强制 MFA 令牌；正确 TOTP 才能创建会话；错误、过期、错误客户端和重复认证请求统一失败；恢复码只能消费一次；同一时间步并发请求只有一次成功；密钥、恢复码和完整 `otpauth` 数据不出现在日志、错误响应或数据库明文。当前已完成单事务代码、固定向量、输入边界 smoke、MySQL 8.4 迁移、真实 HTTP 生命周期、恢复码并发消费和应用进程数据库断开恢复验收；多节点恢复和真实部署链仍未完成。
 
 ### P4：运营与发布
 
 - [x] 增加安全事件基础指标、异常登录和 MFA/API Key 限流告警、事件容量限制和保留清理；运行指标通过 `GET /api/v1/monitor/security` 提供给 `audit:read` 主体。
 - [x] 增加 API Key 轮换报告和按当前单租户范围筛选的安全事件运营报表（`3b0ec87`，定向 HTTP 测试 3 项通过；完整组合测试、真实生产数据和多租户验收仍待执行）。
-- [x] 进行 MySQL 8.4 刷新、API Key 轮换和 MFA 恢复码并发验收；完成容器停止/恢复、迁移重复执行和 ORM schema validation 检查。仍需补应用进程断开后的自动重连、备份还原和真实密钥轮换演练。
-- [x] 完成 MFA 因子消费的单事务实现，覆盖 enrollment、TOTP、恢复码和认证请求状态；真实 MySQL 并发消费已通过，应用进程断开后的恢复仍待执行。
+- [x] 进行 MySQL 8.4 刷新、API Key 轮换和 MFA 恢复码并发验收；完成容器停止/恢复、迁移重复执行、应用进程断开后的自动重连、备份还原、JWT key 轮换和 ORM schema validation 检查；多节点恢复和真实运营演练仍待执行。
+- [x] 完成 MFA 因子消费的单事务实现，覆盖 enrollment、TOTP、恢复码和认证请求状态；真实 MySQL 并发消费和应用进程数据库断开后的恢复已通过，多节点恢复仍待执行。
 - [x] 完成可信代理地址解析，默认使用连接远端地址，拒绝未验证的 `X-Forwarded-For` 链；真实 HTTP 注入和部署链验收仍待执行。
 - [x] 增加 `JWT_KEY_ID`、签名私钥和公钥集合的启动检查；Quarkus 就绪状态和运行时签名错误验收仍待执行。
 - [x] 删除旧根路由、旧 token 字段、旧资源实现和无效测试；`31388f2` 删除历史兼容资源和测试，`a6c1d71` 持续扫描 `src/main/java`、`src/test/java` 并断言不存在 `compat`、`Legacy*`、`*Compatibility` 路径及重复 `TokenResponse.token` 字段。规范 `/.well-known/jwks.json` 和 `old_numeric_code` 错误分类测试不属于旧兼容接口。
@@ -279,7 +279,7 @@ API Key、角色、用户、在线会话、MFA enrollment/策略变更和恢复�
 5. 必须把权限码落实到每个接口、服务方法和查询条件。历史 `@RolesAllowed` 代码不属于新实现，源代码中不得保留该注解。
 6. 必须继续补齐 API Key 的过期、审计和并发运行测试；列出、轮换、范围上限和一次性明文已经有实现与静态接口测试。
 7. 必须在受信反向代理配置明确后才启用 `X-Forwarded-For` 的 MFA 来源限流；部署直接暴露应用端口时，应使用连接远端地址，并对无法解析的地址采用独立、可观测的处理策略。
-8. enrollment、恢复码批次替换、TOTP 接受和认证请求消费已经放入同一事务；仍必须完成 MySQL 并发和故障注入验收，证明失败时不会留下部分状态。
+8. enrollment、恢复码批次替换、TOTP 接受和认证请求消费已经放入同一事务；MySQL 并发和应用进程数据库断开恢复已验证，仍需完成多节点和故障注入验收，证明失败时不会留下部分状态。
 9. `JWT_KEY_ID`、签名私钥和公钥位置已经接入启动检查；仍必须通过 Quarkus 启动和就绪验收，证明配置错误不会创建不可用会话或轮换出客户端无法使用的新刷新令牌。
 
 ## 必须先确定的架构决策
@@ -320,13 +320,13 @@ API Key 认证成功后创建统一的 `SecurityIdentity`，身份属性必须�
 
 | 领域 | 必须证明的行为 | 当前状态 |
 | --- | --- | --- |
-| 密码认证 | 弱密码拒绝、失败退避、账户锁定、用户枚举防护、密码变更撤销会话 | 部分完成：密码策略和指数退避已实现，用户枚举防护及运行验收未完成 |
+| 密码认证 | 弱密码拒绝、失败退避、账户锁定、用户枚举防护、密码变更撤销会话 | 部分完成：密码策略、指数退避、账户锁定和用户枚举防护已实现并通过回归；真实生产运行验收仍待执行 |
 | JWT | `iss/aud/sub/jti/sid/iat/exp/kid` 校验、算法白名单、时钟偏差、密钥轮换 | 已实现并完成 JWK Set、持久化 registry、未知 `kid` 拒绝、旧 key 保留/过期移除和 HTTP 验收；公网密钥服务未接入 |
 | 刷新令牌 | 原子轮换、并发单成功、重用检测、整族撤销、客户端绑定、空闲过期 | 已实现；真实 MySQL 并发刷新、应用进程数据库断开恢复和整进程崩溃重启后的旧访问令牌恢复通过，多节点恢复仍待执行 |
 | API Key | 服务主体、范围交集、一次性明文、过期、撤销、轮换、审计、限速 | 已实现；真实 MySQL 轮换并发和猜测限流通过，轮换计数报告已实现并通过定向 HTTP 测试，完整组合和生产运营验收仍待执行 |
 | 授权 | 默认拒绝、权限码、显式拒绝、实时失效、服务层和查询层复核 | 部分完成：权限码、权限版本失效和主要管理命令的 `AuthorizationContext` 已实现；全部服务命令、显式拒绝和查询层复核仍未完成 |
 | 数据范围 | ALL、TENANT、SELF、DEPARTMENT、DEPARTMENT_AND_CHILDREN、CUSTOM、OWNER、MEMBER 以及导出和批量操作无越权 | 部分完成：用户资源和非用户资源入口拒绝已接入，用户/部门命令已补主体范围检查；真实资源数据过滤、owner/member 关系、导出/批量/异步操作仍未完成 |
-| MFA | 管理员强制 MFA、恢复码、重新验证和敏感操作升级认证 | 已实现并完成真实 HTTP、MySQL 并发恢复码消费和单事务验收；应用进程故障恢复仍待执行 |
+| MFA | 管理员强制 MFA、恢复码、重新验证和敏感操作升级认证 | 已实现并完成真实 HTTP、MySQL 并发恢复码消费和单事务验收；应用进程数据库断开后的恢复已通过，多节点恢复仍待执行 |
 | OIDC | Authorization Code + PKCE、state/nonce、JWKS、issuer/audience/azp/时间窗口、subject 映射 | 已实现并通过本地 provider 的真实 HTTP 重定向、PKCE、失败模式和回放拒绝；公网 IdP 未执行 |
 | WebAuthn | challenge、RP ID/origin、凭据公钥、计数器、AAL2 会话和 API Key 拒绝 | 已实现并完成 MySQL 迁移、启动、路由、注册 AAL2 step-up 和配置失败验收；真实浏览器/硬件仪式未执行 |
 | Web 与传输 | HTTPS、CORS、CSRF、Cookie 属性、浏览器存储、缓存控制 | 生产 HTTPS/HSTS、CORS、统一安全响应头和临时 TLS 代理链已验证；浏览器 CSRF/Cookie 和生产证书链仍待执行 |
@@ -338,7 +338,7 @@ API Key 认证成功后创建统一的 `SecurityIdentity`，身份属性必须�
 
 原计划中的 MFA、限流和 API Key 完整生命周期排得过晚。调整为：P0 完成主体边界、API Key 安全基线、登录失败防护和管理员 MFA；P1 完成会话与刷新令牌；P2 完成权限码和数据范围；P3 完成 OIDC、WebAuthn 和密钥轮换；P4 完成审计、告警、恢复演练和旧接口删除。
 
-P0 代码仍必须补充 API Key 猜测、并发撤销和数据库故障运行测试。`GET /api/v1/api-keys`、主动轮换、幂等撤销、过期时间上限、未知 scope 拒绝、scope 与主体权限交集、服务主体归属、审计事件和日志脱敏已有实现或静态接口测试；运行证据完成前不能标记为 P0 完成。
+P0 代码仍必须补充并发撤销和数据库故障运行测试。API Key 猜测限流已由 `15aeacc` 在真实 HTTP/MySQL 中验收；`GET /api/v1/api-keys`、主动轮换、幂等撤销、过期时间上限、未知 scope 拒绝、scope 与主体权限交集、服务主体归属、审计事件和日志脱敏已有实现或静态接口测试；剩余运行证据完成前不能标记为 P0 完成。
 
 ## 发布前新增检查
 
