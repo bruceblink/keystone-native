@@ -121,6 +121,8 @@ Native 使用 `DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor`
 | `file` | `ALL`、`TENANT` | 入口默认拒绝 |
 | `notice`、`job` | `ALL`、`TENANT`、`OWNER` | V56 owner 字段和仓储条件；OWNER 主体只读取和操作自己的记录 |
 
+角色、岗位、菜单、配置和字典没有主体关系。它们的创建、更新、删除、状态变更、权限元数据读取和角色用户分配都必须先通过对应资源的 `ALL/TENANT` 范围检查。只有管理页面隐藏或前端权限判断不能替代资源入口和领域命令的范围检查。
+
 ## 设计决策
 
 1. 两项目使用同一权限语义、错误代码、HTTP 状态和响应字段。
