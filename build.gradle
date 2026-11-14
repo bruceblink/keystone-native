@@ -30,6 +30,7 @@ dependencies {
     implementation 'io.quarkus:quarkus-smallrye-health'
     implementation 'io.quarkus:quarkus-scheduler'
     implementation 'io.quarkus:quarkus-elytron-security-common'
+    implementation 'io.quarkus:quarkus-security-webauthn'
     testImplementation 'io.quarkus:quarkus-junit5'
     testImplementation 'io.rest-assured:rest-assured'
 }
