@@ -110,7 +110,7 @@ Phoenix 的 LiveView 事件总线属于管理界面能力。Native 当前只提�
 
 ## Native 资源范围执行矩阵
 
-Native 使用 `DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor` 固定入口规则。`user` 和 `department` 在仓储查询、详情和写入条件中执行范围过滤；`profile` 和 `api-key` 只允许当前主体的 `SELF` 范围或 `ALL`/`TENANT`。`role`、`post`、`menu`、`config`、`dictionary`、`audit` 和 `session` 没有稳定 owner/member 关系，入口要求 `ALL` 或 `TENANT`。V56 已为公告保存 `owner_id`、为任务保存 `created_by`，两类资源使用角色 `OWNER` 范围按主体 ID 过滤；没有全量范围且没有 owner 关系的记录默认不可见。请求主体没有适用范围时返回 `403 data_scope_denied`。增加其他关系字段后，必须同时修改矩阵、仓储条件和越权测试，不能只修改页面或权限注解。Native 自动调度使用固定的 `AuthorizationContext.system()`，启动加载和 cron 回调读取任务分别复用 `job:read` 与 `job:run` 授权检查；HTTP 请求主体不能进入后台调度回调。该约定只覆盖当前单节点调度，不能替代多节点互斥和异步资源范围验收。
+Native 使用 `DataScopePolicy`、`RequiresDataScope` 和 `DataScopeInterceptor` 固定入口规则。`user` 和 `department` 在仓储查询、详情、写入和 XLSX 导出条件中执行范围过滤；用户部门字段通过 UUID 转换器映射为字符串，查询绑定必须使用规范 UUID 字符串。`profile` 和 `api-key` 只允许当前主体的 `SELF` 范围或 `ALL`/`TENANT`。`role`、`post`、`menu`、`config`、`dictionary`、`audit` 和 `session` 没有稳定 owner/member 关系，入口要求 `ALL` 或 `TENANT`。V56 已为公告保存 `owner_id`、为任务保存 `created_by`，两类资源使用角色 `OWNER` 范围按主体 ID 过滤；没有全量范围且没有 owner 关系的记录默认不可见。请求主体没有适用范围时返回 `403 data_scope_denied`。增加其他关系字段后，必须同时修改矩阵、仓储条件和越权测试，不能只修改页面或权限注解。Native 自动调度使用固定的 `AuthorizationContext.system()`，启动加载和 cron 回调读取任务分别复用 `job:read` 与 `job:run` 授权检查；HTTP 请求主体不能进入后台调度回调。该约定只覆盖当前单节点调度，不能替代多节点互斥和异步资源范围验收。
 
 | 资源 | 范围 | 执行边界 |
 | --- | --- | --- |

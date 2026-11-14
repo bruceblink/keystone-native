@@ -318,7 +318,7 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
             query.append(" and displayName like ?").append(parameters.size());
         }
         if (deptId != null) {
-            parameters.add(app.keystone.identity.UuidValues.parse(deptId));
+            parameters.add(app.keystone.identity.UuidValues.requireCanonical(deptId));
             query.append(" and deptId = ?").append(parameters.size());
         }
         if (enabled != null) {
@@ -341,7 +341,8 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         if (!scope.departments().isEmpty()) {
             var placeholders = new java.util.ArrayList<String>();
             for (String department : scope.departments()) {
-                parameters.add(app.keystone.identity.UuidValues.parse(department));
+                // deptId 通过 UUID 转换器映射为 String，查询参数必须保持规范 UUID 字符串。
+                parameters.add(app.keystone.identity.UuidValues.requireCanonical(department));
                 placeholders.add("?" + parameters.size());
             }
             clauses.add("deptId in (" + String.join(", ", placeholders) + ")");

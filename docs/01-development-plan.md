@@ -192,6 +192,8 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 
 2026-11-14 用户批量删除范围切片：`DELETE /v1/users?ids=...` 在同一事务中先锁定全部目标并逐项检查存在性和主体范围，再执行删除。任一目标不存在返回 `404`，任一目标越界返回 `403 data_scope_denied`，可见目标不会先被删除。`UserBatchDeletionResourceHttpTest` 已通过真实 HTTP 和 MySQL 验证越界、缺失目标的整体回滚，以及管理主体的成功删除。
 
+2026-11-14 用户 XLSX 导出范围切片：修复 `dept_id` UUID 转换字段的查询参数类型，用户列表和完整 XLSX 导出现在使用规范 UUID 字符串绑定部门范围。新增 `UserExportScopeResourceHttpTest`，使用真实 MySQL 创建部门范围主体和跨部门用户，确认导出工作簿包含当前部门用户且不包含其他部门用户；导出仍先过滤再序列化完整结果集。
+
 | 资源 | 支持范围 | 执行方式 | 当前入口 |
 | --- | --- | --- | --- |
 | `user` | `ALL`、`TENANT`、`SELF`、`DEPARTMENT`、`DEPARTMENT_AND_CHILDREN`、`CUSTOM` | 用户查询、详情和写入条件 | `UserResource`、`ApiKeyUserRepository` |
