@@ -167,6 +167,65 @@ class UserResourceTest extends AuthTestFixture {
         }
     }
 
+    @Test
+    void stepUpReturnsIndependentAal2TokenWithoutRefreshState() throws Exception {
+        String admin = login("admin", "password");
+        String username = "step_up_" + System.nanoTime();
+        String temporaryAdminId = null;
+        try {
+            temporaryAdminId = given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Step Up Admin\",\"roleCodes\":[\"ADMIN\"]}")
+                    .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
+
+            var initialLogin = given().contentType(JSON)
+                    .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"forceLogin\":true}")
+                    .when().post("/v1/auth/login").then().statusCode(200).extract();
+            String aal1 = initialLogin.path("data.accessToken");
+            String refresh = initialLogin.path("data.refreshToken");
+            var enrollment = given().auth().oauth2(aal1).contentType(JSON)
+                    .when().post("/v1/auth/mfa/enroll").then().statusCode(201).extract();
+            String secret = enrollment.path("data.secret");
+            String enrollmentCode = new TotpService().code(secret, Instant.now());
+            given().auth().oauth2(aal1).contentType(JSON)
+                    .body("{\"challengeId\":\"" + enrollment.path("data.challengeId") + "\",\"code\":\"" + enrollmentCode + "\"}")
+                    .when().post("/v1/auth/mfa/enroll/verify").then().statusCode(200);
+
+            var stepUpChallenge = given().auth().oauth2(aal1).contentType(JSON).body("{}")
+                    .when().post("/v1/auth/mfa/step-up").then().statusCode(201)
+                    .body("data.challengeId", org.hamcrest.Matchers.not(org.hamcrest.Matchers.emptyOrNullString()))
+                    .body("data.clientId", is("web")).extract();
+            org.junit.jupiter.api.Assertions.assertNull(stepUpChallenge.path("data.purpose"));
+            org.junit.jupiter.api.Assertions.assertNull(stepUpChallenge.path("data.sessionId"));
+            org.junit.jupiter.api.Assertions.assertNull(stepUpChallenge.path("data.contextHash"));
+            String stepUpCode = new TotpService().code(secret, Instant.now().plusSeconds(30));
+            var stepUp = given().auth().oauth2(aal1).contentType(JSON)
+                    .body("{\"challengeId\":\"" + stepUpChallenge.path("data.challengeId") + "\",\"code\":\"" + stepUpCode + "\"}")
+                    .when().post("/v1/auth/mfa/step-up/verify").then().statusCode(200).extract();
+
+            String aal2 = stepUp.path("data.accessToken");
+            org.junit.jupiter.api.Assertions.assertNotNull(aal2);
+            org.junit.jupiter.api.Assertions.assertNull(stepUp.path("data.refreshToken"));
+            org.junit.jupiter.api.Assertions.assertEquals("AAL2", stepUp.path("data.authenticationLevel"));
+            org.junit.jupiter.api.Assertions.assertEquals("otp", stepUp.path("data.amr"));
+            var mapper = new com.fasterxml.jackson.databind.ObjectMapper();
+            var aal1Claims = mapper.readTree(new String(java.util.Base64.getUrlDecoder().decode(aal1.split("\\.")[1]), StandardCharsets.UTF_8));
+            var aal2Claims = mapper.readTree(new String(java.util.Base64.getUrlDecoder().decode(aal2.split("\\.")[1]), StandardCharsets.UTF_8));
+            org.junit.jupiter.api.Assertions.assertEquals("AAL2", aal2Claims.path("aal").asText());
+            org.junit.jupiter.api.Assertions.assertEquals("otp", aal2Claims.path("amr").get(0).asText());
+            org.junit.jupiter.api.Assertions.assertNotEquals(aal1Claims.path("jti").asText(), aal2Claims.path("jti").asText());
+            org.junit.jupiter.api.Assertions.assertEquals(aal1Claims.path("sid").asText(), aal2Claims.path("sid").asText());
+            org.junit.jupiter.api.Assertions.assertEquals("web", aal2Claims.path("client_id").asText());
+            given().auth().oauth2(aal1).when().get("/v1/profile").then().statusCode(401);
+            given().contentType(JSON).body("{\"refreshToken\":\"" + refresh + "\"}")
+                    .when().post("/v1/auth/refresh").then().statusCode(200)
+                    .body("data.refreshToken", org.hamcrest.Matchers.not(org.hamcrest.Matchers.emptyOrNullString()));
+        } finally {
+            if (temporaryAdminId != null) {
+                given().auth().oauth2(admin).when().delete("/v1/users/" + temporaryAdminId).then().statusCode(200);
+            }
+        }
+    }
+
     private static String readWorksheet(byte[] workbook) {
         try (var zip = new ZipInputStream(new ByteArrayInputStream(workbook), StandardCharsets.UTF_8)) {
             for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry()) {

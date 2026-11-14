@@ -14,6 +14,11 @@ public class RefreshTokenRepository implements PanacheRepositoryBase<RefreshToke
         return find("tokenHash", tokenHash).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
     }
 
+    RefreshTokenEntity findForUpdateByAccessToken(String accessTokenId, String userId, String sessionId) {
+        return find("accessTokenId = ?1 and userId = ?2 and sessionId = ?3 and revokedAt is null",
+                accessTokenId, userId, sessionId).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+    }
+
     RefreshTokenEntity findByAccessToken(String accessTokenId, Instant now) {
         return find("accessTokenId = ?1 and revokedAt is null and expiresAt > ?2 and accessExpiresAt > ?2 and idleExpiresAt > ?2",
                 accessTokenId, now).firstResult();

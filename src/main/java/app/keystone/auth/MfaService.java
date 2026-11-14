@@ -49,6 +49,17 @@ public class MfaService {
         return new LoginPreparation(true, new LoginChallenge(challenge.id(), boundClientId, challenge.expiresAt()));
     }
 
+    /** 为当前人类会话创建绑定客户端和会话的短期 step-up 请求。 */
+    public StepUpChallenge beginStepUp(String userId, String clientId, String sessionId, String contextHash) {
+        String boundClientId = normalizeClientId(clientId);
+        String boundSessionId = requiredSessionId(sessionId);
+        var status = status(userId);
+        if (!status.enabled() || status.mfaId() == null) throw new IllegalStateException("MFA is not enabled");
+        var challenge = challenges.create(userId, MfaChallengeRepository.Purpose.STEP_UP,
+                boundClientId, boundSessionId, contextHash, expiresAt());
+        return new StepUpChallenge(challenge.id(), challenge.clientId(), challenge.expiresAt());
+    }
+
     /** 为当前人类会话创建待验证 enrollment，并只返回一次 TOTP 配置材料。 */
     public Enrollment beginEnrollment(String userId, String username, String clientId, String sessionId) {
         String boundClientId = normalizeClientId(clientId);
@@ -148,6 +159,49 @@ public class MfaService {
         return Optional.empty();
     }
 
+    /** 校验当前会话的 step-up TOTP 或恢复码，并返回短时 AAL2 认证结果。 */
+    public Optional<LoginVerification> verifyStepUp(String userId, String challengeId, String clientId,
+                                                     String sessionId, String code, String ipAddress) {
+        String boundClientId = normalizeClientId(clientId);
+        String boundSessionId = requiredSessionId(sessionId);
+        if (rateLimiter.isBlocked(userId, ipAddress)) {
+            securityObservability.mfaFailure(true);
+            return Optional.empty();
+        }
+        var challenge = challenges.findActive(challengeId, userId, boundClientId,
+                MfaChallengeRepository.Purpose.STEP_UP, boundSessionId);
+        var status = status(userId);
+        if (challenge.isEmpty()) {
+            securityObservability.mfaFailure(rateLimiter.recordFailure(userId, ipAddress));
+            return Optional.empty();
+        }
+        if (!status.enabled() || status.mfaId() == null) return Optional.empty();
+        var stored = mfa.find(userId, status.mfaId()).orElse(null);
+        if (stored == null) {
+            securityObservability.mfaFailure(rateLimiter.recordFailure(userId, ipAddress));
+            return Optional.empty();
+        }
+        String secret = secrets.decrypt(userId, stored.id(), stored.encrypted());
+        var step = matchingStep(secret, code);
+        if (step.isPresent() && mfa.consumeStepUpTotp(userId, challengeId, boundClientId, boundSessionId,
+                stored.id(), step.getAsLong())) {
+            clearRateLimitAfterSuccess(userId, ipAddress);
+            return Optional.of(new LoginVerification(ASSURANCE, TOTP_AMR));
+        }
+        try {
+            String hash = recoveryCodes.hash(code);
+            if (mfa.consumeStepUpRecovery(userId, challengeId, boundClientId, boundSessionId, stored.id(), hash)) {
+                clearRateLimitAfterSuccess(userId, ipAddress);
+                return Optional.of(new LoginVerification(ASSURANCE, RECOVERY_AMR));
+            }
+        } catch (IllegalArgumentException ignored) {
+            // 格式错误与错误验证码统一走失败路径，不向客户端暴露验证分支。
+        }
+        recordFailure(challengeId, userId, boundClientId, MfaChallengeRepository.Purpose.STEP_UP,
+                boundSessionId, stored.id(), ipAddress);
+        return Optional.empty();
+    }
+
     /** 只有已完成 enrollment 的用户才能进入强制 MFA 策略。 */
     public boolean setRequired(String userId, boolean required) {
         return mfa.setRequired(userId, required);
@@ -214,6 +268,7 @@ public class MfaService {
 
     public record LoginPreparation(boolean required, LoginChallenge challenge) {}
     public record LoginChallenge(String challengeId, String clientId, Instant expiresAt) {}
+    public record StepUpChallenge(String challengeId, String clientId, Instant expiresAt) {}
     public record Enrollment(String challengeId, String mfaId, String secret, String otpauthUri, Instant expiresAt) {}
     public record EnrollmentResult(java.util.List<String> recoveryCodes) {}
     public record LoginVerification(String assurance, String amr) {}

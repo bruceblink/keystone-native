@@ -179,6 +179,24 @@ public class SessionRepository {
         return user != null && session != null && session.activeAt(now) && user.permissionVersion() == permissionVersion;
     }
 
+    /** 用当前刷新记录绑定新的 step-up 访问令牌，不改变刷新令牌族和到期状态。 */
+    @Transactional
+    public boolean replaceAccessTokenId(String currentAccessTokenId, String userId, String sessionId,
+                                        String replacementAccessTokenId) {
+        String currentId = UuidValues.requireCanonical(currentAccessTokenId);
+        String boundUserId = UuidValues.requireCanonical(userId);
+        String boundSessionId = UuidValues.requireCanonical(sessionId);
+        String replacementId = UuidValues.requireCanonical(replacementAccessTokenId);
+        Instant now = Instant.now();
+        // 刷新流程采用“刷新记录后会话”的锁顺序，这里保持相同顺序避免并发反向等待。
+        RefreshTokenEntity token = tokens.findForUpdateByAccessToken(currentId, boundUserId, boundSessionId);
+        if (token == null || !token.activeAt(now)) return false;
+        AuthSessionEntity session = sessions.findForUpdate(boundSessionId);
+        if (session == null || !boundUserId.equals(session.userId()) || !session.activeAt(now)) return false;
+        token.replaceAccessToken(replacementId, now.plus(ACCESS_LIFETIME));
+        return true;
+    }
+
     /** 返回仍有效的令牌记录；会话和令牌标识均使用规范 UUID 字符串。 */
     public List<OnlineSession> activeSessions(String username, String ipAddress) {
         Instant now = Instant.now();

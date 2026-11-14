@@ -112,7 +112,8 @@ public class MfaRepository {
         requireUser(userId);
         String boundMfaId = normalizeMfaId(mfaId);
         if (candidateStep < 0) throw new IllegalArgumentException("candidateStep must be non-negative");
-        return consumeLoginFactor(userId, challengeId, clientId, codeSessionId, boundMfaId, candidateStep, null);
+        return consumeFactor(userId, challengeId, clientId, codeSessionId,
+                MfaChallengeRepository.Purpose.LOGIN, boundMfaId, candidateStep, null);
     }
 
     /** 在一个事务内消费登录恢复码并消费对应认证请求。 */
@@ -122,17 +123,41 @@ public class MfaRepository {
         requireUser(userId);
         String boundMfaId = normalizeMfaId(mfaId);
         if (hash == null || !hash.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("invalid recovery code hash");
-        return consumeLoginFactor(userId, challengeId, clientId, codeSessionId, boundMfaId, null, hash);
+        return consumeFactor(userId, challengeId, clientId, codeSessionId,
+                MfaChallengeRepository.Purpose.LOGIN, boundMfaId, null, hash);
     }
 
-    /** 统一执行登录因子事务，锁顺序为用户、认证请求、MFA 状态和恢复码。 */
+    /** 在当前会话内消费 step-up TOTP；挑战和会话绑定条件在同一事务中锁定。 */
     @Transactional
-    boolean consumeLoginFactor(String userId, String challengeId, String clientId, String sessionId,
-                               String mfaId, Long candidateStep, String recoveryHash) {
+    public boolean consumeStepUpTotp(String userId, String challengeId, String clientId, String sessionId,
+                                     String mfaId, long candidateStep) {
+        requireUser(userId);
+        String boundMfaId = normalizeMfaId(mfaId);
+        if (candidateStep < 0) throw new IllegalArgumentException("candidateStep must be non-negative");
+        return consumeFactor(userId, challengeId, clientId, sessionId,
+                MfaChallengeRepository.Purpose.STEP_UP, boundMfaId, candidateStep, null);
+    }
+
+    /** 在当前会话内消费 step-up 恢复码；恢复码哈希只在事务内参与匹配。 */
+    @Transactional
+    public boolean consumeStepUpRecovery(String userId, String challengeId, String clientId, String sessionId,
+                                         String mfaId, String hash) {
+        requireUser(userId);
+        String boundMfaId = normalizeMfaId(mfaId);
+        if (hash == null || !hash.matches("[0-9a-f]{64}")) throw new IllegalArgumentException("invalid recovery code hash");
+        return consumeFactor(userId, challengeId, clientId, sessionId,
+                MfaChallengeRepository.Purpose.STEP_UP, boundMfaId, null, hash);
+    }
+
+    /** 统一执行登录和 step-up 因子事务，锁顺序为用户、认证请求、MFA 状态和恢复码。 */
+    @Transactional
+    boolean consumeFactor(String userId, String challengeId, String clientId, String sessionId,
+                          MfaChallengeRepository.Purpose purpose, String mfaId,
+                          Long candidateStep, String recoveryHash) {
         try {
             if (users.findAnyForUpdate(userId) == null) return false;
             var challenge = challenges.lockActiveForUpdate(challengeId, userId, clientId,
-                    MfaChallengeRepository.Purpose.LOGIN, sessionId);
+                    purpose, sessionId);
             if (challenge.isEmpty()) return false;
             UserMfaEntity stored = mfaRecords.findForUpdate(userId, mfaId);
             if (stored == null || !stored.enabled()) return false;

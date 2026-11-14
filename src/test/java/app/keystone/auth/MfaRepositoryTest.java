@@ -31,6 +31,8 @@ class MfaRepositoryTest {
                 mfaId, 1, UUID.randomUUID().toString(), List.of("a".repeat(64))));
         assertThrows(IllegalArgumentException.class, () -> repository.consumeLoginTotp(USER_ID, challengeId, "web", null, mfaId, -1));
         assertThrows(IllegalArgumentException.class, () -> repository.consumeLoginRecovery(USER_ID, challengeId, "web", null, mfaId, "bad"));
+        assertThrows(IllegalArgumentException.class, () -> repository.consumeStepUpTotp(USER_ID, challengeId, "web", UUID.randomUUID().toString(), mfaId, -1));
+        assertThrows(IllegalArgumentException.class, () -> repository.consumeStepUpRecovery(USER_ID, challengeId, "web", UUID.randomUUID().toString(), mfaId, "bad"));
     }
 
     @Test

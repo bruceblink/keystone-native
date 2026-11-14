@@ -106,4 +106,12 @@ public class RefreshTokenEntity {
         if (reusedAt == null) reusedAt = at;
         revoke(at);
     }
+
+    /** 将当前刷新记录绑定到新的短时访问令牌；刷新摘要和令牌族保持不变。 */
+    void replaceAccessToken(String replacementId, Instant accessExpiry) {
+        if (replacementId == null || replacementId.isBlank()) throw new IllegalArgumentException("accessTokenId is required");
+        if (accessExpiry == null || !accessExpiry.isAfter(Instant.now())) throw new IllegalArgumentException("access expiry must be in the future");
+        this.accessTokenId = replacementId;
+        this.accessExpiresAt = accessExpiry;
+    }
 }

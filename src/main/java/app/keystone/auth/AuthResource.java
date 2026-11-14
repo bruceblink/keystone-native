@@ -155,6 +155,77 @@ public class AuthResource {
         return tokenResponse;
     }
 
+    /** 为当前人类会话创建绑定 sid/client_id 的短期 step-up 请求。 */
+    @POST @Path("/mfa/step-up") @RequiresPermission("mfa:manage") @RejectApiKey
+    public Response beginMfaStepUp(MfaStepUpRequest request) {
+        var current = currentHumanSession();
+        try {
+            String contextHash = request == null ? null : request.contextHash();
+            var challenge = mfa.beginStepUp(current.userId(), current.clientId(), current.sessionId(), contextHash);
+            return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(challenge)).build();
+        } catch (IllegalArgumentException e) {
+            return Response.status(422).entity(ApiResponse.error(e.getMessage())).build();
+        } catch (IllegalStateException e) {
+            if ("MFA is not enabled".equals(e.getMessage())) {
+                return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error(e.getMessage())).build();
+            }
+            return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("MFA state is unavailable")).build();
+        }
+    }
+
+    /** 消费当前会话的 step-up 请求，并签发不含 refresh token 的短时 AAL2 访问令牌。 */
+    @POST @Path("/mfa/step-up/verify") @RequiresPermission("mfa:manage") @RejectApiKey
+    public Response verifyMfaStepUp(MfaCodeRequest request, @HeaderParam("X-Forwarded-For") String ipAddress) {
+        if (request == null || request.challengeId() == null || request.code() == null) {
+            return Response.status(422).entity(ApiResponse.error("challengeId and code are required")).build();
+        }
+        var current = currentHumanSession();
+        String clientAddress = clientAddresses.resolve(routingContext, ipAddress);
+        MfaService.LoginVerification verification;
+        try {
+            verification = mfa.verifyStepUp(current.userId(), request.challengeId(), current.clientId(),
+                    current.sessionId(), request.code(), clientAddress).orElse(null);
+        } catch (IllegalArgumentException e) {
+            return Response.status(422).entity(ApiResponse.error(e.getMessage())).build();
+        } catch (IllegalStateException e) {
+            return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("MFA state is unavailable")).build();
+        }
+        if (verification == null) {
+            return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build();
+        }
+
+        UserRepository.AuthUser user;
+        try {
+            user = users.findAuthUser(current.userId()).orElse(null);
+        } catch (IllegalStateException e) {
+            return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build();
+        }
+        if (user == null) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build();
+        try {
+            if (!mfaSessions.markVerified(current.sessionId(), current.userId(), current.clientId(),
+                    verification.assurance(), verification.amr())) {
+                return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build();
+            }
+        } catch (IllegalStateException e) {
+            return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build();
+        }
+        String replacementAccessTokenId = app.keystone.identity.UuidValues.v7();
+        try {
+            var token = tokens.issue(user, null, replacementAccessTokenId, current.sessionId(), current.clientId(),
+                    null, java.time.Instant.now(), verification.assurance(), verification.amr());
+            if (!sessions.replaceAccessTokenId(current.accessTokenId(), current.userId(), current.sessionId(), replacementAccessTokenId)) {
+                return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build();
+            }
+            return Response.ok(ApiResponse.ok(java.util.Map.of(
+                    "accessToken", token.accessToken(),
+                    "expiresIn", token.expiresIn(),
+                    "authenticationLevel", verification.assurance(),
+                    "amr", verification.amr()))).build();
+        } catch (IllegalStateException e) {
+            return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("token service is unavailable")).build();
+        }
+    }
+
     /** 为当前已登录的人类用户创建待验证 TOTP enrollment。 */
     @POST @Path("/mfa/enroll") @RequiresPermission("mfa:manage") @RequiresMfaStepUp @RejectApiKey
     public Response beginMfaEnrollment() {
@@ -242,6 +313,7 @@ public class AuthResource {
     public record InitialPasswordRequest(String username, String currentPassword, String newPassword) {}
     public record MfaRequired(String challengeId, String clientId, java.time.Instant expiresAt) {}
     public record LoginMfaRequest(String username, String challengeId, String code, String clientId, Boolean forceLogin) {}
+    public record MfaStepUpRequest(String contextHash) {}
     public record MfaCodeRequest(String challengeId, String code) {}
     public record MfaPolicyRequest(Boolean required) {}
     public record CurrentPasswordRequest(String currentPassword) {}
@@ -251,9 +323,12 @@ public class AuthResource {
         if (identity == null || identity.isAnonymous() || !(identity.getPrincipal() instanceof JsonWebToken jwt)) throw new jakarta.ws.rs.NotAuthorizedException("authentication is required");
         String sessionId = claimText(jwt, "sid");
         String clientId = claimText(jwt, "client_id");
+        String accessTokenId = claimText(jwt, "jti");
         String userId = claimUuid(jwt, "userId");
-        if (userId == null || sessionId == null || clientId == null) throw new jakarta.ws.rs.NotAuthorizedException("authentication session is incomplete");
-        return new CurrentHumanSession(userId, sessionId, clientId);
+        if (userId == null || sessionId == null || clientId == null || accessTokenId == null || accessTokenId.isBlank()) {
+            throw new jakarta.ws.rs.NotAuthorizedException("authentication session is incomplete");
+        }
+        return new CurrentHumanSession(userId, sessionId, clientId, accessTokenId);
     }
 
     private static String claimText(JsonWebToken jwt, String name) { Object value = JwtClaims.get(jwt, name); return value == null ? null : value.toString(); }
@@ -263,5 +338,5 @@ public class AuthResource {
         try { sessions.revokeSession(sessionId); } catch (IllegalStateException ignored) { }
         return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("token service is unavailable")).build();
     }
-    private record CurrentHumanSession(String userId, String sessionId, String clientId) {}
+    private record CurrentHumanSession(String userId, String sessionId, String clientId, String accessTokenId) {}
 }
