@@ -2,7 +2,7 @@
 
 跨项目统一架构见 [`02-auth-authorization-parity-architecture.md`](02-auth-authorization-parity-architecture.md)。本文件同时记录 Native 本地实施任务和与 Keystone Phoenix 的跨项目验收要求。项目采用一次性重构，不保留旧接口、旧权限格式、旧响应封装或旧整数主键。
 
-更新日期：2026-11-14。当前代码基线为 `444fc7a`。`73d1bb9` 完成 71 项规范权限目录和生产授权调用点迁移；`31388f2` 完成用户、角色、部门及认证直接关系的 MySQL UUID 主键迁移，删除 compat/Legacy 路由；`c3b96f7` 完成岗位、菜单及直接关系的 MySQL UUID 主键迁移；`68e8c8a` 完成公告、配置、字典及直接关系的 MySQL UUID 主键迁移；`698da41` 完成任务、任务日志、登录/操作/安全日志及刷新令牌关联 ID 的 MySQL UUID 主键迁移；`a2b0c2a` 统一错误响应结构；`27c0de5` 完成全量测试夹具清理和任务日志 warning 修复；`a775ea3` 将会话、刷新令牌族、服务主体、API Key 和 MFA 身份统一为 `BINARY(16)`，并将业务 ID 生成统一为 UUIDv7；`9aeb9f5` 对齐公共资源路径和角色 UUID 路径；`645bcfd` 对齐数据范围策略；`c08b54c` 固化跨项目范围矩阵；`6720d47` 对齐 JWT 认证强度和安全事件上下文；`4e45c67` 统一运行时异常响应；`c50eef2`、`8008c65` 建立资源范围执行矩阵。已验证 `compileJava`、`quarkusBuild -x test` 和 `./gradlew clean test` 的 140 项测试通过；本地 MySQL 8.4 的 Flyway V45-V51 已成功执行并在重复启动后保持结构不变。主线已无 `is_admin` 字段。
+更新日期：2026-11-14。当前代码基线为 `6b1a586`。`73d1bb9` 完成 71 项规范权限目录和生产授权调用点迁移；`31388f2` 完成用户、角色、部门及认证直接关系的 MySQL UUID 主键迁移，删除 compat/Legacy 路由；`c3b96f7` 完成岗位、菜单及直接关系的 MySQL UUID 主键迁移；`68e8c8a` 完成公告、配置、字典及直接关系的 MySQL UUID 主键迁移；`698da41` 完成任务、任务日志、登录/操作/安全日志及刷新令牌关联 ID 的 MySQL UUID 主键迁移；`a2b0c2a` 统一错误响应结构；`27c0de5` 完成全量测试夹具清理和任务日志 warning 修复；`a775ea3` 将会话、刷新令牌族、服务主体、API Key 和 MFA 身份统一为 `BINARY(16)`，并将业务 ID 生成统一为 UUIDv7；`9aeb9f5` 对齐公共资源路径和角色 UUID 路径；`645bcfd` 对齐数据范围策略；`c08b54c` 固化跨项目范围矩阵；`6720d47` 对齐 JWT 认证强度和安全事件上下文；`4e45c67` 统一运行时异常响应；`c50eef2`、`8008c65` 建立资源范围执行矩阵；`8edad84` 和 `f7b9ce5` 完成 HTTPS/CORS、安全响应头、审计清理、限流告警和安全指标；`6b1a586` 完成 V52 持久化 JWK 注册表、旧 key 验签保留和定时清理。已验证 `./gradlew clean test --rerun-tasks` 的 147 项测试通过、`quarkusBuild -x test` 通过；本地 MySQL 8.4 的 Flyway V45-V52 已成功执行并在重复启动后保持结构不变。主线已无 `is_admin` 字段。
 
 ## 跨项目统一主线
 
@@ -44,7 +44,7 @@ Native 与 Phoenix 分别实现，但必须遵守统一架构中的 Principal、
 
 上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `type=access`、`aal`、`amr`、`kid`。`GET /api/.well-known/jwks.json` 发布当前 RSA 公钥；当前实现支持通过 `JWT_JWK_KEYS` 发布多个重叠公钥，并在启用多 key 时要求 `JWT_VERIFY_PUBLIC_KEY_LOCATION` 指向 JWK Set 文件或 HTTPS JWK Set URL。安全事件已补充 `session_id`、批准范围和 `request_id`。
 
-当前验证边界仍然明确：本地 MySQL 8.4.13 已完成 Flyway V51、健康检查、JWK、登录、刷新、旧令牌重放撤销、注销、非法 UUID 统一错误响应、基础数据范围矩阵、API Key 签发/业务访问/撤销和 MFA TOTP/恢复码/step-up HTTP 验收。MFA enrollment 时间步重放、恢复码重复消费和 API Key 人类认证入口拒绝均已验证。MFA enrollment、TOTP、恢复码和认证请求消费使用单数据库事务；成功后的限流清理采用提交后尽力处理，清理失败只记录不改变成功响应。`TRUSTED_PROXY_CIDRS` 为空时忽略 `X-Forwarded-For`，仅在 TCP 远端属于配置网段且转发链合法时使用原始客户端地址。账户锁定、刷新、API Key 和 MFA 并发、数据库故障回滚、代理链部署、OIDC、WebAuthn、密钥 registry 轮换和跨租户边界仍未完成。
+当前验证边界仍然明确：本地 MySQL 8.4.13 已完成 Flyway V52、健康检查、JWK 注册表、登录、刷新、旧令牌重放撤销、注销、非法 UUID 统一错误响应、资源范围矩阵、API Key 签发/业务访问/撤销和 MFA TOTP/恢复码/step-up HTTP 验收。MFA enrollment 时间步重放、恢复码重复消费、API Key 人类认证入口拒绝、HTTPS/CORS 配置校验和安全指标接口均已验证。MFA enrollment、TOTP、恢复码和认证请求消费使用单数据库事务；成功后的限流清理采用提交后尽力处理，清理失败只记录不改变成功响应。`TRUSTED_PROXY_CIDRS` 为空时忽略 `X-Forwarded-For`，仅在 TCP 远端属于配置网段且转发链合法时使用原始客户端地址。刷新、API Key 和 MFA 并发、数据库故障回滚、真实代理 TLS 终止链、OIDC 和 WebAuthn 仍未完成。
 
 HTTP 安全策略已集中到 Quarkus 配置和 JAX-RS 过滤器：生产 profile 默认要求 HTTPS 并发送 HSTS，Docker Compose 本地入口显式关闭 HTTPS 强制以保持 HTTP 验收；CORS 默认关闭，启用时必须配置明确来源，禁止通配符来源配合凭据；API JSON 响应统一发送 `nosniff`、`DENY`、`no-referrer`、`Permissions-Policy`、`Cross-Origin-Resource-Policy` 和 `no-store`。安全事件清理按保留天数、最大事件数和单次批量执行，认证失败、限流阻断和清理结果提供运行期计数与审计读取接口。尚未完成真实生产 TLS 证书、反向代理链和浏览器 CSRF/Cookie 场景验收。
 
@@ -143,12 +143,12 @@ Flyway 继续负责数据库结构迁移，Hibernate ORM 设置为不自动创�
 - [x] 增加服务主体和签发者范围模型，禁止用角色名称充当 scope。
 - [x] 增加 API Key 列表、轮换、幂等撤销、过期上限和使用时间更新限速。
 - [x] 按 IP 和用户名双维度限制登录失败请求，并在成功登录后清除计数。
-- [x] 增加 API Key 按权限码的接口测试和日志脱敏测试用例；Quarkus/MySQL 运行验收仍待执行。
-- [x] 增加失败登录、账户锁定指数退避、管理员 MFA 第一版运行边界和 MFA 主体/IP 双维度限流；API Key 猜测专项和生产运行验收仍待执行。
+- [x] 增加 API Key 按权限码的接口测试和日志脱敏测试用例；Quarkus/MySQL 签发、业务访问、撤销和过期运行验收已完成。
+- [x] 增加失败登录、账户锁定指数退避、管理员 MFA 第一版运行边界和 MFA 主体/IP 双维度限流；API Key 猜测专项并发和生产故障验收仍待执行。
 
 当前已增加密码策略、第五次失败起指数账户锁定、成功登录清零失败计数、密码更新重置锁定状态并递增 `credential_version`，并在新登录入口增加数据库限流。API Key 认证失败现在按来源地址和凭据摘要双维度限流，失败窗口只保存哈希键；成功认证只清理当前凭据桶，来源地址桶保留到窗口结束。`sys_security_event` 已统一记录 API Key 认证结果和权限拒绝结果，并保存非秘密 `credential_id` 和来源地址，事件不保存令牌、密码或完整 API Key。管理员 MFA 已完成第一版 TOTP enrollment、登录验证请求、恢复码、策略开关和主体/IP 双维度失败限流；生产运行验收仍未完成。
 
-当前代码已完成 API Key 的统一 Quarkus 身份入口、服务主体回填、scope 格式和签发者权限交集、元数据列表、轮换、幂等撤销、操作日志记录和 `last_used_at` 最小更新间隔。P0 仍未完成 API Key 猜测专项验收、完整 HTTP 接口运行验收和 MySQL 并发验收，因此不能标记为完成。
+当前代码已完成 API Key 的统一 Quarkus 身份入口、服务主体回填、scope 格式和签发者权限交集、元数据列表、轮换、幂等撤销、操作日志记录、`last_used_at` 最小更新间隔、API Key 人类入口拒绝和真实 HTTP 生命周期验收。P0 仍未完成 API Key 猜测专项并发验收和数据库故障验收，因此保留为部分完成。
 
 ### P1：用户会话
 
@@ -196,7 +196,7 @@ P1 当前实现已完成独立会话状态、会话 ID、令牌族、空闲期�
 - [x] 要求外部 JWT 公钥和 `kid` 密钥标识，删除仓库内生产公钥 fallback。
 - [ ] 增加 OIDC 授权码 + PKCE；校验 `state`、`nonce`、issuer、audience 和时间窗口。
 - [x] 发布 JWK Set，使用外部 RSA 公钥和 `kid`，公钥不可用时返回 `503`。
-- [x] 增加 `JWT_JWK_KEYS` 多 key JWK 发布和启动位置检查；启用多 key 时必须配置真正的 JWK Set 文件或 HTTPS JWK URL，key registry、旧 key 到期清理和旧 key HTTP 验收仍未完成。
+- [x] 增加 `JWT_JWK_KEYS` 多 key JWK 发布和启动位置检查；启用多 key 时必须配置真正的 JWK Set 文件或 HTTPS JWK URL。V52 已增加 `sys_jwt_key_registry`、ACTIVE/RETIRING 状态、过期清理和标准 JWK HTTP 验收；真实密钥轮换演练仍待独立执行。
 
 #### 管理员 TOTP 第一版实现和限制
 
@@ -223,7 +223,7 @@ TOTP 使用 RFC 6238 的 30 秒时间步、六位数字和允许前后一个时�
 
 API Key、角色、用户、在线会话、MFA enrollment/策略变更和恢复码轮换均已接入 step-up。恢复码轮换还必须提供当前密码。API Key 不能执行这些人类用户 MFA 管理路径。
 
-实现验收必须证明：未完成 enrollment 的用户不获得强制 MFA 令牌；正确 TOTP 才能创建会话；错误、过期、错误客户端和重复认证请求统一失败；恢复码只能消费一次；同一时间步并发请求只有一次成功；密钥、恢复码和完整 `otpauth` 数据不出现在日志、错误响应或数据库明文。当前已完成单事务代码、静态编译、固定向量和输入边界 smoke；MySQL 8.4 迁移、并发消费、故障回滚和真实 HTTP 运行验收仍未完成，因此 MFA 不能标记为生产完成。
+实现验收必须证明：未完成 enrollment 的用户不获得强制 MFA 令牌；正确 TOTP 才能创建会话；错误、过期、错误客户端和重复认证请求统一失败；恢复码只能消费一次；同一时间步并发请求只有一次成功；密钥、恢复码和完整 `otpauth` 数据不出现在日志、错误响应或数据库明文。当前已完成单事务代码、固定向量、输入边界 smoke、MySQL 8.4 迁移和真实 HTTP 生命周期验收；并发消费、故障回滚和真实部署链仍未完成，因此 MFA 仍保留为部分完成。
 
 ### P4：运营与发布
 

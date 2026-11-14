@@ -89,9 +89,9 @@ scope_allowed(principal, scope, resource, context)
 - 密码会话：只用于人类用户登录，创建独立会话和刷新令牌族。
 - API Key：使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存哈希、前缀、主体、范围、过期和撤销状态。明文只返回一次。有效范围是请求范围、签发者可授予范围和主体当前权限的交集。API Key 不能访问密码修改、MFA 或 API Key 管理路径。
 - MFA：第一版使用 TOTP、一次性恢复码和短期认证请求。敏感写操作需要 AAL2 step-up。并发消费必须只有一次成功。
-- 外部身份：后续使用 OIDC Authorization Code + PKCE，并校验 `state`、`nonce`、issuer、audience 和时间窗口。
+- 外部身份：后续使用 OIDC Authorization Code + PKCE，并校验 `state`、`nonce`、issuer、audience 和时间窗口。本轮不实现 OIDC、WebAuthn 或 FIDO；它们属于需要真实身份提供商和浏览器验收的独立发布批次。
 
-两个项目的资源路径存在语言适配边界：Phoenix 管理资源使用 `/api/v1/system/*`，Native 使用 `/api/v1/{users,roles,departments,...}`；两者共享 Principal、权限、范围、错误和审计语义，不提供旧根路径。认证统一使用 `/api/v1/auth/*`；JWK Set 保留标准路径 `/api/.well-known/jwks.json`。
+两个项目的资源路径存在语言适配边界：Phoenix 管理资源使用 `/api/v1/system/*`，Native 使用 `/api/v1/{users,roles,departments,...}`；两者共享 Principal、权限、范围、错误和审计语义，不提供旧根路径。认证统一使用 `/api/v1/auth/*`；JWK Set 保留标准路径 `/api/.well-known/jwks.json`。两项目均把公开 RSA key 登记到持久化 registry，使用 `ACTIVE/RETIRING` 保留窗口、过期清理和未知 `kid` 拒绝；私钥只由运行时密钥配置提供。
 
 ## Phoenix 适配边界
 
