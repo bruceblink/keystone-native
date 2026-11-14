@@ -3,7 +3,6 @@ package app.keystone.http;
 import app.keystone.ApiResponse;
 import app.keystone.auth.ClientAddressResolver;
 import io.vertx.ext.web.RoutingContext;
-import jakarta.annotation.PostConstruct;
 import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Priorities;
@@ -20,35 +19,31 @@ import org.eclipse.microprofile.config.ConfigProvider;
 @Provider
 @Priority(Priorities.AUTHENTICATION)
 public class HttpsRequestFilter implements ContainerRequestFilter {
-    boolean requireHttps;
-
-    boolean trustForwardedProto;
-
     @Inject
     ClientAddressResolver clientAddresses;
 
     @Context
     RoutingContext routingContext;
 
-    /** 在运行时读取安全开关，允许同一个 native 镜像按部署环境切换入口策略。 */
-    @PostConstruct
-    void loadRuntimeConfiguration() {
-        var config = ConfigProvider.getConfig();
-        requireHttps = runtimeBoolean(config, "keystone.security.http.require-https", "KEYSTONE_SECURITY_HTTP_REQUIRE_HTTPS", "HTTP_REQUIRE_HTTPS");
-        trustForwardedProto = runtimeBoolean(config, "keystone.security.http.trust-forwarded-proto", "KEYSTONE_SECURITY_HTTP_TRUST_FORWARDED_PROTO", "HTTP_TRUST_FORWARDED_PROTO");
-    }
-
-    private static boolean runtimeBoolean(org.eclipse.microprofile.config.Config config, String property, String... environmentNames) {
+    /**
+     * 每次请求读取入口开关，避免 native image 在构建阶段初始化 CDI 过滤器时固化环境变量。
+     * 环境变量优先于 MicroProfile 配置，便于同一个镜像在不同部署环境使用不同入口策略。
+     */
+    private static boolean runtimeBoolean(String property, String... environmentNames) {
         for (String environmentName : environmentNames) {
             String value = System.getenv(environmentName);
             if (value != null) return Boolean.parseBoolean(value);
         }
-        return config.getOptionalValue(property, Boolean.class).orElse(false);
+        return ConfigProvider.getConfig().getOptionalValue(property, Boolean.class).orElse(false);
     }
 
     @Override
     public void filter(ContainerRequestContext requestContext) {
-        if (!requireHttps || isHttps(requestContext)) return;
+        if (!runtimeBoolean(
+                        "keystone.security.http.require-https",
+                        "KEYSTONE_SECURITY_HTTP_REQUIRE_HTTPS",
+                        "HTTP_REQUIRE_HTTPS")
+                || isHttps(requestContext)) return;
         throw new WebApplicationException(Response.status(426)
                 .type(MediaType.APPLICATION_JSON)
                 .entity(ApiResponse.error("HTTPS is required"))
@@ -58,7 +53,11 @@ public class HttpsRequestFilter implements ContainerRequestFilter {
     private boolean isHttps(ContainerRequestContext requestContext) {
         String scheme = requestContext.getUriInfo().getRequestUri().getScheme();
         if ("https".equalsIgnoreCase(scheme)) return true;
-        if (!trustForwardedProto || !clientAddresses.isTrustedProxy(remoteAddress())) return false;
+        if (!runtimeBoolean(
+                        "keystone.security.http.trust-forwarded-proto",
+                        "KEYSTONE_SECURITY_HTTP_TRUST_FORWARDED_PROTO",
+                        "HTTP_TRUST_FORWARDED_PROTO")
+                || !clientAddresses.isTrustedProxy(remoteAddress())) return false;
         String forwarded = requestContext.getHeaderString("X-Forwarded-Proto");
         if (forwarded == null || forwarded.isBlank()) return false;
         return "https".equalsIgnoreCase(forwarded.split(",", -1)[0].trim());
