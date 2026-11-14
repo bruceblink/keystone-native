@@ -40,6 +40,14 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         return user == null ? Optional.empty() : Optional.of(user.toAuthUser());
     }
 
+    /** 通过已校验的 OIDC issuer 和 subject 查找本地启用用户。 */
+    @Transactional
+    public Optional<UserRepository.AuthUser> findAuthUserByOidc(String issuer, String subject) {
+        if (issuer == null || issuer.isBlank() || subject == null || subject.isBlank()) return Optional.empty();
+        ApiKeyUserEntity user = find("oidcIssuer = ?1 and oidcSubject = ?2 and enabled = true", issuer, subject).firstResult();
+        return user == null ? Optional.empty() : Optional.of(user.toAuthUser());
+    }
+
     /** 在一个 ORM 事务中创建用户并绑定启用角色。 */
     @Transactional
     public User createUser(String username, String passwordHash, String displayName, String deptId, String postId,

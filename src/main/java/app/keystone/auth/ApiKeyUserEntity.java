@@ -73,6 +73,12 @@ public class ApiKeyUserEntity {
     @Column(length = 128)
     private String email;
 
+    @Column(name = "oidc_issuer", length = 255)
+    private String oidcIssuer;
+
+    @Column(name = "oidc_subject", length = 255)
+    private String oidcSubject;
+
     @Column(name = "phone_number", length = 32)
     private String phoneNumber;
 
@@ -138,6 +144,14 @@ public class ApiKeyUserEntity {
 
     String displayName() {
         return displayName;
+    }
+
+    String oidcIssuer() {
+        return oidcIssuer;
+    }
+
+    String oidcSubject() {
+        return oidcSubject;
     }
 
     String loginIp() {
