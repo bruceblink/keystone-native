@@ -21,7 +21,7 @@ public class OperationLogResource {
     @Inject SecurityIdentity identity;
     @Inject AuthorizationService authorization;
 
-    @GET @RequiresPermission("audit:read")
+    @GET @RequiresPermission("operation-log:read")
     public ApiResponse<OperationLogRepository.Page> list(@QueryParam("page") Integer page, @QueryParam("size") Integer size, @QueryParam("actor") String actor, @QueryParam("action") String action, @QueryParam("resource") String resource) { return ApiResponse.ok(logs.list(context(), page == null ? 1 : page, size == null ? 20 : size, actor, action, resource)); }
 
     @GET @Path("/export") @Produces(ExcelExporter.CONTENT_TYPE) @RequiresPermission("operation-log:export")

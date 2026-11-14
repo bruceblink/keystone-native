@@ -124,12 +124,12 @@ API Key 使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存 SHA-256 �
 - `POST /api/v1/auth/login`：输入用户名、密码、客户端标识和设备信息。成功返回 `accessToken`、`refreshToken`、`tokenType`、`expiresIn`、`refreshExpiresIn`、`sessionId` 和 `subject`。
 - `POST /api/v1/auth/refresh`：只接受当前刷新令牌。成功后旧令牌立即失效并返回新令牌；旧令牌重用返回 `401`，并撤销同一令牌族。
 - `POST /api/v1/auth/logout`：必须使用当前访问令牌。默认撤销当前会话；`all=true` 需要更高权限并撤销主体的全部会话。
-- `POST /api/v1/auth/password`：需要当前密码或已验证的 MFA。成功后增加 `credential_version`，撤销全部会话和 API Key。
-- `GET /api/v1/auth/sessions`、`DELETE /api/v1/auth/sessions/{id}`：查询和撤销当前主体的会话。管理员可以按主体查询，但必须记录审计事件。
+- `PUT /api/v1/profile/password`：需要当前密码或已验证的 MFA。成功后撤销受影响的会话和令牌。
+- `GET /api/v1/monitor/onlineUsers`、`DELETE /api/v1/monitor/onlineUser/{sessionId}`：查询和撤销在线会话。管理员按权限查询，撤销操作需要 step-up 并记录审计事件；这两个入口使用 `online-session:read` 和 `online-session:revoke`。
 
 ### API Key
 
-- `POST /api/v1/api-keys`：管理员或具有 `api-key:create` 权限的主体签发。请求包括 `name`、`scopes`、`expiresAt` 和可选的 `subjectId`。
+- `POST /api/v1/api-keys`：当前人类主体或具有 `api-key:create` 权限的主体为自己签发。请求包括 `name`、`scopes` 和 `expiresAt`；当前实现不接受跨主体 `subjectId`。
 - `GET /api/v1/api-keys`：只返回 ID、前缀、名称、范围、状态、创建时间、过期时间和最后使用时间。
 - `DELETE /api/v1/api-keys/{id}`：撤销 key。撤销操作幂等，并记录创建者和操作者。
 - 调用格式为 `Authorization: ApiKey <key>`。`<key>` 只在创建响应中返回一次。

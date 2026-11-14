@@ -60,9 +60,9 @@ class ApiKeyResourceTest extends AuthTestFixture {
     }
 
     @Test
-    void apiKeyWithReadScopeCanReadAuditButCannotUseAnUnlistedScope() {
+    void apiKeyWithOperationLogReadScopeCanReadOperationLogsButCannotUseAnUnlistedScope() {
         String admin = login();
-        var issued = issue(admin, "audit-read", "audit:read");
+        var issued = issue(admin, "operation-log-read", "operation-log:read");
         String key = issued.path("data.apiKey");
         String id = issued.path("data.id");
 
@@ -79,7 +79,7 @@ class ApiKeyResourceTest extends AuthTestFixture {
     @Test
     void operationLogDeleteRequiresDeletePermission() {
         String admin = login();
-        var readOnly = issue(admin, "operation-log-read", "audit:read");
+        var readOnly = issue(admin, "operation-log-read", "operation-log:read");
         String readKey = readOnly.path("data.apiKey");
         String readId = readOnly.path("data.id");
 
@@ -101,7 +101,7 @@ class ApiKeyResourceTest extends AuthTestFixture {
     @Test
     void rotatingAnApiKeyRevokesTheOldSecretAndKeepsTheApprovedScope() {
         String admin = login();
-        var issued = issue(admin, "rotation", "audit:read");
+        var issued = issue(admin, "rotation", "operation-log:read");
         String oldKey = issued.path("data.apiKey");
         String oldId = issued.path("data.id");
         var rotated = given().auth().oauth2(admin).contentType(JSON)
@@ -125,7 +125,7 @@ class ApiKeyResourceTest extends AuthTestFixture {
     @Test
     void expiredApiKeyIsRejectedAndItsSecretIsNeverReturnedByMetadataOrAudit() throws Exception {
         String admin = login();
-        var issued = issue(admin, "expiry-redaction", "audit:read");
+        var issued = issue(admin, "expiry-redaction", "operation-log:read");
         String key = issued.path("data.apiKey");
         String id = issued.path("data.id");
         String prefix = issued.path("data.prefix");

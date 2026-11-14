@@ -17,7 +17,7 @@ class SecurityOperationsReportTest extends AuthTestFixture {
     void administratorCanReadRedactedOperationsReport() {
         String token = login();
         var issued = given().auth().oauth2(token).contentType(JSON)
-                .body("{\"name\":\"report-rotation\",\"scopes\":[\"audit:read\"]}")
+                .body("{\"name\":\"report-rotation\",\"scopes\":[\"operation-log:read\"]}")
                 .when().post("/v1/api-keys")
                 .then().statusCode(201).extract();
         String secret = issued.path("data.apiKey");

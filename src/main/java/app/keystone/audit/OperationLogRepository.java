@@ -45,7 +45,7 @@ public class OperationLogRepository implements PanacheRepositoryBase<OperationLo
 
     /** 使用 HQL 条件和参数绑定查询，避免拼接 SQL。 */
     public Page list(AuthorizationContext context, int page, int size, String actor, String action, String resource) {
-        authorization.require(context, "audit:read", "audit");
+        authorization.require(context, "operation-log:read", "audit");
         int safePage = Math.max(1, page);
         int safeSize = Math.min(100, Math.max(1, size));
         PanacheQuery<OperationLogEntity> query = query(actor, action, resource);

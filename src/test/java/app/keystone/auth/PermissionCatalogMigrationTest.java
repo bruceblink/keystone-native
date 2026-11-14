@@ -90,6 +90,18 @@ class PermissionCatalogMigrationTest {
         assertFalse(PermissionCatalog.contains("profile:read"));
     }
 
+    @Test
+    void sharedResourceEndpointsUseTheCrossProjectPermissionNames() throws Exception {
+        String monitor = Files.readString(Path.of("src/main/java/app/keystone/monitor/MonitorResource.java"));
+        String operationLogs = Files.readString(Path.of("src/main/java/app/keystone/audit/OperationLogResource.java"));
+
+        assertTrue(monitor.contains("@Path(\"/onlineUsers\") @RequiresPermission(\"online-session:read\")"));
+        assertTrue(monitor.contains("@Path(\"/onlineUser/{sessionId}\") @RequiresPermission(\"online-session:revoke\")"));
+        assertTrue(monitor.contains("@Path(\"/serverInfo\") @RequiresPermission(\"server:read\")"));
+        assertTrue(monitor.contains("@Path(\"/cacheInfo\") @RequiresPermission(\"cache:refresh\")"));
+        assertTrue(operationLogs.contains("@GET @RequiresPermission(\"operation-log:read\")"));
+    }
+
     /** Clean-break 主线不保留旧兼容资源、旧兼容测试或 compat 包。 */
     @Test
     void cleanBreakRemovesLegacyResourcesAndTests() throws Exception {

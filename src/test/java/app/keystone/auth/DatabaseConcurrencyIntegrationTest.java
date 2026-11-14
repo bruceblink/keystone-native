@@ -76,7 +76,7 @@ class DatabaseConcurrencyIntegrationTest {
     void oneApiKeyRotationWinsWhenTwoMySqlTransactionsStartTogether() throws Exception {
         UserRepository.AuthUser admin = admin();
         ApiKeyRepository.IssuedApiKey issued = keys.issue(admin.id(), "concurrency-test",
-                List.of("audit:read"), null);
+                List.of("operation-log:read"), null);
         apiKeyIds.add(issued.id());
 
         List<Object> results = runTogether(() -> {
