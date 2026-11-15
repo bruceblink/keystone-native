@@ -17,6 +17,7 @@ public enum ErrorCode {
     INVALID_CREDENTIAL("invalid_credential", 401, "凭据无效或已过期", RetryAdvice.NEVER, "error.invalid_credential", true),
     AUTHENTICATION_REQUIRED("authentication_required", 401, "请求缺少有效认证", RetryAdvice.NEVER, "error.authentication_required", true),
     MFA_REQUIRED("mfa_required", 401, "需要完成多因素认证", RetryAdvice.AFTER_CORRECTION, "error.mfa_required", true),
+    MFA_STEP_UP_REQUIRED("mfa_step_up_required", 403, "需要完成当前操作的多因素认证升级", RetryAdvice.AFTER_CORRECTION, "error.mfa_step_up_required", true),
     MFA_INVALID_CODE("mfa_invalid_code", 401, "多因素认证验证码无效", RetryAdvice.AFTER_CORRECTION, "error.mfa_invalid_code", true),
     MFA_CHALLENGE_INVALID("mfa_challenge_invalid", 401, "多因素认证请求无效或已过期", RetryAdvice.AFTER_CORRECTION, "error.mfa_challenge_invalid", true),
     MFA_STATE_CONFLICT("mfa_state_conflict", 409, "多因素认证状态不允许当前操作", RetryAdvice.AFTER_CORRECTION, "error.mfa_state_conflict", true),
