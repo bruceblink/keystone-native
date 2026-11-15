@@ -14,6 +14,8 @@ Native 的任务触发接口已经明确返回 `data.triggered=true` 表示请�
 
 本轮仍不把静态契约测试当作完整发布验收。剩余工作包括双后端逐页编辑、加载、错误、分页和批量写操作矩阵，URL 查询状态、可视浏览器窗口，以及 OIDC、硬件 Passkey、CSRF/Cookie、多节点和生产代理检查。
 
+admin-web `4ccc35d` 已为 Users、Jobs、LoginLogs、OperationsAudit 保存筛选、分页和任务详情状态到命名 URL 参数；Native 接口字段和分页规则未改变，继续使用同一页面验收。
+
 ## 2026-11-15 当前审查与下一轮主线
 
 本轮以 Native `779d80b`、Phoenix `79ce1dc` 和 admin-web `86ea75a` 为对齐基线。两个后端归一化后均有 108 条 `/api/v1` 接口（含 `/api/v1/health`），另有标准 JWK Set 路径 1 条；方法分布为 `GET 42`、`POST 29`、`PUT 20`、`DELETE 17`。Native-only、Phoenix-only 和重复 `HTTP method + path` 均为 0。Native 的动态权限目录已经可供 API Key 配置页面逐项选择，API Key 仅保留统一的签发入口，旧审计日志删除接口和无对应接口的审计权限标识已删除。
