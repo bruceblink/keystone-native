@@ -30,10 +30,15 @@ public class DictionaryTypeEntity {
     }
 
     DictionaryTypeEntity(String code, String name) {
+        this(code, name, null);
+    }
+
+    /** 新建字典类型时，显式 false 才停用，兼容旧请求的省略字段。 */
+    DictionaryTypeEntity(String code, String name, Boolean enabled) {
         this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.code = code;
         this.name = name;
-        this.enabled = true;
+        this.enabled = enabled == null || enabled;
     }
 
     String id() {

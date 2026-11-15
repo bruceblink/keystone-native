@@ -38,11 +38,16 @@ public class SystemConfigEntity {
     }
 
     SystemConfigEntity(String key, String value, String description) {
+        this(key, value, description, null);
+    }
+
+    /** 新建配置时显式 false 才停用，兼容旧客户端未提供 enabled 的请求。 */
+    SystemConfigEntity(String key, String value, String description, Boolean enabled) {
         this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.key = key;
         this.value = value;
         this.description = description;
-        this.enabled = true;
+        this.enabled = enabled == null || enabled;
     }
 
     void update(String newValue, String newDescription, Boolean newEnabled) {

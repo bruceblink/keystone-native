@@ -24,7 +24,13 @@ public class SystemConfigOrmRepository implements PanacheRepositoryBase<SystemCo
 
     @Transactional
     public SystemConfig createConfig(String key, String value, String description) {
-        var config = new SystemConfigEntity(key, value, description);
+        return createConfig(key, value, description, null);
+    }
+
+    /** 在 ORM 事务中保存系统配置的初始启用状态。 */
+    @Transactional
+    public SystemConfig createConfig(String key, String value, String description, Boolean enabled) {
+        var config = new SystemConfigEntity(key, value, description, enabled);
         persistAndFlush(config);
         return config.toModel();
     }

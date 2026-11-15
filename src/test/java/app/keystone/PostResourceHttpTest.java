@@ -18,10 +18,11 @@ class PostResourceHttpTest extends AuthTestFixture {
         try {
             String code = "HTTP_POST_" + System.nanoTime();
             postId = given().auth().oauth2(admin).contentType(JSON)
-                    .body("{\"code\":\"" + code + "\",\"name\":\"岗位测试\",\"sortOrder\":10}")
+                    .body("{\"code\":\"" + code + "\",\"name\":\"岗位测试\",\"sortOrder\":10,\"enabled\":false}")
                     .when().post("/v1/posts")
                     .then().statusCode(201)
                     .body("data.code", is(code))
+                    .body("data.enabled", is(false))
                     .extract().path("data.id");
 
             given().auth().oauth2(admin).contentType(JSON)

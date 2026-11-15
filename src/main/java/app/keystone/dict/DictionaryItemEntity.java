@@ -40,12 +40,17 @@ public class DictionaryItemEntity {
     }
 
     DictionaryItemEntity(DictionaryTypeEntity type, String value, String label, int sortOrder) {
+        this(type, value, label, sortOrder, null);
+    }
+
+    /** 新建字典项时保留请求状态，省略 enabled 时默认启用。 */
+    DictionaryItemEntity(DictionaryTypeEntity type, String value, String label, int sortOrder, Boolean enabled) {
         this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.type = type;
         this.value = value;
         this.label = label;
         this.sortOrder = sortOrder;
-        this.enabled = true;
+        this.enabled = enabled == null || enabled;
     }
 
     String id() {

@@ -22,18 +22,19 @@ class RoleResourceHttpTest extends AuthTestFixture {
         try {
             String roleCode = "HTTP_ROLE_LIFECYCLE_" + System.nanoTime();
             roleId = given().auth().oauth2(admin).contentType(JSON)
-                    .body("{\"code\":\"" + roleCode + "\",\"name\":\"Lifecycle role\"}")
+                    .body("{\"code\":\"" + roleCode + "\",\"name\":\"Lifecycle role\",\"enabled\":false}")
                     .when().post("/v1/roles")
                     .then().statusCode(201)
                     .body("data.code", is(roleCode))
+                    .body("data.enabled", is(false))
                     .extract().path("data.id");
 
             given().auth().oauth2(admin).contentType(JSON)
-                    .body("{\"name\":\"Lifecycle role updated\",\"enabled\":false}")
+                    .body("{\"name\":\"Lifecycle role updated\",\"enabled\":true}")
                     .when().put("/v1/roles/" + roleId)
                     .then().statusCode(200)
                     .body("data.name", is("Lifecycle role updated"))
-                    .body("data.enabled", is(false));
+                    .body("data.enabled", is(true));
 
             given().auth().oauth2(admin).contentType(JSON)
                     .body("{\"permissions\":[\"user:read\"]}")

@@ -24,7 +24,13 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
 
     @Transactional
     public Role createRole(String code, String name) {
-        var role = new ApiKeyRoleEntity(code.trim(), name.trim());
+        return createRole(code, name, null);
+    }
+
+    /** 在同一 ORM 事务中保存角色的初始启用状态。 */
+    @Transactional
+    public Role createRole(String code, String name, Boolean enabled) {
+        var role = new ApiKeyRoleEntity(code.trim(), name.trim(), enabled);
         persistAndFlush(role);
         return role.toRole();
     }

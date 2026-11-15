@@ -55,9 +55,18 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
     public User createUser(String username, String passwordHash, String displayName, String deptId, String postId,
                            String email, String phoneNumber, Integer sex, String avatar, String remark,
                            List<String> roleCodes) {
+        return createUser(username, passwordHash, displayName, deptId, postId, email, phoneNumber, sex,
+                avatar, remark, null, roleCodes);
+    }
+
+    /** 在同一 ORM 事务中保存用户的初始启用状态并绑定角色。 */
+    @Transactional
+    public User createUser(String username, String passwordHash, String displayName, String deptId, String postId,
+                           String email, String phoneNumber, Integer sex, String avatar, String remark,
+                           Boolean enabled, List<String> roleCodes) {
         var resolvedRoles = resolveRoles(roleCodes);
         var user = new ApiKeyUserEntity(username, passwordHash, displayName, deptId, postId,
-                email, phoneNumber, sex, avatar, remark);
+                email, phoneNumber, sex, avatar, remark, enabled);
         persistAndFlush(user);
         user.replaceRoles(resolvedRoles);
         return user.toUser();

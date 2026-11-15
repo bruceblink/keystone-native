@@ -20,9 +20,15 @@ public class DictionaryItemOrmRepository implements PanacheRepositoryBase<Dictio
 
     @Transactional
     public DictionaryItem createItem(String typeCode, String value, String label, int sortOrder) {
+        return createItem(typeCode, value, label, sortOrder, null);
+    }
+
+    /** 在 ORM 事务中保存字典项的初始启用状态。 */
+    @Transactional
+    public DictionaryItem createItem(String typeCode, String value, String label, int sortOrder, Boolean enabled) {
         DictionaryTypeEntity type = types.findEnabledByCode(typeCode);
         if (type == null) throw new java.util.NoSuchElementException("dictionary type not found");
-        var item = new DictionaryItemEntity(type, value.trim(), label.trim(), sortOrder);
+        var item = new DictionaryItemEntity(type, value.trim(), label.trim(), sortOrder, enabled);
         persistAndFlush(item);
         return item.toModel();
     }

@@ -33,11 +33,16 @@ public class DictionaryRepository {
     }
 
     public DictionaryType createType(AuthorizationContext context, String code, String name) {
+        return createType(context, code, name, null);
+    }
+
+    /** 创建字典类型时保留管理端的启用状态；省略字段仍默认启用。 */
+    public DictionaryType createType(AuthorizationContext context, String code, String name, Boolean enabled) {
         authorization.require(context, "dictionary:create", "dictionary");
         require(code, "code");
         require(name, "name");
         try {
-            return typesRepository.createType(code, name);
+            return typesRepository.createType(code, name, enabled);
         } catch (RuntimeException e) {
             if (isUniqueConstraint(e)) throw new IllegalArgumentException("dictionary type code already exists", e);
             throw new IllegalStateException("Could not create dictionary type", e);
@@ -45,12 +50,17 @@ public class DictionaryRepository {
     }
 
     public DictionaryItem createItem(AuthorizationContext context, String typeCode, String value, String label, Integer sortOrder) {
+        return createItem(context, typeCode, value, label, sortOrder, null);
+    }
+
+    /** 创建字典项时保留管理端的启用状态；省略字段仍默认启用。 */
+    public DictionaryItem createItem(AuthorizationContext context, String typeCode, String value, String label, Integer sortOrder, Boolean enabled) {
         authorization.require(context, "dictionary:create", "dictionary");
         require(typeCode, "typeCode");
         require(value, "value");
         require(label, "label");
         try {
-            return itemsRepository.createItem(typeCode, value, label, sortOrder == null ? 0 : sortOrder);
+            return itemsRepository.createItem(typeCode, value, label, sortOrder == null ? 0 : sortOrder, enabled);
         } catch (java.util.NoSuchElementException e) {
             throw e;
         } catch (RuntimeException e) {

@@ -113,6 +113,12 @@ public class ApiKeyUserEntity {
     /** 创建用户实体；调用方必须在同一事务内绑定已经校验过的启用角色。 */
     ApiKeyUserEntity(String username, String passwordHash, String displayName, String deptId, String postId,
                      String email, String phoneNumber, Integer sex, String avatar, String remark) {
+        this(username, passwordHash, displayName, deptId, postId, email, phoneNumber, sex, avatar, remark, null);
+    }
+
+    /** 新建用户时显式 false 才停用，兼容旧调用方省略 enabled 的请求。 */
+    ApiKeyUserEntity(String username, String passwordHash, String displayName, String deptId, String postId,
+                     String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled) {
         this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.username = username;
         this.passwordHash = passwordHash;
@@ -124,7 +130,7 @@ public class ApiKeyUserEntity {
         this.sex = sex;
         this.avatar = avatar;
         this.remark = remark;
-        this.enabled = true;
+        this.enabled = enabled == null || enabled;
         this.failedLoginCount = 0;
         this.credentialVersion = 1;
         this.permissionVersion = 1;

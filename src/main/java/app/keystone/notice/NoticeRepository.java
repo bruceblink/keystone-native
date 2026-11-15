@@ -28,11 +28,17 @@ public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, jav
 
     @Transactional
     public Notice create(AuthorizationContext context, String title, String content, String type, String createdBy) {
+        return create(context, title, content, type, createdBy, null);
+    }
+
+    /** 创建公告时保留管理端的启用状态；省略字段仍默认启用。 */
+    @Transactional
+    public Notice create(AuthorizationContext context, String title, String content, String type, String createdBy, Boolean enabled) {
         authorization.require(context, "notice:create", "notice", context.subjectId());
         require(title, "title");
         require(content, "content");
         try {
-            NoticeEntity entity = new NoticeEntity(title, content, type, createdBy, context.subjectId());
+            NoticeEntity entity = new NoticeEntity(title, content, type, createdBy, context.subjectId(), enabled);
             persistAndFlush(entity);
             return entity.toModel();
         } catch (RuntimeException e) {

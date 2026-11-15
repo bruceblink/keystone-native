@@ -29,11 +29,16 @@ public class PostRepository implements PanacheRepositoryBase<PostEntity, java.ut
 
     @Transactional
     public Post create(AuthorizationContext context, String code, String name, Integer sortOrder) {
+        return create(context, code, name, sortOrder, null);
+    }
+
+    /** 创建岗位时保留请求中的启用状态；省略字段仍使用启用默认值。 */
+    public Post create(AuthorizationContext context, String code, String name, Integer sortOrder, Boolean enabled) {
         authorization.require(context, "post:create", "post");
         require(code, "code");
         require(name, "name");
         try {
-            PostEntity entity = new PostEntity(code, name, sortOrder == null ? 0 : sortOrder);
+            PostEntity entity = new PostEntity(code, name, sortOrder == null ? 0 : sortOrder, enabled);
             persistAndFlush(entity);
             return entity.toModel();
         } catch (RuntimeException e) {

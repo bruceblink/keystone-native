@@ -19,6 +19,24 @@ import java.util.zip.ZipInputStream;
 @QuarkusTest
 class UserResourceTest extends AuthTestFixture {
     @Test
+    void administratorCanCreateDisabledUserFromTheRequestedStatus() {
+        String admin = login("admin", "password");
+        String id = null;
+        try {
+            id = given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"username\":\"disabled_create_" + System.nanoTime() + "\",\"password\":\"password\",\"displayName\":\"Disabled create\",\"enabled\":false,\"roleCodes\":[\"USER\"]}")
+                    .when().post("/v1/users")
+                    .then().statusCode(201)
+                    .body("data.enabled", is(false))
+                    .extract().path("data.id");
+        } finally {
+            if (id != null) {
+                given().auth().oauth2(admin).when().delete("/v1/users/" + id).then().statusCode(200);
+            }
+        }
+    }
+
+    @Test
     void adminCanFilterAndUpdateProfileFieldsButRegularUsersOnlySeeTheirOwnRecord() {
         String admin = login("admin", "password");
         String username = "profile_" + System.nanoTime();

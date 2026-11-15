@@ -30,14 +30,14 @@ public class DictionaryResource {
     @POST @RequiresPermission("dictionary:create")
     public Response createType(TypeRequest request) {
         if (request == null) return bad("request body is required");
-        try { var created = dictionaries.createType(context(), request.code(), request.name()); logs.record(actor(), "CREATE", "dictionary-type", String.valueOf(created.id()), created.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build(); }
+        try { var created = dictionaries.createType(context(), request.code(), request.name(), request.enabled()); logs.record(actor(), "CREATE", "dictionary-type", String.valueOf(created.id()), created.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build(); }
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
     @POST @Path("/{typeCode}/items") @RequiresPermission("dictionary:create")
     public Response createItem(@PathParam("typeCode") String typeCode, ItemRequest request) {
         if (request == null) return bad("request body is required");
-        try { var created = dictionaries.createItem(context(), typeCode, request.value(), request.label(), request.sortOrder()); logs.record(actor(), "CREATE", "dictionary-item", String.valueOf(created.id()), created.typeCode() + ":" + created.value()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build(); }
+        try { var created = dictionaries.createItem(context(), typeCode, request.value(), request.label(), request.sortOrder(), request.enabled()); logs.record(actor(), "CREATE", "dictionary-item", String.valueOf(created.id()), created.typeCode() + ":" + created.value()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build(); }
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }

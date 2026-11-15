@@ -34,11 +34,16 @@ public class SystemConfigRepository {
     }
 
     public SystemConfig create(AuthorizationContext context, String key, String value, String description) {
+        return create(context, key, value, description, null);
+    }
+
+    /** 创建配置时保留管理端的启用状态；省略字段仍默认启用。 */
+    public SystemConfig create(AuthorizationContext context, String key, String value, String description, Boolean enabled) {
         authorization.require(context, "config:create", "config");
         require(key, "key");
         require(value, "value");
         try {
-            return ormConfigs.createConfig(key.trim(), value, description);
+            return ormConfigs.createConfig(key.trim(), value, description, enabled);
         } catch (RuntimeException e) {
             if (isUniqueConstraint(e)) throw new IllegalArgumentException("config key already exists", e);
             throw new IllegalStateException("Could not create system config", e);

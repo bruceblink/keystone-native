@@ -84,10 +84,15 @@ public class ApiKeyRoleEntity {
 
     /** 创建角色实体；数据库结构仍由 Flyway 管理。 */
     ApiKeyRoleEntity(String code, String name) {
+        this(code, name, null);
+    }
+
+    /** 创建角色时保留请求状态，省略 enabled 时默认启用。 */
+    ApiKeyRoleEntity(String code, String name, Boolean enabled) {
         this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.code = code;
         this.name = name;
-        this.enabled = true;
+        this.enabled = enabled == null || enabled;
         this.dataScope = "ALL";
     }
 

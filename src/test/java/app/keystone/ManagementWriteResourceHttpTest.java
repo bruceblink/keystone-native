@@ -19,16 +19,18 @@ class ManagementWriteResourceHttpTest extends AuthTestFixture {
         boolean deleted = false;
         try {
             given().auth().oauth2(token).contentType(JSON)
-                    .body("{\"key\":\"" + key + "\",\"value\":\"initial\",\"description\":\"HTTP config\"}")
+                    .body("{\"key\":\"" + key + "\",\"value\":\"initial\",\"description\":\"HTTP config\",\"enabled\":false}")
                     .when().post("/v1/configs")
                     .then().statusCode(201)
-                    .body("data.key", is(key));
+                    .body("data.key", is(key))
+                    .body("data.enabled", is(false));
 
             given().auth().oauth2(token).contentType(JSON)
                     .body("{\"value\":\"updated\",\"description\":\"Updated config\",\"enabled\":true}")
                     .when().put("/v1/configs/" + key)
                     .then().statusCode(200)
-                    .body("data.value", is("updated"));
+                    .body("data.value", is("updated"))
+                    .body("data.enabled", is(true));
 
             given().auth().oauth2(token)
                     .when().delete("/v1/configs/" + key)
@@ -54,15 +56,23 @@ class ManagementWriteResourceHttpTest extends AuthTestFixture {
         boolean typeDeleted = false;
         try {
             given().auth().oauth2(token).contentType(JSON)
-                    .body("{\"code\":\"" + typeCode + "\",\"name\":\"HTTP dictionary\",\"enabled\":true}")
+                    .body("{\"code\":\"" + typeCode + "\",\"name\":\"HTTP dictionary\",\"enabled\":false}")
                     .when().post("/v1/dictionaries")
                     .then().statusCode(201)
-                    .body("data.code", is(typeCode));
+                    .body("data.code", is(typeCode))
+                    .body("data.enabled", is(false));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"name\":\"HTTP dictionary\",\"enabled\":true}")
+                    .when().put("/v1/dictionaries/types/" + typeCode)
+                    .then().statusCode(200)
+                    .body("data.enabled", is(true));
 
             itemId = given().auth().oauth2(token).contentType(JSON)
-                    .body("{\"value\":\"created\",\"label\":\"Created\",\"sortOrder\":1,\"enabled\":true}")
+                    .body("{\"value\":\"created\",\"label\":\"Created\",\"sortOrder\":1,\"enabled\":false}")
                     .when().post("/v1/dictionaries/" + typeCode + "/items")
                     .then().statusCode(201)
+                    .body("data.enabled", is(false))
                     .extract().path("data.id");
 
             given().auth().oauth2(token).contentType(JSON)
@@ -94,6 +104,30 @@ class ManagementWriteResourceHttpTest extends AuthTestFixture {
             }
             if (!typeDeleted) {
                 given().auth().oauth2(token).when().delete("/v1/dictionaries/types/" + typeCode);
+            }
+        }
+    }
+
+    @Test
+    void administratorCanCreateNoticeWithRequestedEnabledState() {
+        String token = login();
+        String noticeId = null;
+        try {
+            noticeId = given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"title\":\"HTTP notice\",\"content\":\"disabled first\",\"noticeType\":\"NOTICE\",\"enabled\":false}")
+                    .when().post("/v1/notices")
+                    .then().statusCode(201)
+                    .body("data.enabled", is(false))
+                    .extract().path("data.id");
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"enabled\":true}")
+                    .when().put("/v1/notices/" + noticeId)
+                    .then().statusCode(200)
+                    .body("data.enabled", is(true));
+        } finally {
+            if (noticeId != null) {
+                given().auth().oauth2(token).when().delete("/v1/notices/" + noticeId).then().statusCode(200);
             }
         }
     }

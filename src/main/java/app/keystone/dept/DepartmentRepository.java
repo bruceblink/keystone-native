@@ -28,12 +28,12 @@ public class DepartmentRepository {
         return ormDepartments.listDepartments(scope);
     }
 
-    private Department create(String code, String name, String parentId, Integer sortOrder) {
+    private Department create(String code, String name, String parentId, Integer sortOrder, Boolean enabled) {
         if (code == null || code.isBlank() || name == null || name.isBlank()) {
             throw new IllegalArgumentException("code and name are required");
         }
         try {
-            return ormDepartments.createDepartment(code, name, parentId, sortOrder == null ? 0 : sortOrder);
+            return ormDepartments.createDepartment(code, name, parentId, sortOrder == null ? 0 : sortOrder, enabled);
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -43,9 +43,14 @@ public class DepartmentRepository {
     }
 
     public Department create(AuthorizationContext context, String code, String name, String parentId, Integer sortOrder) {
+        return create(context, code, name, parentId, sortOrder, null);
+    }
+
+    /** 创建部门时保留管理端的启用状态；缺省值由领域实体保持为启用。 */
+    public Department create(AuthorizationContext context, String code, String name, String parentId, Integer sortOrder, Boolean enabled) {
         authorization.require(context, "department:create", "department");
         if (!context.scope().allowsDepartmentCreation(parentId)) throw denied();
-        return create(code, name, parentId, sortOrder);
+        return create(code, name, parentId, sortOrder, enabled);
     }
 
     private Department update(String id, String name, String parentId, Integer sortOrder, Boolean enabled) {

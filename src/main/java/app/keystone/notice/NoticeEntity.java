@@ -53,13 +53,18 @@ public class NoticeEntity {
     }
 
     NoticeEntity(String title, String content, String type, String createdBy, String ownerId) {
+        this(title, content, type, createdBy, ownerId, null);
+    }
+
+    /** 新建公告时显式 false 才停用，兼容旧请求的省略字段。 */
+    NoticeEntity(String title, String content, String type, String createdBy, String ownerId, Boolean enabled) {
         this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.title = title.trim();
         this.content = content;
         this.noticeType = type == null ? "NOTICE" : type;
         this.createdBy = createdBy;
         this.ownerId = ownerId;
-        this.enabled = true;
+        this.enabled = enabled == null || enabled;
     }
 
     void update(String newTitle, String newContent, String newType, Boolean newEnabled) {

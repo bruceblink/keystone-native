@@ -43,12 +43,17 @@ public class DepartmentEntity {
     }
 
     DepartmentEntity(String code, String name, String parentId, int sortOrder) {
+        this(code, name, parentId, sortOrder, null);
+    }
+
+    /** 新建记录时只在请求明确提供值时停用，兼容旧客户端的省略字段。 */
+    DepartmentEntity(String code, String name, String parentId, int sortOrder, Boolean enabled) {
         this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.code = code;
         this.name = name;
         this.parentId = parentId;
         this.sortOrder = sortOrder;
-        this.enabled = true;
+        this.enabled = enabled == null || enabled;
     }
 
     void update(String newName, String newParentId, Integer newSortOrder, Boolean newEnabled) {

@@ -93,10 +93,18 @@ public class UserRepository {
     public User create(AuthorizationContext context, String username, String password, String displayName,
                        String deptId, String postId, String email, String phoneNumber, Integer sex,
                        String avatar, String remark, List<String> roleCodes) {
+        return create(context, username, password, displayName, deptId, postId, email, phoneNumber, sex,
+                avatar, remark, null, roleCodes);
+    }
+
+    /** 创建用户时保留管理端的启用状态；省略字段仍默认启用。 */
+    public User create(AuthorizationContext context, String username, String password, String displayName,
+                       String deptId, String postId, String email, String phoneNumber, Integer sex,
+                       String avatar, String remark, Boolean enabled, List<String> roleCodes) {
         authorization.require(context, "user:create", "user");
         if (!context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
                 "data_scope_denied", 403, "data scope does not allow this department");
-        return create(username, password, displayName, deptId, postId, email, phoneNumber, sex, avatar, remark, roleCodes);
+        return create(username, password, displayName, deptId, postId, email, phoneNumber, sex, avatar, remark, enabled, roleCodes);
     }
 
     /** 使用 Excel 导入记录创建用户；每行独立事务，范围和角色关系在写入前校验。 */
@@ -108,16 +116,21 @@ public class UserRepository {
             throw new app.keystone.auth.AuthorizationDeniedException("permission_denied", 403, "role assignment is not allowed");
         }
         return create(record.username(), record.password(), record.displayName(), record.deptId(), record.postId(),
-                record.email(), record.phoneNumber(), record.sex(), record.avatar(), record.remark(),
+                record.email(), record.phoneNumber(), record.sex(), record.avatar(), record.remark(), null,
                 ormUsers.resolveRoleCodes(record.roleIds()));
     }
 
     private User create(String username, String password, String displayName, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, List<String> roleCodes) {
+        return create(username, password, displayName, deptId, postId, email, phoneNumber, sex, avatar, remark, null, roleCodes);
+    }
+
+    /** 领域创建入口将启用状态与用户资料一起写入同一事务。 */
+    private User create(String username, String password, String displayName, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
         if (username == null || username.isBlank() || password == null || password.isBlank() || displayName == null || displayName.isBlank()) throw new IllegalArgumentException("username, password and displayName are required");
         passwordPolicy.validate(username, password);
         try {
             return ormUsers.createUser(username.trim(), BcryptUtil.bcryptHash(password), displayName.trim(),
-                    deptId, postId, email, phoneNumber, sex, avatar, remark, roleCodes);
+                    deptId, postId, email, phoneNumber, sex, avatar, remark, enabled, roleCodes);
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (RuntimeException e) {

@@ -29,7 +29,7 @@ public class DepartmentResource {
     @POST @RequiresPermission("department:create")
     public Response create(DepartmentRequest request) {
         if (request == null) return bad("request body is required");
-        try { var created = departments.create(context(), request.code(), request.name(), request.parentId(), request.sortOrder()); logs.record(context(), "CREATE", "department", String.valueOf(created.id()), created.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build(); }
+        try { var created = departments.create(context(), request.code(), request.name(), request.parentId(), request.sortOrder(), request.enabled()); logs.record(context(), "CREATE", "department", String.valueOf(created.id()), created.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build(); }
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 

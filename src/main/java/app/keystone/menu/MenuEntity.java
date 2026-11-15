@@ -71,7 +71,8 @@ public class MenuEntity {
         menuType = request.menuType() == null ? "MENU" : request.menuType();
         permission = request.permission();
         sortOrder = request.sortOrder() == null ? 0 : request.sortOrder();
-        enabled = true;
+        // 新建菜单保留管理端复选框状态；未提供时保持默认启用。
+        enabled = request.enabled() == null || request.enabled();
     }
 
     void update(MenuRepository.MenuRequest request) {

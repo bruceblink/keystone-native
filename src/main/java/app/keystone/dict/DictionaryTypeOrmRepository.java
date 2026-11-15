@@ -17,7 +17,13 @@ public class DictionaryTypeOrmRepository implements PanacheRepositoryBase<Dictio
 
     @Transactional
     public DictionaryType createType(String code, String name) {
-        var type = new DictionaryTypeEntity(code.trim(), name.trim());
+        return createType(code, name, null);
+    }
+
+    /** 在 ORM 事务中保存字典类型的初始启用状态。 */
+    @Transactional
+    public DictionaryType createType(String code, String name, Boolean enabled) {
+        var type = new DictionaryTypeEntity(code.trim(), name.trim(), enabled);
         persistAndFlush(type);
         return type.toModel();
     }

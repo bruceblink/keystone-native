@@ -33,11 +33,16 @@ public class PostEntity {
     }
 
     PostEntity(String code, String name, int sortOrder) {
+        this(code, name, sortOrder, null);
+    }
+
+    /** 新建岗位的停用状态来自管理端复选框，未提供时保持默认启用。 */
+    PostEntity(String code, String name, int sortOrder, Boolean enabled) {
         this.id = UUID.fromString(app.keystone.identity.UuidValues.v7());
         this.code = code.trim();
         this.name = name.trim();
         this.sortOrder = sortOrder;
-        this.enabled = true;
+        this.enabled = enabled == null || enabled;
     }
 
     void update(String newName, Integer newSortOrder, Boolean newEnabled) {

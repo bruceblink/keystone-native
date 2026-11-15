@@ -26,11 +26,16 @@ public class RoleRepository {
     }
 
     public Role create(AuthorizationContext context, String code, String name) {
+        return create(context, code, name, null);
+    }
+
+    /** 创建角色时保留管理端的启用状态；null 继续使用启用默认值。 */
+    public Role create(AuthorizationContext context, String code, String name, Boolean enabled) {
         authorization.require(context, "role:create", "role");
         require(code, "code");
         require(name, "name");
         try {
-            return ormRoles.createRole(code.trim(), name.trim());
+            return ormRoles.createRole(code.trim(), name.trim(), enabled);
         } catch (RuntimeException e) {
             if (isUniqueConstraint(e)) throw new IllegalArgumentException("role code already exists", e);
             throw new IllegalStateException("Could not create role", e);

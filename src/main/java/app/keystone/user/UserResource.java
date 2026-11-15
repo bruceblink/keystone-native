@@ -83,7 +83,7 @@ public class UserResource {
     public Response create(UserRequest request) {
         if (request == null) return bad("request body is required");
         try {
-            var created = users.create(context(), request.username(), request.password(), request.displayName(), request.deptId(), request.postId(), request.email(), request.phoneNumber(), request.sex(), request.avatar(), request.remark(), request.roleCodes());
+            var created = users.create(context(), request.username(), request.password(), request.displayName(), request.deptId(), request.postId(), request.email(), request.phoneNumber(), request.sex(), request.avatar(), request.remark(), request.enabled(), request.roleCodes());
             logs.record(context(), "CREATE", "user", String.valueOf(created.id()), created.username());
             return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build();
         } catch (IllegalArgumentException e) { return bad(e.getMessage()); }
