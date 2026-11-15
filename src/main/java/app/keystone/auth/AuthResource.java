@@ -35,6 +35,7 @@ public class AuthResource {
     @Inject JwkSetService jwkSetService;
     @Inject SecurityObservability securityObservability;
     @Inject MfaService mfa;
+    @Inject MfaLoginService mfaLoginService;
     @Inject MfaSessionRepository mfaSessions;
     @Inject ClientAddressResolver clientAddresses;
     @Context RoutingContext routingContext;
@@ -65,6 +66,13 @@ public class AuthResource {
         try { loginRateLimiter.clear(u.username(), clientAddress); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         if (u.mustChangePassword()) { loginLogs.record(u.username(), "BLOCKED", clientAddress, "password change required", userAgent); return Response.status(428).entity(ApiResponse.error("password change required")).build(); }
+        try {
+            if (!Boolean.TRUE.equals(request.forceLogin()) && sessions.hasActiveSession(u.id())) {
+                loginLogs.record(u.username(), "BLOCKED", clientAddress, "account already has an active session", userAgent);
+                return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build();
+            }
+        } catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
         MfaService.LoginPreparation preparation;
         try { preparation = mfa.prepareLogin(u.id(), request.clientId()); }
         catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
@@ -123,36 +131,17 @@ public class AuthResource {
             return Response.status(422).entity(ApiResponse.error("username, challengeId and code are required")).build();
         }
         String clientAddress = clientAddresses.resolve(routingContext, ipAddress);
-        var user = users.findAuthUserByUsername(request.username().trim());
-        if (user.isEmpty()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build();
-        MfaService.LoginVerification verification;
         try {
-            verification = mfa.verifyLogin(user.get().id(), request.challengeId(), request.clientId(), request.code(), clientAddress).orElse(null);
-        } catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
-        catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
-        if (verification == null) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build();
-        java.util.Optional<SessionRepository.CreatedSession> refresh;
-        try { refresh = sessions.create(user.get().id(), Boolean.TRUE.equals(request.forceLogin()), request.clientId()); }
+            var result = mfaLoginService.complete(request.username(), request.challengeId(), request.clientId(), request.code(),
+                    Boolean.TRUE.equals(request.forceLogin()), clientAddress, userAgent);
+            if (!result.valid()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error("invalid MFA challenge")).build();
+            return Response.ok(ApiResponse.ok(result.token())).build();
+        } catch (MfaLoginService.ActiveSessionConflict e) {
+            loginLogs.record(e.username(), "BLOCKED", clientAddress, "account already has an active session", userAgent);
+            return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build();
+        } catch (MfaLoginService.TokenUnavailable e) { return tokenUnavailable(e.sessionId()); }
         catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(e.getMessage())).build(); }
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build(); }
-        if (refresh.isEmpty()) return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error("account already has an active session")).build();
-        var created = refresh.get();
-        try {
-            if (!mfaSessions.markVerified(created.sessionId(), user.get().id(), created.clientId(), verification.assurance(), verification.amr())) {
-                sessions.revokeSession(created.sessionId());
-                return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build();
-            }
-        } catch (IllegalStateException e) {
-            sessions.revokeSession(created.sessionId());
-            return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error("authentication state is unavailable")).build();
-        }
-        Response tokenResponse;
-        try {
-            tokenResponse = Response.ok(ApiResponse.ok(tokens.issue(user.get(), created.refreshToken(), created.accessTokenId(), created.sessionId(), created.clientId(), created.approvedScope(), created.refreshExpiresAt(), verification.assurance(), verification.amr()))).build();
-        } catch (IllegalStateException e) { return tokenUnavailable(created.sessionId()); }
-        users.markLogin(user.get().id(), clientAddress);
-        loginLogs.record(user.get().username(), "SUCCESS", clientAddress, "MFA login successful", userAgent);
-        return tokenResponse;
     }
 
     /** 为当前人类会话创建绑定 sid/client_id 的短期 step-up 请求。 */

@@ -9,7 +9,7 @@ import java.util.Set;
 public final class PermissionCatalog {
     private static final Set<String> VALUES = Set.of(
             "api-key:create", "api-key:read", "api-key:revoke", "api-key:rotate",
-            "audit:delete", "audit:export", "audit:read", "cache:refresh",
+            "audit:read", "cache:refresh",
             "config:create", "config:read", "config:refresh", "config:update",
             "department:create", "department:delete", "department:read", "department:update",
             "dictionary:create", "dictionary:delete", "dictionary:read", "dictionary:refresh", "dictionary:update",

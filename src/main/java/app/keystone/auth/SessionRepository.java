@@ -48,6 +48,16 @@ public class SessionRepository {
         return createSession(userId, forceLogin, clientId);
     }
 
+    /** 读取当前主体是否已有未过期会话，用于在 MFA challenge 前返回可重试的 409。 */
+    @Transactional
+    public boolean hasActiveSession(String userId) {
+        ApiKeyUserEntity user = users.findById(UuidValues.parse(userId));
+        if (user == null) return false;
+        Instant now = Instant.now();
+        revokeExpiredTokens(userId, now);
+        return !sessions.findActiveForUser(userId, now).isEmpty();
+    }
+
     private Optional<CreatedSession> createSession(String userId, boolean forceLogin, String clientId) {
         String boundClientId = normalizeClientId(clientId);
         ApiKeyUserEntity user = users.findForUpdate(userId);

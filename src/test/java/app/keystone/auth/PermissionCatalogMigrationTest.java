@@ -22,10 +22,12 @@ class PermissionCatalogMigrationTest {
     private static final Pattern ANNOTATION = Pattern.compile("@RequiresPermission\\(\\\"([^\\\"]+)\\\"\\)");
     private static final Set<String> REMOVED_PERMISSIONS = Set.of(
             "login-log:delete", "operation-log:delete");
+    private static final Set<String> REMOVED_STALE_PERMISSIONS = Set.of(
+            "audit:delete", "audit:export");
 
     private static final Set<String> EXPECTED_PERMISSIONS = Set.of(("""
             api-key:create api-key:read api-key:revoke api-key:rotate
-            audit:delete audit:export audit:read cache:refresh
+            audit:read cache:refresh
             config:create config:read config:refresh config:update
             department:create department:delete department:read department:update
             dictionary:create dictionary:delete dictionary:read dictionary:refresh dictionary:update
@@ -53,10 +55,10 @@ class PermissionCatalogMigrationTest {
         while (matcher.find()) vectors.put(matcher.group(2), matcher.group(1));
 
         assertTrue(vectors.keySet().containsAll(EXPECTED_PERMISSIONS));
-        assertEquals(EXPECTED_PERMISSIONS.size() + REMOVED_PERMISSIONS.size(), vectors.size());
+        assertEquals(EXPECTED_PERMISSIONS.size() + REMOVED_PERMISSIONS.size() + REMOVED_STALE_PERMISSIONS.size(), vectors.size());
         var historicalRemoved = new java.util.HashSet<>(vectors.keySet());
-        historicalRemoved.retainAll(REMOVED_PERMISSIONS);
-        assertEquals(REMOVED_PERMISSIONS, historicalRemoved);
+        historicalRemoved.retainAll(java.util.Set.of("login-log:delete", "operation-log:delete", "audit:delete", "audit:export"));
+        assertEquals(java.util.Set.of("login-log:delete", "operation-log:delete", "audit:delete", "audit:export"), historicalRemoved);
         vectors.entrySet().stream()
                 .filter(entry -> EXPECTED_PERMISSIONS.contains(entry.getKey()))
                 .forEach(entry -> assertEquals(UuidValues.permissionId(entry.getKey()), entry.getValue()));
@@ -69,6 +71,15 @@ class PermissionCatalogMigrationTest {
 
         assertTrue(migration.contains("DELETE FROM sys_permission"));
         REMOVED_PERMISSIONS.forEach(permission -> assertTrue(migration.contains("'" + permission + "'")));
+    }
+
+    @Test
+    void followUpMigrationRemovesStaleAuditCatalogPermissions() throws Exception {
+        String migration = Files.readString(Path.of(
+                "src/main/resources/db/migration/V58__remove_stale_audit_permissions.sql"));
+
+        assertTrue(migration.contains("DELETE FROM sys_permission"));
+        REMOVED_STALE_PERMISSIONS.forEach(permission -> assertTrue(migration.contains("'" + permission + "'")));
     }
 
     @Test

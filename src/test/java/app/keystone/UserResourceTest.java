@@ -1,6 +1,7 @@
 package app.keystone;
 
 import app.keystone.auth.TotpService;
+import app.keystone.auth.MfaService;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
@@ -18,6 +19,7 @@ import java.util.zip.ZipInputStream;
 
 @QuarkusTest
 class UserResourceTest extends AuthTestFixture {
+    @jakarta.inject.Inject MfaService mfaService;
     @Test
     void administratorCanCreateDisabledUserFromTheRequestedStatus() {
         String admin = login("admin", "password");
@@ -182,6 +184,44 @@ class UserResourceTest extends AuthTestFixture {
             if (temporaryAdminId != null) {
                 given().auth().oauth2(admin).when().delete("/v1/users/" + temporaryAdminId).then().statusCode(200);
             }
+        }
+    }
+
+    @Test
+    void mfaSessionConflictKeepsChallengeForExplicitForceLogin() {
+        String admin = login("admin", "password");
+        String username = "mfa_conflict_" + System.nanoTime();
+        String temporaryId = null;
+        try {
+            temporaryId = given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"MFA Conflict\",\"roleCodes\":[\"ADMIN\"]}")
+                    .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
+
+            var initial = given().contentType(JSON)
+                    .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"forceLogin\":true}")
+                    .when().post("/v1/auth/login").then().statusCode(200).extract();
+            String aal1 = initial.path("data.accessToken");
+            var enrollment = given().auth().oauth2(aal1).contentType(JSON)
+                    .when().post("/v1/auth/mfa/enroll").then().statusCode(201).extract();
+            String secret = enrollment.path("data.secret");
+            String enrollmentCode = new TotpService().code(secret, Instant.now());
+            given().auth().oauth2(aal1).contentType(JSON)
+                    .body("{\"challengeId\":\"" + enrollment.path("data.challengeId") + "\",\"code\":\"" + enrollmentCode + "\"}")
+                    .when().post("/v1/auth/mfa/enroll/verify").then().statusCode(200);
+            org.junit.jupiter.api.Assertions.assertTrue(mfaService.setRequired(temporaryId, true));
+
+            var challenge = given().contentType(JSON)
+                    .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"forceLogin\":true}")
+                    .when().post("/v1/auth/login").then().statusCode(401).extract();
+            String code = new TotpService().code(secret, Instant.now().plusSeconds(30));
+            String verifyBody = "{\"username\":\"" + username + "\",\"challengeId\":\""
+                    + challenge.path("data.challengeId") + "\",\"code\":\"" + code + "\"}";
+            given().contentType(JSON).body(verifyBody).when().post("/v1/auth/mfa/verify").then().statusCode(409);
+            given().contentType(JSON).body(verifyBody.replace("}", ",\"forceLogin\":true}"))
+                    .when().post("/v1/auth/mfa/verify").then().statusCode(200)
+                    .body("data.accessToken", org.hamcrest.Matchers.not(org.hamcrest.Matchers.emptyOrNullString()));
+        } finally {
+            if (temporaryId != null) given().auth().oauth2(admin).when().delete("/v1/users/" + temporaryId).then().statusCode(200);
         }
     }
 
