@@ -30,8 +30,8 @@ public class NoticeResource {
     @POST @Path("/{id}/publish") @RequiresPermission("notice:update") @app.keystone.auth.RequiresDataScope("notice") public Response publish(@PathParam("id") String id, PublishRequest request) { if (request == null || request.published() == null) return bad("published is required"); try { var notice = notices.publish(context(), id, request.published()); logs.record(actor(), "PUBLISH", "notice", id, String.valueOf(request.published())); return Response.ok(ApiResponse.ok(notice)).build(); } catch (NoSuchElementException | IllegalArgumentException e) { return notFound(); } }
     @DELETE @Path("/{id}") @RequiresPermission("notice:delete") @app.keystone.auth.RequiresDataScope("notice") public Response delete(@PathParam("id") String id) { try { notices.delete(context(), id); logs.record(actor(), "DELETE", "notice", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (NoSuchElementException | IllegalArgumentException e) { return notFound(); } }
     @DELETE @RequiresPermission("notice:delete") @app.keystone.auth.RequiresDataScope("notice")
-    public Response deleteBatch(@QueryParam("notice_ids") String noticeIds, @QueryParam("ids") String ids) {
-        String rawIds = firstNonBlank(noticeIds, ids);
+    public Response deleteBatch(@QueryParam("notice_ids") String noticeIds) {
+        String rawIds = noticeIds;
         try {
             int deleted = notices.deleteAll(context(), splitIds(rawIds));
             logs.record(actor(), "DELETE", "notices", null, "batch deleted=" + deleted);
@@ -44,7 +44,6 @@ public class NoticeResource {
     private String actor() { return identity.getPrincipal().getName(); }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
     private static Response notFound() { return Response.status(404).entity(ApiResponse.error("notice not found")).build(); }
-    private static String firstNonBlank(String primary, String fallback) { return primary == null || primary.isBlank() ? fallback : primary; }
     private static List<String> splitIds(String ids) { if (ids == null || ids.isBlank()) throw new IllegalArgumentException("ids is required"); return java.util.Arrays.stream(ids.split(",")).map(String::trim).toList(); }
     public record NoticeRequest(String title, String content, String noticeType, Boolean enabled) {}
     public record PublishRequest(Boolean published) {}

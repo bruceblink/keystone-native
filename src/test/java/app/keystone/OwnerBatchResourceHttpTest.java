@@ -120,6 +120,16 @@ class OwnerBatchResourceHttpTest extends AuthTestFixture {
         ownerJobId = null;
     }
 
+    @Test
+    void deprecatedBatchQueryAliasesAreRejected() {
+        given().auth().oauth2(ownerToken)
+                .when().delete("/v1/notices?ids=" + UuidValues.v7())
+                .then().statusCode(422).body("error.code", is("validation_failed"));
+        given().auth().oauth2(ownerToken)
+                .when().delete("/v1/jobs?ids=" + UuidValues.v7())
+                .then().statusCode(422).body("error.code", is("validation_failed"));
+    }
+
     private String createNotice(String token, String title) {
         return given().auth().oauth2(token).contentType(JSON)
                 .body("{\"title\":\"" + title + "\",\"content\":\"批量范围\",\"noticeType\":\"NOTICE\"}")
