@@ -20,6 +20,8 @@ class PermissionCatalogMigrationTest {
     private static final Pattern SEED_ROW = Pattern.compile(
             "UUID_TO_BIN\\('([^']+)', 0\\), '([^']+)',");
     private static final Pattern ANNOTATION = Pattern.compile("@RequiresPermission\\(\\\"([^\\\"]+)\\\"\\)");
+    private static final Set<String> REMOVED_PERMISSIONS = Set.of(
+            "login-log:delete", "operation-log:delete");
 
     private static final Set<String> EXPECTED_PERMISSIONS = Set.of(("""
             api-key:create api-key:read api-key:revoke api-key:rotate
@@ -29,12 +31,12 @@ class PermissionCatalogMigrationTest {
             dictionary:create dictionary:delete dictionary:read dictionary:refresh dictionary:update
             file:read file:write
             job:create job:delete job:read job:run job:update job:update-status
-            login-log:delete login-log:export login-log:read
+            login-log:export login-log:read
             menu:create menu:delete menu:manage menu:read menu:update
             mfa:manage
             notice:create notice:delete notice:read notice:update
             online-session:read online-session:revoke
-            operation-log:delete operation-log:export operation-log:read
+            operation-log:export operation-log:read
             permission:manage permission:read
             post:create post:delete post:export post:read post:update
             role:assign role:create role:delete role:export role:manage role:read role:update
@@ -50,9 +52,23 @@ class PermissionCatalogMigrationTest {
         Map<String, String> vectors = new HashMap<>();
         while (matcher.find()) vectors.put(matcher.group(2), matcher.group(1));
 
-        assertEquals(EXPECTED_PERMISSIONS, vectors.keySet());
-        assertEquals(EXPECTED_PERMISSIONS.size(), vectors.size());
-        vectors.forEach((permission, id) -> assertEquals(UuidValues.permissionId(permission), id));
+        assertTrue(vectors.keySet().containsAll(EXPECTED_PERMISSIONS));
+        assertEquals(EXPECTED_PERMISSIONS.size() + REMOVED_PERMISSIONS.size(), vectors.size());
+        var historicalRemoved = new java.util.HashSet<>(vectors.keySet());
+        historicalRemoved.retainAll(REMOVED_PERMISSIONS);
+        assertEquals(REMOVED_PERMISSIONS, historicalRemoved);
+        vectors.entrySet().stream()
+                .filter(entry -> EXPECTED_PERMISSIONS.contains(entry.getKey()))
+                .forEach(entry -> assertEquals(UuidValues.permissionId(entry.getKey()), entry.getValue()));
+    }
+
+    @Test
+    void followUpMigrationRemovesDeprecatedAuditDeletePermissions() throws Exception {
+        String migration = Files.readString(Path.of(
+                "src/main/resources/db/migration/V57__remove_audit_log_delete_permissions.sql"));
+
+        assertTrue(migration.contains("DELETE FROM sys_permission"));
+        REMOVED_PERMISSIONS.forEach(permission -> assertTrue(migration.contains("'" + permission + "'")));
     }
 
     @Test

@@ -33,13 +33,5 @@ public class OperationLogResource {
                 .build();
     }
 
-    @jakarta.ws.rs.DELETE @RequiresPermission("operation-log:delete")
-    public ApiResponse<java.util.Map<String, Integer>> delete(@QueryParam("ids") String ids) {
-        if (ids == null || ids.isBlank()) throw new jakarta.ws.rs.BadRequestException("ids is required");
-        try { var values = java.util.Arrays.stream(ids.split(",")).map(String::trim).toList(); values.forEach(app.keystone.identity.UuidValues::requireCanonical); return ApiResponse.ok(java.util.Map.of("deleted", logs.delete(context(), values))); }
-        catch (IllegalArgumentException e) { throw new jakarta.ws.rs.BadRequestException("ids must be comma separated UUIDs"); }
-        catch (java.util.NoSuchElementException e) { throw new jakarta.ws.rs.NotFoundException(e.getMessage()); }
-    }
-
     private AuthorizationContext context() { return authorization.context(identity); }
 }
