@@ -2,6 +2,12 @@
 
 跨项目统一架构见 [`02-auth-authorization-parity-architecture.md`](02-auth-authorization-parity-architecture.md)。本文件同时记录 Native 本地实施任务和与 Keystone Phoenix 的跨项目验收要求。项目采用一次性重构，不保留旧接口、旧权限格式、旧响应封装或旧整数主键。
 
+## 2026-11-16 业务错误码目录基线
+
+Native 的错误码目录引用 [`03-business-error-code-catalog.md`](03-business-error-code-catalog.md)，跨项目主目录位于 `keystone-phoenix/docs/11-business-error-code-catalog.md`。Native `aea1a35`/`7cb6533` 与 Phoenix `56ba348` 的服务端目录均为 21 个代码；Phoenix `56ba348` 补齐了 `mfa_invalid_code`、`mfa_state_conflict` 和 `https_required`。admin-web `33c20ff`/`dd1b280` 已按同一集合提供反查元数据，另保留 4 个客户端本地代码。目录明确代码到业务条件的反查、HTTP 状态保持和 `authorization_unavailable` 的旧边界范围。
+
+本轮静态验证：`python3 keystone-phoenix/scripts/check_error_code_catalog.py --native-root keystone-native --admin-root keystone-admin-web` 通过，规范服务端代码 `21` 个、客户端本地代码 `4` 个，三个项目的集合和默认状态 `21/21` 一致；文档与差异检查通过。该结果不替代真实 MySQL、HTTP、浏览器和生产代理验收。
+
 ## 2026-11-15 当前审查与下一轮主线
 
 本轮以 Native `779d80b`、Phoenix `79ce1dc` 和 admin-web `86ea75a` 为对齐基线。两个后端归一化后均有 108 条 `/api/v1` 接口（含 `/api/v1/health`），另有标准 JWK Set 路径 1 条；方法分布为 `GET 42`、`POST 29`、`PUT 20`、`DELETE 17`。Native-only、Phoenix-only 和重复 `HTTP method + path` 均为 0。Native 的动态权限目录已经可供 API Key 配置页面逐项选择，API Key 仅保留统一的签发入口，旧审计日志删除接口和无对应接口的审计权限标识已删除。
