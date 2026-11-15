@@ -2,6 +2,7 @@ package app.keystone;
 
 import java.util.Arrays;
 import java.util.Map;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
@@ -80,12 +81,22 @@ public enum ErrorCode {
     public String messageKey() { return messageKey; }
     public boolean safeMessage() { return safeMessage; }
 
+    /**
+     * 按外部错误码查找目录项。
+     *
+     * <p>未知或空代码返回空结果，调用方可以先区分“未登记”与“已登记”，再决定兼容降级行为。</p>
+     */
+    public static Optional<ErrorCode> find(String value) {
+        if (value == null) return Optional.empty();
+        var normalized = value.trim();
+        return normalized.isEmpty() ? Optional.empty() : Optional.ofNullable(BY_CODE.get(normalized));
+    }
+
     public static ErrorCode fromCode(String value) {
-        if (value == null) return VALIDATION_FAILED;
-        return BY_CODE.getOrDefault(value.trim(), VALIDATION_FAILED);
+        return find(value).orElse(VALIDATION_FAILED);
     }
 
     public static boolean isRegistered(String value) {
-        return value != null && BY_CODE.containsKey(value.trim());
+        return find(value).isPresent();
     }
 }

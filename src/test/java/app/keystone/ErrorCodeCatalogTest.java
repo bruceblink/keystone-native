@@ -40,4 +40,13 @@ class ErrorCodeCatalogTest {
         assertEquals("resource_not_found", ErrorCode.RESOURCE_NOT_FOUND.code());
         assertEquals("resource_conflict", ErrorCode.RESOURCE_CONFLICT.code());
     }
+
+    @Test
+    void lookupDistinguishesRegisteredAndUnknownCodes() {
+        assertEquals(ErrorCode.ACTIVE_SESSION_CONFLICT,
+                ErrorCode.find(" active_session_conflict ").orElseThrow());
+        assertTrue(ErrorCode.find("unknown_code").isEmpty());
+        assertTrue(ErrorCode.find(null).isEmpty());
+        assertTrue(ErrorCode.find(" ").isEmpty());
+    }
 }
