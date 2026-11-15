@@ -1,6 +1,7 @@
 package app.keystone.auth;
 
 import app.keystone.ApiResponse;
+import app.keystone.ErrorCode;
 import app.keystone.audit.SecurityEventRepository;
 import app.keystone.user.UserRepository;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -42,14 +43,14 @@ public class WebAuthnResource {
     @RequiresMfaStepUp
     public Response registerOptions() {
         var user = currentUser();
-        if (user == null) return error(Response.Status.UNAUTHORIZED, "authentication_required", "authentication is required");
+        if (user == null) return error(Response.Status.UNAUTHORIZED, ErrorCode.AUTHENTICATION_REQUIRED, "authentication is required");
         try {
             ensureEnabled();
             var options = webAuthn.getRegisterChallenge(user.username(), user.displayName(), routingContext)
                     .await().indefinitely();
             return json(webAuthn.toJsonString(options));
         } catch (RuntimeException e) {
-            return error(Response.Status.SERVICE_UNAVAILABLE, "authorization_unavailable", "WebAuthn is unavailable");
+            return error(Response.Status.SERVICE_UNAVAILABLE, ErrorCode.AUTHORIZATION_UNAVAILABLE, "WebAuthn is unavailable");
         }
     }
 
@@ -60,8 +61,8 @@ public class WebAuthnResource {
     @RequiresMfaStepUp
     public Response register(JsonObject body) {
         var user = currentUser();
-        if (user == null) return error(Response.Status.UNAUTHORIZED, "authentication_required", "authentication is required");
-        if (body == null) return error(422, "validation_failed", "credential response is required");
+        if (user == null) return error(Response.Status.UNAUTHORIZED, ErrorCode.AUTHENTICATION_REQUIRED, "authentication is required");
+        if (body == null) return error(422, ErrorCode.VALIDATION_FAILED, "credential response is required");
         try {
             ensureEnabled();
             WebAuthnCredentialRecord record = webAuthn.register(user.username(), body, routingContext).await().indefinitely();
@@ -73,11 +74,11 @@ public class WebAuthnResource {
         } catch (IllegalArgumentException e) {
             securityEvents.record("WEBAUTHN_REGISTER", user.username(), "WEBAUTHN", null, null,
                     "auth", "register", "DENY", "WebAuthn registration rejected");
-            return error(422, "validation_failed", "invalid WebAuthn registration");
+            return error(422, ErrorCode.VALIDATION_FAILED, "invalid WebAuthn registration");
         } catch (RuntimeException e) {
             securityEvents.record("WEBAUTHN_REGISTER", user.username(), "WEBAUTHN", null, null,
                     "auth", "register", "DENY", "WebAuthn registration unavailable");
-            return error(Response.Status.SERVICE_UNAVAILABLE, "authorization_unavailable", "WebAuthn is unavailable");
+            return error(Response.Status.SERVICE_UNAVAILABLE, ErrorCode.AUTHORIZATION_UNAVAILABLE, "WebAuthn is unavailable");
         }
     }
 
@@ -93,7 +94,7 @@ public class WebAuthnResource {
             var options = webAuthn.getLoginChallenge(normalized, routingContext).await().indefinitely();
             return json(webAuthn.toJsonString(options));
         } catch (RuntimeException e) {
-            return error(Response.Status.UNAUTHORIZED, "invalid_credential", "WebAuthn login is unavailable");
+            return error(Response.Status.UNAUTHORIZED, ErrorCode.INVALID_CREDENTIAL, "WebAuthn login is unavailable");
         }
     }
 
@@ -103,7 +104,7 @@ public class WebAuthnResource {
     @PermitAll
     @RejectApiKey
     public Response login(JsonObject body) {
-        if (body == null) return error(422, "validation_failed", "credential response is required");
+        if (body == null) return error(422, ErrorCode.VALIDATION_FAILED, "credential response is required");
         try {
             ensureEnabled();
             WebAuthnCredentialRecord record = webAuthn.login(body, routingContext).await().indefinitely();
@@ -126,11 +127,11 @@ public class WebAuthnResource {
         } catch (IllegalArgumentException e) {
             securityEvents.record("WEBAUTHN_LOGIN", null, "WEBAUTHN", null, null,
                     "auth", "login", "DENY", "WebAuthn credential rejected");
-            return error(Response.Status.UNAUTHORIZED, "invalid_credential", "WebAuthn authentication failed");
+            return error(Response.Status.UNAUTHORIZED, ErrorCode.INVALID_CREDENTIAL, "WebAuthn authentication failed");
         } catch (RuntimeException e) {
             securityEvents.record("WEBAUTHN_LOGIN", null, "WEBAUTHN", null, null,
                     "auth", "login", "DENY", "WebAuthn authentication unavailable");
-            return error(Response.Status.SERVICE_UNAVAILABLE, "authorization_unavailable", "WebAuthn is unavailable");
+            return error(Response.Status.SERVICE_UNAVAILABLE, ErrorCode.AUTHORIZATION_UNAVAILABLE, "WebAuthn is unavailable");
         }
     }
 
@@ -150,11 +151,11 @@ public class WebAuthnResource {
         return Response.ok(json).type(MediaType.APPLICATION_JSON).build();
     }
 
-    private static Response error(Response.Status status, String code, String message) {
+    private static Response error(Response.Status status, ErrorCode code, String message) {
         return error(status.getStatusCode(), code, message);
     }
 
-    private static Response error(int status, String code, String message) {
+    private static Response error(int status, ErrorCode code, String message) {
         return Response.status(status).entity(ApiResponse.error(code, message)).build();
     }
 }

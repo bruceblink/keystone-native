@@ -24,11 +24,11 @@ class AuthorizationContextTest {
     @Inject OperationLogRepository operationLogs;
 
     @Test
-    void missingContextIsRejectedWithInvalidCredential() {
+    void missingContextIsRejectedWithAuthenticationRequired() {
         AuthorizationDeniedException error = assertThrows(
                 AuthorizationDeniedException.class,
                 () -> authorization.require(null, "role:create", "role"));
-        assertEquals("invalid_credential", error.code());
+        assertEquals("authentication_required", error.code());
         assertEquals(401, error.status());
     }
 
@@ -102,6 +102,6 @@ class AuthorizationContextTest {
         AuthorizationDeniedException error = assertThrows(
                 AuthorizationDeniedException.class,
                 () -> operationLogs.record((AuthorizationContext) null, "CREATE", "user", "ignored", null));
-        assertEquals("invalid_credential", error.code());
+        assertEquals("authentication_required", error.code());
     }
 }

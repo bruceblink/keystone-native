@@ -116,7 +116,7 @@ class UserResourceTest extends AuthTestFixture {
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 .when().post("/v1/users/import")
                 .then().statusCode(403)
-                .body("error.code", is("permission_denied"));
+                .body("error.code", is("mfa_required"));
     }
 
     @Test

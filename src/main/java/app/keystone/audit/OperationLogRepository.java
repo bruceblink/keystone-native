@@ -1,5 +1,6 @@
 package app.keystone.audit;
 
+import app.keystone.ErrorCode;
 import app.keystone.auth.AuthorizationContext;
 import app.keystone.auth.AuthorizationService;
 import io.quarkus.hibernate.orm.panache.PanacheQuery;
@@ -20,7 +21,7 @@ public class OperationLogRepository implements PanacheRepositoryBase<OperationLo
     @Transactional(Transactional.TxType.REQUIRES_NEW)
     public void record(AuthorizationContext context, String action, String resource, String resourceId, String detail) {
         if (context == null) throw new app.keystone.auth.AuthorizationDeniedException(
-                "invalid_credential", 401, "authentication is required");
+                ErrorCode.AUTHENTICATION_REQUIRED, "authentication is required");
         record(context.username(), action, resource, resourceId, detail);
     }
 

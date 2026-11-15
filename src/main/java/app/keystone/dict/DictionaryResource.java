@@ -1,5 +1,7 @@
 package app.keystone.dict;
 
+import app.keystone.ErrorCode;
+
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.RequiresPermission;
@@ -57,9 +59,9 @@ public class DictionaryResource {
         catch (java.util.NoSuchElementException | IllegalArgumentException e) { return notFound(); }
     }
 
-    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
-    private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("dictionary item not found")).build(); }
-    private static Response notFoundType() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("dictionary type not found")).build(); }
+    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
+    private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "dictionary item not found")).build(); }
+    private static Response notFoundType() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "dictionary type not found")).build(); }
     private AuthorizationContext context() { return authorization.context(identity); }
     public record TypeRequest(String code, String name, Boolean enabled) {}
     public record ItemRequest(String value, String label, Integer sortOrder, Boolean enabled) {}

@@ -56,10 +56,12 @@ class CrossProjectContractTest {
     }
 
     @Test
-    void errorCodesUseTheSharedFixedCategories() {
-        assertEquals("permission_denied", ApiResponse.error("permission denied").error().get("code"));
-        assertEquals("data_scope_denied", ApiResponse.error("data scope denied").error().get("code"));
-        assertEquals("validation_failed", ApiResponse.error("request body is required").error().get("code"));
+    void errorCodesUseTheSharedCatalog() {
+        assertEquals("permission_denied", ApiResponse.error(ErrorCode.PERMISSION_DENIED, "permission denied").error().get("code"));
+        assertEquals("data_scope_denied", ApiResponse.error(ErrorCode.DATA_SCOPE_DENIED, "data scope denied").error().get("code"));
+        assertEquals("validation_failed", ApiResponse.error(ErrorCode.VALIDATION_FAILED, "request body is required").error().get("code"));
+        assertTrue(ErrorCode.isRegistered("active_session_conflict"));
+        assertTrue(ErrorCode.isRegistered("mfa_required"));
     }
 
     private static Set<String> recordFields(Class<?> recordType) {

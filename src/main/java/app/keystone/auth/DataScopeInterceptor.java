@@ -1,6 +1,7 @@
 package app.keystone.auth;
 
 import app.keystone.ApiResponse;
+import app.keystone.ErrorCode;
 import app.keystone.user.UserRepository;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.annotation.Priority;
@@ -32,19 +33,19 @@ public class DataScopeInterceptor {
         RequiresDataScope requirement = requirement(context);
         if (requirement == null) return context.proceed();
         if (identity == null || identity.isAnonymous()) {
-            throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "authentication is required"));
+            throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), ErrorCode.AUTHENTICATION_REQUIRED, "authentication is required"));
         }
         try {
             String subjectId = subjectId();
             DataScopeService.Scope scope = dataScopes.forUser(subjectId);
             DataScopePolicy.ResourceRule rule = DataScopePolicy.rule(requirement.value());
             if (!DataScopePolicy.allows(rule, scope.all(), scope.self(), scope.owner())) {
-                throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "data_scope_denied", "data scope does not allow this resource"));
+                throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this resource"));
             }
         } catch (NotAuthorizedException | ForbiddenException e) {
             throw e;
         } catch (IllegalStateException e) {
-            throw new ServiceUnavailableException(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), "authorization_unavailable", "data scope is unavailable"), e);
+            throw new ServiceUnavailableException(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), ErrorCode.AUTHORIZATION_UNAVAILABLE, "data scope is unavailable"), e);
         }
         // 数据范围检查完成后再进入资源方法，避免把业务异常误分类为授权服务不可用。
         return context.proceed();
@@ -56,7 +57,7 @@ public class DataScopeInterceptor {
             return app.keystone.identity.UuidValues.requireCanonical(value);
         }
         return users.findAuthUserByUsername(identity.getPrincipal().getName())
-                .orElseThrow(() -> new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "subject is unavailable")))
+                .orElseThrow(() -> new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), ErrorCode.AUTHENTICATION_REQUIRED, "subject is unavailable")))
                 .id();
     }
 

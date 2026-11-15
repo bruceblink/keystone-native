@@ -1,6 +1,7 @@
 package app.keystone.auth;
 
 import app.keystone.ApiResponse;
+import app.keystone.ErrorCode;
 import jakarta.annotation.Priority;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.Priorities;
@@ -27,40 +28,40 @@ public class AccessSessionFilter implements ContainerRequestFilter {
         String accessTokenId = jwt.getClaim("jti");
         String keyId = headerClaim(jwt);
         if (keyId == null) {
-            context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "access token signing key is not registered"));
+            context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), ErrorCode.INVALID_CREDENTIAL, "access token signing key is not registered"));
             return;
         }
         try {
             if (!keyRegistry.accepts(keyId)) {
-                context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "access token signing key is not registered"));
+                context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), ErrorCode.INVALID_CREDENTIAL, "access token signing key is not registered"));
                 return;
             }
         } catch (IllegalStateException e) {
-            context.abortWith(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), "authorization_unavailable", "authentication state is unavailable"));
+            context.abortWith(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), ErrorCode.AUTHORIZATION_UNAVAILABLE, "authentication state is unavailable"));
             return;
         }
         // JWT 已经通过签名校验后仍必须绑定到活动会话，缺少 jti 时直接拒绝。
         if (accessTokenId == null || accessTokenId.isBlank()) {
-            context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "access token session identifier is required"));
+            context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), ErrorCode.INVALID_CREDENTIAL, "access token session identifier is required"));
             return;
         }
         String tokenType = stringClaim(jwt, "type");
         String assurance = stringClaim(jwt, "aal");
         if (!"access".equals(tokenType) || !("AAL1".equals(assurance) || "AAL2".equals(assurance))
                 || JwtClaims.strings(jwt, "amr").isEmpty()) {
-            context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "access token authentication claims are incomplete"));
+            context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), ErrorCode.INVALID_CREDENTIAL, "access token authentication claims are incomplete"));
             return;
         }
         String userId = claimUuid(claim(jwt, "userId"));
         long permissionVersion = claimLong(claim(jwt, "permission_version"));
         if (userId == null || permissionVersion < 0) {
-            context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "access token permission version is required"));
+            context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), ErrorCode.INVALID_CREDENTIAL, "access token permission version is required"));
             return;
         }
         try {
-            if (!sessions.isAccessTokenActive(accessTokenId, userId, permissionVersion)) context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "session_revoked", "access session is no longer active"));
+            if (!sessions.isAccessTokenActive(accessTokenId, userId, permissionVersion)) context.abortWith(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), ErrorCode.SESSION_REVOKED, "access session is no longer active"));
         } catch (IllegalStateException e) {
-            context.abortWith(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), "authorization_unavailable", "authentication state is unavailable"));
+            context.abortWith(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), ErrorCode.AUTHORIZATION_UNAVAILABLE, "authentication state is unavailable"));
         }
     }
 

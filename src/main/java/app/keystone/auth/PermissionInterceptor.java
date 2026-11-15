@@ -1,6 +1,7 @@
 package app.keystone.auth;
 
 import app.keystone.ApiResponse;
+import app.keystone.ErrorCode;
 import app.keystone.audit.SecurityEventRepository;
 import app.keystone.audit.SecurityEventContext;
 import io.quarkus.security.identity.SecurityIdentity;
@@ -30,16 +31,16 @@ public class PermissionInterceptor {
     Object check(InvocationContext context) throws Exception {
         RequiresPermission requirement = context.getMethod().getAnnotation(RequiresPermission.class);
         if (requirement == null) requirement = context.getTarget().getClass().getAnnotation(RequiresPermission.class);
-        if (identity == null || identity.isAnonymous()) throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), "invalid_credential", "authentication is required"));
-        if (requirement == null || !PermissionCatalog.contains(requirement.value())) throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "permission_denied", "permission denied"));
+        if (identity == null || identity.isAnonymous()) throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), ErrorCode.AUTHENTICATION_REQUIRED, "authentication is required"));
+        if (requirement == null || !PermissionCatalog.contains(requirement.value())) throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), ErrorCode.PERMISSION_DENIED, "permission denied"));
         try {
             if (!authorization.allowed(identity, requirement.value())) {
                 recordDenied(requirement.value(), "permission denied");
-                throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "permission_denied", "permission denied"));
+                throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), ErrorCode.PERMISSION_DENIED, "permission denied"));
             }
         } catch (IllegalStateException e) {
             recordDenied(requirement.value(), "authorization state is unavailable");
-            throw new ServiceUnavailableException(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), "authorization_unavailable", "authorization state is unavailable"), e);
+            throw new ServiceUnavailableException(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), ErrorCode.AUTHORIZATION_UNAVAILABLE, "authorization state is unavailable"), e);
         }
         return context.proceed();
     }

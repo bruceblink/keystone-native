@@ -1,5 +1,7 @@
 package app.keystone.monitor;
 
+import app.keystone.ErrorCode;
+
 import app.keystone.ApiResponse;
 import app.keystone.auth.SessionRepository;
 import app.keystone.auth.RequiresPermission;
@@ -31,7 +33,7 @@ public class MonitorResource {
     @DELETE @Path("/onlineUser/{sessionId}") @RequiresPermission("online-session:revoke") @RequiresMfaStepUp
     public Response logout(@PathParam("sessionId") String sessionId) {
         try { sessions.revokeById(sessionId); return Response.ok(ApiResponse.ok(Map.of("loggedOut", true))).build(); }
-        catch (java.util.NoSuchElementException e) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("session not found")).build(); }
+        catch (java.util.NoSuchElementException e) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "session not found")).build(); }
     }
 
     @GET @Path("/serverInfo") @RequiresPermission("server:read")

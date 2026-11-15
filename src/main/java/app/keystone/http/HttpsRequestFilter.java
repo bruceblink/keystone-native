@@ -1,6 +1,7 @@
 package app.keystone.http;
 
 import app.keystone.ApiResponse;
+import app.keystone.ErrorCode;
 import app.keystone.auth.ClientAddressResolver;
 import io.vertx.ext.web.RoutingContext;
 import jakarta.annotation.Priority;
@@ -46,7 +47,7 @@ public class HttpsRequestFilter implements ContainerRequestFilter {
                 || isHttps(requestContext)) return;
         throw new WebApplicationException(Response.status(426)
                 .type(MediaType.APPLICATION_JSON)
-                .entity(ApiResponse.error("HTTPS is required"))
+                .entity(ApiResponse.error(ErrorCode.HTTPS_REQUIRED, "HTTPS is required"))
                 .build());
     }
 

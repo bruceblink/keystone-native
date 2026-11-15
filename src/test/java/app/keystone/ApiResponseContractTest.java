@@ -24,13 +24,14 @@ class ApiResponseContractTest {
     }
 
     @Test
-    void errorMessagesMapToTheSixFixedCategories() {
-        assertError("invalid credentials", "invalid_credential");
-        assertError("permission denied", "permission_denied");
-        assertError("data scope denied", "data_scope_denied");
-        assertError("access session is no longer active", "session_revoked");
-        assertError("authorization state is unavailable", "authorization_unavailable");
-        assertError("request body is required", "validation_failed");
+    void explicitCodesAreReturnedWithoutMessageClassification() {
+        assertError(ErrorCode.INVALID_CREDENTIAL, "invalid credentials");
+        assertError(ErrorCode.PERMISSION_DENIED, "permission denied");
+        assertError(ErrorCode.DATA_SCOPE_DENIED, "data scope denied");
+        assertError(ErrorCode.SESSION_REVOKED, "access session is no longer active");
+        assertError(ErrorCode.AUTHORIZATION_UNAVAILABLE, "authorization state is unavailable");
+        assertError(ErrorCode.VALIDATION_FAILED, "request body is required");
+        assertEquals("validation_failed", ApiResponse.error("permission denied").error().get("code"));
     }
 
     @Test
@@ -41,9 +42,9 @@ class ApiResponseContractTest {
         assertNull(response.data());
     }
 
-    private static void assertError(String message, String category) {
-        var response = ApiResponse.error(message);
-        assertEquals(category, response.error().get("code"));
+    private static void assertError(ErrorCode code, String message) {
+        var response = ApiResponse.error(code, message);
+        assertEquals(code.code(), response.error().get("code"));
         assertEquals(message, response.message());
         assertNull(response.data());
     }

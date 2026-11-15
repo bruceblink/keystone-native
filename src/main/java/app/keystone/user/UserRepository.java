@@ -1,5 +1,6 @@
 package app.keystone.user;
 
+import app.keystone.ErrorCode;
 import app.keystone.auth.DataScopeService;
 import app.keystone.auth.AuthorizationContext;
 import app.keystone.auth.AuthorizationService;
@@ -103,7 +104,7 @@ public class UserRepository {
                        String avatar, String remark, Boolean enabled, List<String> roleCodes) {
         authorization.require(context, "user:create", "user");
         if (!context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
-                "data_scope_denied", 403, "data scope does not allow this department");
+                ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this department");
         return create(username, password, displayName, deptId, postId, email, phoneNumber, sex, avatar, remark, enabled, roleCodes);
     }
 
@@ -111,9 +112,9 @@ public class UserRepository {
     public User importUser(AuthorizationContext context, UserExcelImporter.Record record) {
         authorization.require(context, "user:import", "user");
         if (!context.scope().allowsDepartment(record.deptId())) throw new app.keystone.auth.AuthorizationDeniedException(
-                "data_scope_denied", 403, "data scope does not allow this department");
+                ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this department");
         if (!record.roleIds().isEmpty() && !context.hasPermission("role:manage") && !context.hasPermission("permission:manage")) {
-            throw new app.keystone.auth.AuthorizationDeniedException("permission_denied", 403, "role assignment is not allowed");
+            throw new app.keystone.auth.AuthorizationDeniedException(ErrorCode.PERMISSION_DENIED, "role assignment is not allowed");
         }
         return create(record.username(), record.password(), record.displayName(), record.deptId(), record.postId(),
                 record.email(), record.phoneNumber(), record.sex(), record.avatar(), record.remark(), null,
@@ -148,7 +149,7 @@ public class UserRepository {
         authorization.require(context, "user:update", "user");
         findPublic(context, id);
         if (deptId != null && !context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
-                "data_scope_denied", 403, "data scope does not allow this department");
+                ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this department");
         return update(id, password, displayName, deptId, enabled, roleCodes);
     }
 
@@ -161,7 +162,7 @@ public class UserRepository {
     /** 初次密码修改由认证流程调用，要求内部系统能力，不接受外部用户上下文。 */
     public User updateInitialPassword(AuthorizationContext context, String id, String password) {
         if (context == null || !context.isSystem()) throw new app.keystone.auth.AuthorizationDeniedException(
-                "permission_denied", 403, "internal authentication context required");
+                ErrorCode.PERMISSION_DENIED, "internal authentication context required");
         return update(id, password, null, null, null, null);
     }
 
@@ -188,7 +189,7 @@ public class UserRepository {
         authorization.require(context, "user:update", "user");
         findPublic(context, id);
         if (updateDept && !context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
-                "data_scope_denied", 403, "data scope does not allow this department");
+                ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this department");
         return updateExtended(id, password, displayName, updateDept, deptId, postId, email, phoneNumber, sex, avatar, remark, enabled, roleCodes);
     }
 

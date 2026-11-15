@@ -1,6 +1,7 @@
 package app.keystone.auth;
 
 import app.keystone.ApiResponse;
+import app.keystone.ErrorCode;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -24,7 +25,7 @@ public class JwkSetResource {
                     .build();
         } catch (IllegalStateException e) {
             return Response.status(Response.Status.SERVICE_UNAVAILABLE)
-                    .entity(ApiResponse.error("JWT key set is unavailable"))
+                    .entity(ApiResponse.error(ErrorCode.AUTHORIZATION_UNAVAILABLE, "JWT key set is unavailable"))
                     .build();
         }
     }

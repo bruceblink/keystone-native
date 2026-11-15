@@ -19,22 +19,39 @@ public class ApiExceptionMapper implements ExceptionMapper<WebApplicationExcepti
         if (status == Response.Status.BAD_REQUEST.getStatusCode()) {
             status = 422;
         }
-        String code = errorCode(status);
-        String message = message(exception, status);
+        ErrorCode code = errorCode(original, status);
+        String message = message(exception, original, status);
         Response.ResponseBuilder builder = original == null ? Response.status(status) : Response.fromResponse(original).status(status);
         return builder.type(MediaType.APPLICATION_JSON).entity(ApiResponse.error(code, message)).build();
     }
 
-    private static String errorCode(int status) {
+    private static ErrorCode errorCode(Response original, int status) {
+        if (original != null && original.getEntity() instanceof ApiResponse<?> body && body.error() != null) {
+            return ErrorCode.fromCode(body.error().get("code"));
+        }
+        return errorCodeByStatus(status);
+    }
+
+    private static ErrorCode errorCodeByStatus(int status) {
         return switch (status) {
-            case 401 -> "invalid_credential";
-            case 403 -> "permission_denied";
-            case 503 -> "authorization_unavailable";
-            default -> "validation_failed";
+            case 401 -> ErrorCode.INVALID_CREDENTIAL;
+            case 403 -> ErrorCode.PERMISSION_DENIED;
+            case 404 -> ErrorCode.RESOURCE_NOT_FOUND;
+            case 409 -> ErrorCode.RESOURCE_CONFLICT;
+            case 413 -> ErrorCode.PAYLOAD_TOO_LARGE;
+            case 428 -> ErrorCode.PRECONDITION_REQUIRED;
+            case 429 -> ErrorCode.RATE_LIMITED;
+            case 500 -> ErrorCode.INTERNAL_ERROR;
+            case 503 -> ErrorCode.SERVICE_UNAVAILABLE;
+            default -> ErrorCode.VALIDATION_FAILED;
         };
     }
 
-    private static String message(WebApplicationException exception, int status) {
+    private static String message(WebApplicationException exception, Response original, int status) {
+        if (original != null && original.getEntity() instanceof ApiResponse<?> body
+                && body.message() != null && !body.message().isBlank() && body.message().length() <= 255) {
+            return body.message();
+        }
         String value = exception.getMessage();
         if (value != null && !value.isBlank() && value.length() <= 255) return value;
         return switch (status) {

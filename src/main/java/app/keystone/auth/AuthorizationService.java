@@ -1,5 +1,6 @@
 package app.keystone.auth;
 
+import app.keystone.ErrorCode;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -16,7 +17,7 @@ public class AuthorizationService {
     /** 将认证入口的主体解析为可传递给业务命令的不可变授权上下文。 */
     public AuthorizationContext context(SecurityIdentity identity) {
         if (identity == null || identity.isAnonymous()) {
-            throw denied("invalid_credential", 401, "authentication is required");
+            throw denied(ErrorCode.AUTHENTICATION_REQUIRED, "authentication is required");
         }
         String username = identity.getPrincipal().getName();
         String subjectId = subjectId(identity, username);
@@ -53,17 +54,17 @@ public class AuthorizationService {
 
     /** 在资源保存所有者时，额外核验主体与目标记录的所有者关系。 */
     public void require(AuthorizationContext context, String permission, String resource, String ownerId) {
-        if (context == null) throw denied("invalid_credential", 401, "authentication is required");
+        if (context == null) throw denied(ErrorCode.AUTHENTICATION_REQUIRED, "authentication is required");
         if (!PermissionCatalog.contains(permission) || !context.hasPermission(permission)) {
-            throw denied("permission_denied", 403, "permission denied");
+            throw denied(ErrorCode.PERMISSION_DENIED, "permission denied");
         }
         DataScopePolicy.ResourceRule rule = DataScopePolicy.rule(resource);
         if (rule == null || !DataScopePolicy.allows(rule, context.allScope(), context.selfScope(), context.ownerScope())) {
-            throw denied("data_scope_denied", 403, "data scope does not allow this resource");
+            throw denied(ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this resource");
         }
         if (ownerId != null && !context.isSystem() && !context.allScope()
                 && (!(context.selfScope() || context.ownerScope()) || !context.subjectId().equals(ownerId))) {
-            throw denied("data_scope_denied", 403, "data scope does not allow this resource");
+            throw denied(ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this resource");
         }
     }
 
@@ -84,7 +85,7 @@ public class AuthorizationService {
         Object value = identity.getAttribute("userId");
         if (value instanceof String id && !id.isBlank()) return app.keystone.identity.UuidValues.requireCanonical(id);
         return users.findAuthUserByUsername(username)
-                .orElseThrow(() -> denied("invalid_credential", 401, "subject is unavailable"))
+                .orElseThrow(() -> denied(ErrorCode.AUTHENTICATION_REQUIRED, "subject is unavailable"))
                 .id();
     }
 
@@ -125,7 +126,7 @@ public class AuthorizationService {
         return value;
     }
 
-    private static AuthorizationDeniedException denied(String code, int status, String message) {
-        return new AuthorizationDeniedException(code, status, message);
+    private static AuthorizationDeniedException denied(ErrorCode code, String message) {
+        return new AuthorizationDeniedException(code, message);
     }
 }

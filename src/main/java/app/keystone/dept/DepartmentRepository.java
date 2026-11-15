@@ -1,5 +1,6 @@
 package app.keystone.dept;
 
+import app.keystone.ErrorCode;
 import app.keystone.auth.DataScopeService;
 import app.keystone.auth.AuthorizationContext;
 import app.keystone.auth.AuthorizationService;
@@ -89,7 +90,7 @@ public class DepartmentRepository {
     }
 
     private static app.keystone.auth.AuthorizationDeniedException denied() {
-        return new app.keystone.auth.AuthorizationDeniedException("data_scope_denied", 403, "data scope does not allow this department");
+        return new app.keystone.auth.AuthorizationDeniedException(ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this department");
     }
 
     private static boolean isConstraint(Throwable error) {

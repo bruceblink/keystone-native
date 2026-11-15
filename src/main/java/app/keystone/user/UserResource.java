@@ -1,5 +1,7 @@
 package app.keystone.user;
 
+import app.keystone.ErrorCode;
+
 import app.keystone.ApiResponse;
 import app.keystone.ExcelExporter;
 import app.keystone.audit.OperationLogRepository;
@@ -131,8 +133,8 @@ public class UserResource {
 
     private String actor() { return identity.getPrincipal().getName(); }
     private AuthorizationContext context() { return authorization.context(identity); }
-    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
-    private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("user not found")).build(); }
+    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
+    private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "user not found")).build(); }
     public record UserRequest(String username, String password, String displayName, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, Boolean clearDept, List<String> roleCodes) {
         public boolean clearDepartment() { return Boolean.TRUE.equals(clearDept); }
     }

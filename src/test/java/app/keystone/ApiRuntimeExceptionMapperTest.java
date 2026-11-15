@@ -17,7 +17,7 @@ class ApiRuntimeExceptionMapperTest {
 
     @Test
     void mapsUnexpectedStateFailuresToUnavailableErrors() {
-        assertError(new IllegalStateException("database unavailable"), 503, "authorization_unavailable");
+        assertError(new IllegalStateException("database unavailable"), 503, "service_unavailable");
     }
 
     private void assertError(RuntimeException exception, int status, String code) {

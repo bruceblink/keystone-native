@@ -1,5 +1,7 @@
 package app.keystone.role;
 
+import app.keystone.ErrorCode;
+
 import app.keystone.ApiResponse;
 import app.keystone.ExcelExporter;
 import app.keystone.audit.OperationLogRepository;
@@ -82,9 +84,9 @@ public class RoleResource {
 
     private AuthorizationContext context() { return authorization.context(identity); }
     private String actor() { return identity.getPrincipal().getName(); }
-    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
-    private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("role not found")).build(); }
-    private static Response notFound(String message) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(message)).build(); }
+    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
+    private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "role not found")).build(); }
+    private static Response notFound(String message) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, message)).build(); }
     private static List<String> splitIds(String raw) { return raw == null ? List.of() : java.util.Arrays.stream(raw.split(",")).map(String::trim).filter(value -> !value.isEmpty()).toList(); }
     public record RoleRequest(String code, String name, Boolean enabled) {}
     public record PermissionRequest(List<String> permissions) {}

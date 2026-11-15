@@ -1,5 +1,6 @@
 package app.keystone.monitor;
 
+import app.keystone.ErrorCode;
 import app.keystone.ApiResponse;
 import app.keystone.audit.SecurityObservability;
 import app.keystone.auth.RequiresPermission;
@@ -43,7 +44,7 @@ public class SecurityObservabilityResource {
                     from, to, page, size, horizonDays))).build();
         } catch (IllegalArgumentException e) {
             return Response.status(422)
-                    .entity(ApiResponse.error("validation_failed", e.getMessage())).build();
+                    .entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, e.getMessage())).build();
         }
     }
 }

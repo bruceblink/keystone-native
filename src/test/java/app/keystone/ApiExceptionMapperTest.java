@@ -17,10 +17,17 @@ class ApiExceptionMapperTest {
     @Test
     void mapsCommonHttpExceptionsToCanonicalErrorCodes() {
         assertError(new BadRequestException("invalid body"), 422, "validation_failed");
-        assertError(new NotFoundException("missing record"), 404, "validation_failed");
+        assertError(new NotFoundException("missing record"), 404, "resource_not_found");
         assertError(new NotAuthorizedException("login required"), 401, "invalid_credential");
         assertError(new ForbiddenException("permission denied"), 403, "permission_denied");
-        assertError(new ServiceUnavailableException("database unavailable"), 503, "authorization_unavailable");
+        assertError(new ServiceUnavailableException("database unavailable"), 503, "service_unavailable");
+    }
+
+    @Test
+    void preservesExplicitCodeFromOriginalResponse() {
+        var exception = new NotAuthorizedException(ApiResponse.response(401, ErrorCode.AUTHENTICATION_REQUIRED,
+                "authentication is required"));
+        assertError(exception, 401, "authentication_required");
     }
 
     private void assertError(jakarta.ws.rs.WebApplicationException exception, int status, String code) {

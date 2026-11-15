@@ -1,5 +1,6 @@
 package app.keystone.job;
 
+import app.keystone.ErrorCode;
 import app.keystone.auth.AuthorizationContext;
 import app.keystone.auth.AuthorizationDeniedException;
 import app.keystone.auth.AuthorizationService;
@@ -108,7 +109,7 @@ public class JobService {
         try {
             jobs.findById(context, jobId);
         } catch (java.util.NoSuchElementException e) {
-            throw new AuthorizationDeniedException("data_scope_denied", 403,
+            throw new AuthorizationDeniedException(ErrorCode.DATA_SCOPE_DENIED,
                     "data scope does not allow this resource");
         }
         return jobLogs.list(jobId, page, size);

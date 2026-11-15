@@ -1,5 +1,6 @@
 package app.keystone.auth;
 
+import app.keystone.ErrorCode;
 import io.quarkus.elytron.security.common.BcryptUtil;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import io.quarkus.hibernate.orm.panache.PanacheQuery;
@@ -151,7 +152,7 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         if (usersToDelete.size() != normalized.size()) throw new java.util.NoSuchElementException("user not found");
         for (ApiKeyUserEntity user : usersToDelete) {
             if (!scope.all() && !scope.allowsUser(subjectId, user.id(), user.departmentId())) {
-                throw new AuthorizationDeniedException("data_scope_denied", 403,
+                throw new AuthorizationDeniedException(ErrorCode.DATA_SCOPE_DENIED,
                         "data scope does not allow this user");
             }
         }

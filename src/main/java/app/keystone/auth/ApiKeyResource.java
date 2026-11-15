@@ -1,5 +1,7 @@
 package app.keystone.auth;
 
+import app.keystone.ErrorCode;
+
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.user.UserRepository;
@@ -22,9 +24,9 @@ public class ApiKeyResource {
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
     @POST @RequiresPermission("api-key:create") @RequiresMfaStepUp public Response issue(Request request) {
-        if (request == null || request.name() == null || request.name().isBlank()) return Response.status(422).entity(ApiResponse.error("name is required")).build();
+        if (request == null || request.name() == null || request.name().isBlank()) return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, "name is required")).build();
         var user = users.findAuthUserByUsername(identity.getPrincipal().getName());
-        if (user.isEmpty()) return Response.status(403).entity(ApiResponse.error("API key identity cannot issue API keys")).build();
+        if (user.isEmpty()) return Response.status(403).entity(ApiResponse.error(ErrorCode.PERMISSION_DENIED, "API key identity cannot issue API keys")).build();
         String userId = user.get().id();
         var value = keys.issue(userId, request.name(), request.scopes(), request.expiresAt());
         logs.record(identity.getPrincipal().getName(), "CREATE", "api-key", value.id(), value.prefix());
@@ -37,18 +39,18 @@ public class ApiKeyResource {
     @POST @Path("/{id}/rotate") @RequiresPermission("api-key:rotate") @RequiresMfaStepUp public Response rotate(@PathParam("id") String id) {
         var user = owner();
         try { var value = keys.rotate(user.id(), id); logs.record(identity.getPrincipal().getName(), "ROTATE", "api-key", id, value.prefix()); return Response.ok(ApiResponse.ok(value)).build(); }
-        catch (NoSuchElementException e) { return Response.status(404).entity(ApiResponse.error(e.getMessage())).build(); }
-        catch (IllegalArgumentException e) { return Response.status(409).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (NoSuchElementException e) { return Response.status(404).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, e.getMessage())).build(); }
+        catch (IllegalArgumentException e) { return Response.status(409).entity(ApiResponse.error(ErrorCode.RESOURCE_CONFLICT, e.getMessage())).build(); }
     }
     @DELETE @Path("/{id}") @RequiresPermission("api-key:revoke") @RequiresMfaStepUp public Response revoke(@PathParam("id") String id) {
         var user = owner();
         try { keys.revoke(user.id(), id); logs.record(identity.getPrincipal().getName(), "REVOKE", "api-key", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("revoked", true))).build(); }
-        catch (NoSuchElementException e) { return Response.status(404).entity(ApiResponse.error(e.getMessage())).build(); }
+        catch (NoSuchElementException e) { return Response.status(404).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, e.getMessage())).build(); }
     }
     private UserRepository.AuthUser owner() {
         var user = users.findAuthUserByUsername(identity.getPrincipal().getName());
         if (user.isEmpty() || "API_KEY".equals(identity.getAttribute("credentialType"))) {
-            throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "permission_denied", "API key identity cannot manage API keys"));
+            throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), ErrorCode.PERMISSION_DENIED, "API key identity cannot manage API keys"));
         }
         return user.get();
     }

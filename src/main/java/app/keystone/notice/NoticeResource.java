@@ -1,5 +1,7 @@
 package app.keystone.notice;
 
+import app.keystone.ErrorCode;
+
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.auth.RequiresPermission;
@@ -42,8 +44,8 @@ public class NoticeResource {
 
     private AuthorizationContext context() { return authorization.context(identity); }
     private String actor() { return identity.getPrincipal().getName(); }
-    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).build(); }
-    private static Response notFound() { return Response.status(404).entity(ApiResponse.error("notice not found")).build(); }
+    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
+    private static Response notFound() { return Response.status(404).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "notice not found")).build(); }
     private static List<String> splitIds(String ids) { if (ids == null || ids.isBlank()) throw new IllegalArgumentException("ids is required"); return java.util.Arrays.stream(ids.split(",")).map(String::trim).toList(); }
     public record NoticeRequest(String title, String content, String noticeType, Boolean enabled) {}
     public record PublishRequest(Boolean published) {}

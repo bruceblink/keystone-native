@@ -1,6 +1,7 @@
 package app.keystone.auth;
 
 import app.keystone.ApiResponse;
+import app.keystone.ErrorCode;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.GET;
@@ -24,9 +25,9 @@ public class OidcResource {
         try {
             return Response.seeOther(oidc.authorize()).build();
         } catch (IllegalArgumentException e) {
-            return error(422, "validation_failed", "invalid OIDC authorization request");
+            return error(422, ErrorCode.VALIDATION_FAILED, "invalid OIDC authorization request");
         } catch (IllegalStateException e) {
-            return error(Response.Status.SERVICE_UNAVAILABLE, "authorization_unavailable", "OIDC authorization is unavailable");
+            return error(Response.Status.SERVICE_UNAVAILABLE, ErrorCode.AUTHORIZATION_UNAVAILABLE, "OIDC authorization is unavailable");
         }
     }
 
@@ -39,24 +40,24 @@ public class OidcResource {
                              @QueryParam("error") String providerError) {
         if (providerError != null && !providerError.isBlank()) {
             oidc.cancel(state);
-            return error(Response.Status.UNAUTHORIZED, "invalid_credential", "OIDC authorization was not completed");
+            return error(Response.Status.UNAUTHORIZED, ErrorCode.INVALID_CREDENTIAL, "OIDC authorization was not completed");
         }
         try {
             return Response.ok(ApiResponse.ok(oidc.callback(code, state))).build();
         } catch (OidcJwtVerifier.OidcException e) {
-            return error(Response.Status.UNAUTHORIZED, "invalid_credential", "OIDC authentication failed");
+            return error(Response.Status.UNAUTHORIZED, ErrorCode.INVALID_CREDENTIAL, "OIDC authentication failed");
         } catch (IllegalArgumentException e) {
-            return error(422, "validation_failed", "invalid OIDC callback");
+            return error(422, ErrorCode.VALIDATION_FAILED, "invalid OIDC callback");
         } catch (IllegalStateException e) {
-            return error(Response.Status.SERVICE_UNAVAILABLE, "authorization_unavailable", "OIDC authentication is unavailable");
+            return error(Response.Status.SERVICE_UNAVAILABLE, ErrorCode.AUTHORIZATION_UNAVAILABLE, "OIDC authentication is unavailable");
         }
     }
 
-    private static Response error(Response.Status status, String code, String message) {
+    private static Response error(Response.Status status, ErrorCode code, String message) {
         return error(status.getStatusCode(), code, message);
     }
 
-    private static Response error(int status, String code, String message) {
+    private static Response error(int status, ErrorCode code, String message) {
         return Response.status(status).entity(ApiResponse.error(code, message)).build();
     }
 }

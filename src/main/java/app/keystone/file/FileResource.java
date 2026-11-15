@@ -1,5 +1,7 @@
 package app.keystone.file;
 
+import app.keystone.ErrorCode;
+
 import app.keystone.ApiResponse;
 import app.keystone.auth.RequiresPermission;
 import app.keystone.auth.AuthorizationContext;
@@ -39,7 +41,7 @@ public class FileResource {
     }
 
     @POST @Path("/upload") @RequiresPermission("file:write") @Consumes(MediaType.MULTIPART_FORM_DATA) @Produces(MediaType.APPLICATION_JSON)
-    public Response upload(@RestForm("file") FileUpload file) { authorization.require(context(), "file:write", "file"); if (file == null) return bad("file is required"); try { return Response.ok(ApiResponse.ok(save(file))).build(); } catch (IOException e) { return Response.serverError().entity(ApiResponse.error("file upload failed")).build(); } }
+    public Response upload(@RestForm("file") FileUpload file) { authorization.require(context(), "file:write", "file"); if (file == null) return bad("file is required"); try { return Response.ok(ApiResponse.ok(save(file))).build(); } catch (IOException e) { return Response.serverError().entity(ApiResponse.error(ErrorCode.SERVICE_UNAVAILABLE, "file upload failed")).build(); } }
 
     @POST @Path("/uploads") @RequiresPermission("file:write") @Consumes(MediaType.MULTIPART_FORM_DATA) @Produces(MediaType.APPLICATION_JSON)
     public Response uploads(@RestForm("files") List<FileUpload> files) {
@@ -52,7 +54,7 @@ public class FileResource {
         } catch (IOException | FileUploadException e) {
             // 批量保存失败时清理本次已写入文件，避免部分成功产生不可追踪的残留文件。
             cleanup(uploads);
-            return Response.serverError().entity(ApiResponse.error("file upload failed")).build();
+            return Response.serverError().entity(ApiResponse.error(ErrorCode.SERVICE_UNAVAILABLE, "file upload failed")).build();
         }
     }
 
@@ -62,12 +64,12 @@ public class FileResource {
         try {
             java.nio.file.Path path = safePath(fileName);
             if (!Files.isRegularFile(path)) {
-                return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error("file not found"))
+                return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "file not found"))
                         .type(MediaType.APPLICATION_JSON).build();
             }
             long size = Files.size(path);
             if (size > maxDownloadBytes) {
-                return Response.status(413).entity(ApiResponse.error("file exceeds download size limit"))
+                return Response.status(413).entity(ApiResponse.error(ErrorCode.PAYLOAD_TOO_LARGE, "file exceeds download size limit"))
                         .type(MediaType.APPLICATION_JSON).build();
             }
             String name = path.getFileName().toString();
@@ -78,7 +80,7 @@ public class FileResource {
         } catch (IllegalArgumentException e) {
             return bad(e.getMessage());
         } catch (IOException e) {
-            return Response.serverError().entity(ApiResponse.error("file download failed"))
+            return Response.serverError().entity(ApiResponse.error(ErrorCode.SERVICE_UNAVAILABLE, "file download failed"))
                     .type(MediaType.APPLICATION_JSON).build();
         }
     }
@@ -108,7 +110,7 @@ public class FileResource {
 
     private AuthorizationContext context() { return authorization.context(identity); }
 
-    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(message)).type(MediaType.APPLICATION_JSON).build(); }
+    private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).type(MediaType.APPLICATION_JSON).build(); }
     public record Upload(String url, String fileName, String newFileName, String originalFilename) {}
     private static final class FileUploadException extends RuntimeException { private FileUploadException(Throwable cause) { super(cause); } }
 }
