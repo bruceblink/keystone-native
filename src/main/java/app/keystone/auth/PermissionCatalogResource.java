@@ -11,17 +11,17 @@ import jakarta.ws.rs.core.MediaType;
 import java.util.Comparator;
 import java.util.List;
 
-/** 提供管理端动态读取的权限目录；目录项不改变权限，只描述当前主体可授予的范围。 */
+/** 提供 API Key 签发主体可读取的动态权限目录；目录项不改变权限，只描述当前主体可授予的范围。 */
 @Path("/v1/permissions")
 @Produces(MediaType.APPLICATION_JSON)
 public class PermissionCatalogResource {
     @Inject AuthorizationService authorization;
     @Inject SecurityIdentity identity;
 
-    /** 返回完整目录，并标记当前主体是否可以把每项权限授予 API Key。 */
+    /** 返回完整目录；能签发 API Key 的主体可以读取，并获得每项 scope 的可授予标记。 */
     @GET
     @Path("/catalog")
-    @RequiresPermission("permission:read")
+    @RequiresPermission("api-key:create")
     public ApiResponse<CatalogResponse> catalog() {
         List<Entry> entries = PermissionCatalog.values().stream()
                 .sorted(Comparator.naturalOrder())
