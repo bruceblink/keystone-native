@@ -8,7 +8,7 @@ Native 使用 Phoenix 主目录作为跨项目错误码的唯一可信来源：`
 
 - 服务端代码集合固定为主目录的 21 个代码。`ErrorCode.code()` 是接口返回的稳定字符串。
 - `ErrorCode.httpStatus()` 记录默认状态，资源入口仍决定实际 HTTP 状态。替换错误码时保持现有状态，不因为目录反查而改写状态。
-- `ErrorCode.fromCode(String)` 和 `ErrorCode.isRegistered(String)` 是代码到目录项的反查入口。未知或空值按现有接口约定处理，不把可读 `message` 当作代码。
+- `ErrorCode.find(String)` 是代码到目录项的精确反查入口。它对未知或空值返回空结果；`ErrorCode.fromCode(String)` 和 `ErrorCode.isRegistered(String)` 复用该查找结果，并继续保持现有兼容降级行为。不把可读 `message` 当作代码。
 - `RetryAdvice` 只提供调用方处理建议。它不表示任何请求都可以自动重试。
 - `authorization_unavailable` 只保留在认证会话、JWK、OIDC、WebAuthn、MFA 状态、权限拦截器和数据范围服务的旧不可用边界。新入口使用更具体的目录代码；迁移时保持原 `503` 状态。
 
@@ -35,4 +35,4 @@ python3 keystone-phoenix/scripts/check_error_code_catalog.py \
   --admin-root keystone-admin-web
 ```
 
-该检查解析 `ErrorCode.java` 的枚举代码和状态，确认 Native 与主目录保持 21 个代码、无重复项、可反查入口存在。检查通过只证明源码集合和目录元数据一致；它不替代真实 MySQL、HTTP、浏览器或生产代理验收。
+该检查解析 `ErrorCode.java` 的枚举代码和状态，确认 Native 与主目录保持 21 个代码、无重复项、精确反查入口存在。检查通过只证明源码集合和目录元数据一致；它不替代真实 MySQL、HTTP、浏览器或生产代理验收。
