@@ -98,12 +98,12 @@ scope_allowed(principal, scope, resource, context)
 
 两个项目的资源路径使用同一组外部接口：管理资源统一为 `/api/v1/{users,roles,departments,posts,menus,configs,dictionaries,notices,jobs,login-logs,operation-logs,profile}`；两者共享 Principal、权限、范围、错误和审计语义，不提供旧 `/system/*`、`/logs/*` 路径。认证统一使用 `/api/v1/auth/*`；OIDC 入口为 `/api/v1/auth/oidc/{authorize,callback}`，两个项目的 WebAuthn 入口统一为 `/api/v1/auth/webauthn/{register,register/options,login,login/options}`。JWK Set 保留标准路径 `/api/.well-known/jwks.json`。两项目均把公开 RSA key 登记到持久化 registry，使用 `ACTIVE/RETIRING` 保留窗口、过期清理和未知 `kid` 拒绝；私钥只由运行时密钥配置提供。
 
-2026-11-15 的路由集合核对确认，Native 与 Phoenix 各有 108 条业务接口，另有
-`/api/v1/health` 1 条健康接口。业务方法分布均为 `GET 42`、`POST 29`、`PUT 20`、
-`DELETE 17`。将 Java `{id}` 和 Phoenix `:id` 参数占位符归一后，两边的业务接口集合相等，
-双方没有重复的 `HTTP method + path`。Phoenix 额外的 3 条 GET 路由属于 LiveView 页面和头像
-资源，不属于后端业务接口；Native 的 `/api/openapi` 和 `/api/swagger` 是生成文档入口，也
-不属于业务接口集合。
+2026-11-15 的路由集合核对确认，Native 与 Phoenix 各有 108 条 `/api/v1` 接口（含
+`/api/v1/health`），标准 JWK Set 另有 `/api/.well-known/jwks.json` 1 条路径。方法分布均为
+`GET 42`、`POST 29`、`PUT 20`、`DELETE 17`。将 Java `{id}` 和 Phoenix `:id` 参数占位符
+归一后，两边的接口集合相等，双方没有重复的 `HTTP method + path`。Phoenix 额外的 3 条 GET
+路由属于 LiveView 页面和头像资源，不属于后端接口；Native 的 `/api/openapi` 和 `/api/swagger`
+是生成文档入口，也不属于 `/api/v1` 接口集合。
 
 ## Phoenix 适配边界
 
