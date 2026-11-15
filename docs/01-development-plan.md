@@ -4,7 +4,7 @@
 
 ## 2026-11-16 业务错误码目录基线
 
-Native 的错误码目录引用 [`03-business-error-code-catalog.md`](03-business-error-code-catalog.md)，跨项目主目录位于 `keystone-phoenix/docs/11-business-error-code-catalog.md`。Native `aea1a35`/`7cb6533` 与 Phoenix `56ba348` 的服务端目录均为 21 个代码；Phoenix `56ba348` 补齐了 `mfa_invalid_code`、`mfa_state_conflict` 和 `https_required`。admin-web `33c20ff`/`dd1b280` 已按同一集合提供反查元数据，另保留 4 个客户端本地代码。目录明确代码到业务条件的反查、HTTP 状态保持和 `authorization_unavailable` 的旧边界范围。
+Native 的错误码目录引用 [`03-business-error-code-catalog.md`](03-business-error-code-catalog.md)，跨项目主目录位于 `keystone-phoenix/docs/11-business-error-code-catalog.md`。Native `aea1a35`/`7cb6533` 与 Phoenix `56ba348` 的服务端目录均为 21 个代码；Phoenix `56ba348` 补齐了 `mfa_invalid_code`、`mfa_state_conflict` 和 `https_required`。admin-web `33c20ff`/`dd1b280`/`9e6e5e9` 已按同一集合提供反查元数据，并补齐缺少业务码的失败响应兜底，另保留 4 个客户端本地代码。目录明确代码到业务条件的反查、HTTP 状态保持和 `authorization_unavailable` 的旧边界范围。
 
 本轮静态验证：`python3 keystone-phoenix/scripts/check_error_code_catalog.py --native-root keystone-native --admin-root keystone-admin-web` 通过，规范服务端代码 `21` 个、客户端本地代码 `4` 个，三个项目的集合和默认状态 `21/21` 一致；文档与差异检查通过。该结果不替代真实 MySQL、HTTP、浏览器和生产代理验收。
 
