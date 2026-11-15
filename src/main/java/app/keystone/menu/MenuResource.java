@@ -23,7 +23,7 @@ public class MenuResource {
     @Inject SecurityIdentity identity;
     @Inject AuthorizationService authorization;
 
-    @GET public ApiResponse<List<MenuNode>> tree() {
+    @GET @RequiresPermission("menu:read") public ApiResponse<List<MenuNode>> tree() {
         var authorizationContext = context();
         var items = authorization.allowed(identity, "menu:manage")
                 ? menus.listForManagement(authorizationContext)
