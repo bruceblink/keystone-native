@@ -58,6 +58,11 @@ public class ApiKeyRoleEntity {
         return code;
     }
 
+    /** 返回菜单管理接口需要的角色编码，避免跨包读取 JPA 字段。 */
+    public String codeValue() {
+        return code;
+    }
+
     String id() {
         return id == null ? null : id.toString();
     }

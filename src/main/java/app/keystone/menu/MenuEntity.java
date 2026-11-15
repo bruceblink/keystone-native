@@ -90,6 +90,10 @@ public class MenuEntity {
         roles.addAll(replacement);
     }
 
+    Set<ApiKeyRoleEntity> roles() {
+        return roles;
+    }
+
     Menu toModel() {
         return new Menu(id == null ? null : id.toString(), parentId == null ? null : parentId.toString(), code, name, path, component, menuType, permission, sortOrder, enabled);
     }

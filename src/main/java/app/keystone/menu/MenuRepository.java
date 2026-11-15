@@ -29,6 +29,13 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.ut
                 .list().stream().map(MenuEntity::toModel).toList();
     }
 
+    /** 管理主体读取完整菜单目录；停用菜单和未绑定角色的节点也必须保留。 */
+    @Transactional
+    public List<Menu> listForManagement(AuthorizationContext context) {
+        authorization.require(context, "menu:manage", "menu");
+        return find("order by parentId, sortOrder, id").list().stream().map(MenuEntity::toModel).toList();
+    }
+
     @Transactional
     public Menu create(AuthorizationContext context, MenuRequest request) {
         authorization.require(context, "menu:create", "menu");
@@ -80,6 +87,15 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.ut
             throw new IllegalArgumentException("unknown role");
         }
         menu.replaceRoles(new LinkedHashSet<>(found));
+    }
+
+    /** 读取菜单当前绑定的角色编码，供管理端保存前确认现有关系。 */
+    @Transactional
+    public List<String> roleCodes(AuthorizationContext context, String menuId) {
+        authorization.require(context, "menu:manage", "menu");
+        MenuEntity menu = find("id", app.keystone.identity.UuidValues.parse(menuId)).firstResult();
+        if (menu == null) throw new java.util.NoSuchElementException("menu not found");
+        return menu.roles().stream().map(ApiKeyRoleEntity::codeValue).sorted().toList();
     }
 
     private static void require(String value, String field) {

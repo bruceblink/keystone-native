@@ -23,12 +23,19 @@ public class MenuResource {
     @Inject SecurityIdentity identity;
     @Inject AuthorizationService authorization;
 
-    @GET @RequiresPermission("menu:read") public ApiResponse<List<MenuNode>> tree() { return ApiResponse.ok(toTree(menus.listForRoles(context(), identity.getRoles().stream().toList()))); }
+    @GET public ApiResponse<List<MenuNode>> tree() {
+        var authorizationContext = context();
+        var items = authorization.allowed(identity, "menu:manage")
+                ? menus.listForManagement(authorizationContext)
+                : menus.listForRoles(authorizationContext, identity.getRoles().stream().toList());
+        return ApiResponse.ok(toTree(items));
+    }
     @GET @Path("/dropdown") @RequiresPermission("menu:read") public ApiResponse<List<Menu>> dropdown() { return ApiResponse.ok(menus.listForRoles(context(), identity.getRoles().stream().toList())); }
 
     @POST @RequiresPermission("menu:create") public Response create(MenuRepository.MenuRequest request) { if (request == null) return bad("request body is required"); try { var menu = menus.create(context(), request); logs.record(actor(), "CREATE", "menu", String.valueOf(menu.id()), menu.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(menu)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
     @PUT @Path("/{id}") @RequiresPermission("menu:update") public Response update(@PathParam("id") String id, MenuRepository.MenuRequest request) { if (request == null) return bad("request body is required"); try { var menu = menus.update(context(), id, request); logs.record(actor(), "UPDATE", "menu", id, menu.code()); return Response.ok(ApiResponse.ok(menu)).build(); } catch (IllegalArgumentException e) { return bad("id must be a UUID"); } catch (NoSuchElementException e) { return notFound(); } }
     @PUT @Path("/{id}/roles") @RequiresPermission("menu:manage") public Response assignRoles(@PathParam("id") String id, RoleAssignment request) { if (request == null) return bad("request body is required"); try { menus.assignRoles(context(), id, request.roleCodes()); logs.record(actor(), "UPDATE", "menu-role", id, null); return Response.ok(ApiResponse.ok(Map.of("updated", true))).build(); } catch (IllegalArgumentException e) { return bad("id must be a UUID"); } }
+    @GET @Path("/{id}/roles") @RequiresPermission("menu:manage") public Response roles(@PathParam("id") String id) { try { return Response.ok(ApiResponse.ok(Map.of("roleCodes", menus.roleCodes(context(), id)))).build(); } catch (IllegalArgumentException e) { return bad("id must be a UUID"); } catch (NoSuchElementException e) { return notFound(); } }
     @DELETE @Path("/{id}") @RequiresPermission("menu:delete") public Response delete(@PathParam("id") String id) { try { menus.delete(context(), id); logs.record(actor(), "DELETE", "menu", id, null); return Response.ok(ApiResponse.ok(Map.of("deleted", true))).build(); } catch (IllegalArgumentException e) { return bad("id must be a UUID"); } catch (NoSuchElementException e) { return notFound(); } }
 
     private AuthorizationContext context() { return authorization.context(identity); }
