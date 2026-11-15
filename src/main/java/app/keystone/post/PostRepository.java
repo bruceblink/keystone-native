@@ -33,6 +33,7 @@ public class PostRepository implements PanacheRepositoryBase<PostEntity, java.ut
     }
 
     /** 创建岗位时保留请求中的启用状态；省略字段仍使用启用默认值。 */
+    @Transactional
     public Post create(AuthorizationContext context, String code, String name, Integer sortOrder, Boolean enabled) {
         authorization.require(context, "post:create", "post");
         require(code, "code");

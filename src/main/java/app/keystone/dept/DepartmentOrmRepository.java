@@ -25,6 +25,7 @@ public class DepartmentOrmRepository implements PanacheRepositoryBase<Department
     }
 
     /** 持久化创建状态；null 表示沿用默认的启用状态。 */
+    @Transactional
     public Department createDepartment(String code, String name, String parentId, int sortOrder, Boolean enabled) {
         var department = new DepartmentEntity(code.trim(), name.trim(), parentId, sortOrder, enabled);
         persistAndFlush(department);

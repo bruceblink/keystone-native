@@ -41,12 +41,13 @@ public class DataScopeInterceptor {
             if (!DataScopePolicy.allows(rule, scope.all(), scope.self(), scope.owner())) {
                 throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), "data_scope_denied", "data scope does not allow this resource"));
             }
-            return context.proceed();
         } catch (NotAuthorizedException | ForbiddenException e) {
             throw e;
         } catch (IllegalStateException e) {
             throw new ServiceUnavailableException(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), "authorization_unavailable", "data scope is unavailable"), e);
         }
+        // 数据范围检查完成后再进入资源方法，避免把业务异常误分类为授权服务不可用。
+        return context.proceed();
     }
 
     private String subjectId() {
