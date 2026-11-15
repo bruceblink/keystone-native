@@ -47,6 +47,24 @@ class MenuResourceHttpTest extends AuthTestFixture {
                     .when().get("/v1/menus/" + id + "/roles")
                     .then().statusCode(200)
                     .body("data.roleCodes", hasItem("ADMIN"));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{}")
+                    .when().put("/v1/menus/" + id + "/roles")
+                    .then().statusCode(422)
+                    .body("error.code", is("validation_failed"));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"roleCodes\":\"ADMIN\"}")
+                    .when().put("/v1/menus/" + id + "/roles")
+                    .then().statusCode(422)
+                    .body("error.code", is("validation_failed"));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"roleCodes\":[\"MISSING\"]}")
+                    .when().put("/v1/menus/" + id + "/roles")
+                    .then().statusCode(422)
+                    .body("message", is("角色编码无效"));
         } finally {
             if (id != null) {
                 given().auth().oauth2(token).contentType(JSON)
