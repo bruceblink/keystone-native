@@ -76,6 +76,12 @@ public class MenuEntity {
     }
 
     void update(MenuRepository.MenuRequest request) {
+        update(request, parentId);
+    }
+
+    /** 更新菜单字段和父级关系；父级校验由仓储在事务内完成。 */
+    void update(MenuRepository.MenuRequest request, UUID newParentId) {
+        parentId = newParentId;
         if (request.name() != null && !request.name().isBlank()) name = request.name().trim();
         if (request.path() != null) path = request.path();
         if (request.component() != null) component = request.component();
@@ -83,6 +89,10 @@ public class MenuEntity {
         if (request.permission() != null) permission = request.permission();
         if (request.sortOrder() != null) sortOrder = request.sortOrder();
         if (request.enabled() != null) enabled = request.enabled();
+    }
+
+    UUID parentId() {
+        return parentId;
     }
 
     void replaceRoles(Set<ApiKeyRoleEntity> replacement) {

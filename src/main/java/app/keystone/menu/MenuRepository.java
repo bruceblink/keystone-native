@@ -54,9 +54,12 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.ut
     @Transactional
     public Menu update(AuthorizationContext context, String id, MenuRequest request) {
         authorization.require(context, "menu:update", "menu");
-        MenuEntity entity = find("id", app.keystone.identity.UuidValues.parse(id)).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
+        var menuId = parseMenuId(id);
+        MenuEntity entity = find("id", menuId).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("menu not found");
-        entity.update(request);
+        var parentId = parseParentId(request.parentId());
+        validateParent(menuId, parentId);
+        entity.update(request, parentId);
         return entity.toModel();
     }
 
@@ -100,6 +103,36 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.ut
 
     private static void require(String value, String field) {
         if (value == null || value.isBlank()) throw new IllegalArgumentException(field + " is required");
+    }
+
+    private static java.util.UUID parseMenuId(String value) {
+        try {
+            return app.keystone.identity.UuidValues.parse(value);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("id must be a UUID", e);
+        }
+    }
+
+    private static java.util.UUID parseParentId(String value) {
+        if (value == null || value.isBlank()) return null;
+        try {
+            return app.keystone.identity.UuidValues.parse(value);
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException("parentId must be a UUID", e);
+        }
+    }
+
+    /** 检查父级存在，并沿父链拒绝自身或后代节点，避免形成菜单环。 */
+    private void validateParent(java.util.UUID menuId, java.util.UUID parentId) {
+        var visited = new java.util.HashSet<java.util.UUID>();
+        var currentId = parentId;
+        while (currentId != null) {
+            if (!visited.add(currentId)) throw new IllegalArgumentException("menu parent cycle detected");
+            if (menuId.equals(currentId)) throw new IllegalArgumentException("menu cannot be nested under its descendant");
+            MenuEntity parent = findById(currentId);
+            if (parent == null) throw new IllegalArgumentException("parent menu does not exist");
+            currentId = parent.parentId();
+        }
     }
 
     private static boolean isConstraint(Throwable error) {

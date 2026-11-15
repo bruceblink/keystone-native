@@ -76,6 +76,51 @@ class MenuResourceHttpTest extends AuthTestFixture {
     }
 
     @Test
+    void managerCanMoveMenuAndRejectsMissingOrCyclicParents() {
+        String token = login();
+        String rootId = createMenu(token, "move_root_" + UUID.randomUUID(), null);
+        String replacementRootId = createMenu(token, "move_replacement_" + UUID.randomUUID(), null);
+        String childId = createMenu(token, "move_child_" + UUID.randomUUID(), rootId);
+        String grandchildId = createMenu(token, "move_grandchild_" + UUID.randomUUID(), childId);
+        try {
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"parentId\":\"" + replacementRootId + "\",\"name\":\"移动子菜单\",\"menuType\":\"MENU\",\"enabled\":true}")
+                    .when().put("/v1/menus/" + childId)
+                    .then().statusCode(200)
+                    .body("data.parentId", is(replacementRootId));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"parentId\":\"" + UUID.randomUUID() + "\",\"name\":\"非法父级\",\"menuType\":\"MENU\"}")
+                    .when().put("/v1/menus/" + childId)
+                    .then().statusCode(422)
+                    .body("message", is("parent menu does not exist"));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"parentId\":\"" + childId + "\",\"name\":\"环引用\",\"menuType\":\"MENU\"}")
+                    .when().put("/v1/menus/" + replacementRootId)
+                    .then().statusCode(422)
+                    .body("message", is("menu cannot be nested under its descendant"));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"parentId\":\"" + replacementRootId + "\",\"name\":\"自身引用\",\"menuType\":\"MENU\"}")
+                    .when().put("/v1/menus/" + replacementRootId)
+                    .then().statusCode(422)
+                    .body("message", is("menu cannot be nested under its descendant"));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"parentId\":null,\"name\":\"移动到根\",\"menuType\":\"MENU\"}")
+                    .when().put("/v1/menus/" + childId)
+                    .then().statusCode(200)
+                    .body("data.parentId", org.hamcrest.Matchers.nullValue());
+        } finally {
+            deleteMenu(token, grandchildId);
+            deleteMenu(token, childId);
+            deleteMenu(token, replacementRootId);
+            deleteMenu(token, rootId);
+        }
+    }
+
+    @Test
     void menuRoleLookupReturnsNotFoundForUnknownMenu() {
         String token = login();
 
@@ -205,6 +250,19 @@ class MenuResourceHttpTest extends AuthTestFixture {
             statement.setString(2, menuId);
             statement.executeUpdate();
         }
+    }
+
+    private static String createMenu(String token, String code, String parentId) {
+        String parent = parentId == null ? "null" : "\"" + parentId + "\"";
+        return given().auth().oauth2(token).contentType(JSON)
+                .body("{\"parentId\":" + parent + ",\"code\":\"" + code + "\",\"name\":\"" + code + "\",\"menuType\":\"MENU\",\"enabled\":true}")
+                .when().post("/v1/menus")
+                .then().statusCode(201)
+                .extract().path("data.id");
+    }
+
+    private static void deleteMenu(String token, String id) {
+        given().auth().oauth2(token).when().delete("/v1/menus/" + id).then().statusCode(200);
     }
 
     private static String login() {
