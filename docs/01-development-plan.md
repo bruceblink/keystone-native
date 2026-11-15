@@ -8,6 +8,12 @@ Native 的错误码目录引用 [`03-business-error-code-catalog.md`](03-busines
 
 本轮静态验证：`python3 keystone-phoenix/scripts/check_error_code_catalog.py --native-root keystone-native --admin-root keystone-admin-web` 通过，规范服务端代码 `21` 个、客户端本地代码 `4` 个，三个项目的集合和默认状态 `21/21` 一致；文档与差异检查通过。该结果不替代真实 MySQL、HTTP、浏览器和生产代理验收。
 
+## 2026-11-16 闭环修复增量
+
+Native 的任务触发接口已经明确返回 `data.triggered=true` 表示请求被接受；Phoenix 已按同一约定对齐并保留原 HTTP 状态。对应 Phoenix 提交为 `a5de81e`，Native 现有 HTTP 测试已覆盖该字段。admin-web 当前 `2c79ff7` 已对用户、任务、登录日志、操作审计、个人资料和监控页面补充旧数据刷新失败反馈与重试入口，菜单角色目录失败处理见 `7a88836`。
+
+本轮仍不把静态契约测试当作完整发布验收。剩余工作包括双后端逐页编辑、加载、错误、分页和批量写操作矩阵，URL 查询状态、可视浏览器窗口，以及 OIDC、硬件 Passkey、CSRF/Cookie、多节点和生产代理检查。
+
 ## 2026-11-15 当前审查与下一轮主线
 
 本轮以 Native `779d80b`、Phoenix `79ce1dc` 和 admin-web `86ea75a` 为对齐基线。两个后端归一化后均有 108 条 `/api/v1` 接口（含 `/api/v1/health`），另有标准 JWK Set 路径 1 条；方法分布为 `GET 42`、`POST 29`、`PUT 20`、`DELETE 17`。Native-only、Phoenix-only 和重复 `HTTP method + path` 均为 0。Native 的动态权限目录已经可供 API Key 配置页面逐项选择，API Key 仅保留统一的签发入口，旧审计日志删除接口和无对应接口的审计权限标识已删除。
