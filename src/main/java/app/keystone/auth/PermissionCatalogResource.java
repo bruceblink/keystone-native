@@ -18,10 +18,10 @@ public class PermissionCatalogResource {
     @Inject AuthorizationService authorization;
     @Inject SecurityIdentity identity;
 
-    /** 返回完整目录；能签发 API Key 的主体可以读取，并获得每项 scope 的可授予标记。 */
+    /** 返回完整目录；具备目录读取、角色管理或 API Key 签发权限的主体可以读取。 */
     @GET
     @Path("/catalog")
-    @RequiresPermission("api-key:create")
+    @RequiresPermission(any = {"api-key:create", "permission:read", "role:manage"})
     public ApiResponse<CatalogResponse> catalog() {
         List<Entry> entries = PermissionCatalog.values().stream()
                 .sorted(Comparator.naturalOrder())

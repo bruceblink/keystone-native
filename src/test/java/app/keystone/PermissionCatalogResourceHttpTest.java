@@ -35,19 +35,21 @@ class PermissionCatalogResourceHttpTest extends AuthTestFixture {
     }
 
     @Test
-    void catalogRequiresApiKeyCreatePermissionAndUsesCanonicalRoute() {
+    void catalogRequiresAuthenticationAndUsesCanonicalRoute() {
         given().when().get("/v1/permissions/catalog").then().statusCode(401);
         given().when().get("/v1/permission-catalog").then().statusCode(404);
     }
 
     @Test
-    void resourceDeclaresPermissionReadBoundary() throws Exception {
+    void resourceDeclaresAnyCatalogPermissionBoundary() throws Exception {
         var method = Arrays.stream(PermissionCatalogResource.class.getDeclaredMethods())
                 .filter(candidate -> candidate.isAnnotationPresent(GET.class))
                 .findFirst().orElseThrow();
         org.junit.jupiter.api.Assertions.assertEquals("/v1/permissions", PermissionCatalogResource.class.getAnnotation(Path.class).value());
         org.junit.jupiter.api.Assertions.assertEquals("/catalog", method.getAnnotation(Path.class).value());
-        org.junit.jupiter.api.Assertions.assertEquals("api-key:create", method.getAnnotation(RequiresPermission.class).value());
+        org.junit.jupiter.api.Assertions.assertArrayEquals(
+                new String[]{"api-key:create", "permission:read", "role:manage"},
+                method.getAnnotation(RequiresPermission.class).any());
     }
 
     private static String login() {

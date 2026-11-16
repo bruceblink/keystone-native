@@ -32,17 +32,24 @@ public class PermissionInterceptor {
         RequiresPermission requirement = context.getMethod().getAnnotation(RequiresPermission.class);
         if (requirement == null) requirement = context.getTarget().getClass().getAnnotation(RequiresPermission.class);
         if (identity == null || identity.isAnonymous()) throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), ErrorCode.AUTHENTICATION_REQUIRED, "authentication is required"));
-        if (requirement == null || !PermissionCatalog.contains(requirement.value())) throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), ErrorCode.PERMISSION_DENIED, "permission denied"));
+        String[] requiredPermissions = requiredPermissions(requirement);
+        if (requiredPermissions.length == 0 || java.util.Arrays.stream(requiredPermissions).noneMatch(PermissionCatalog::contains)) throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), ErrorCode.PERMISSION_DENIED, "permission denied"));
         try {
-            if (!authorization.allowed(identity, requirement.value())) {
-                recordDenied(requirement.value(), "permission denied");
+            if (java.util.Arrays.stream(requiredPermissions).noneMatch(permission -> authorization.allowed(identity, permission))) {
+                recordDenied(String.join("|", requiredPermissions), "permission denied");
                 throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), ErrorCode.PERMISSION_DENIED, "permission denied"));
             }
         } catch (IllegalStateException e) {
-            recordDenied(requirement.value(), "authorization state is unavailable");
+            recordDenied(String.join("|", requiredPermissions), "authorization state is unavailable");
             throw new ServiceUnavailableException(ApiResponse.response(Response.Status.SERVICE_UNAVAILABLE.getStatusCode(), ErrorCode.AUTHORIZATION_UNAVAILABLE, "authorization state is unavailable"), e);
         }
         return context.proceed();
+    }
+
+    /** 将单权限和任一权限声明统一成拦截器内部使用的候选集合。 */
+    private static String[] requiredPermissions(RequiresPermission requirement) {
+        if (requirement == null) return new String[0];
+        return requirement.any().length > 0 ? requirement.any() : new String[]{requirement.value()};
     }
 
     private void recordDenied(String permission, String detail) {

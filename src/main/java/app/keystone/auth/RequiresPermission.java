@@ -13,5 +13,9 @@ import java.lang.annotation.Target;
 @Target({ElementType.TYPE, ElementType.METHOD})
 public @interface RequiresPermission {
     @Nonbinding
-    String value();
+    String value() default "";
+
+    /** 同一入口允许多个等价权限时使用；非空后忽略 value。 */
+    @Nonbinding
+    String[] any() default {};
 }
