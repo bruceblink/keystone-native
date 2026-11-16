@@ -8,6 +8,8 @@ import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Locale;
 
 /** 公告管理入口；具体持久化由 Panache Repository 负责。 */
 @ApplicationScoped
@@ -24,6 +26,61 @@ public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, jav
                 ? find(query, java.time.Instant.now())
                 : context.allScope() ? find(query) : find(query, context.subjectId());
         return result.list().stream().map(NoticeEntity::toModel).toList();
+    }
+
+    /** 按管理页面筛选条件读取公告当前页，并保留总数供前端分页。 */
+    @Transactional
+    public Page list(AuthorizationContext context, int page, int size, String keyword, String title,
+                     String content, String noticeType, String status, Boolean published) {
+        authorization.require(context, "notice:read", "notice");
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(100, Math.max(1, size));
+        var conditions = new ArrayList<String>();
+        var parameters = new ArrayList<Object>();
+        if (!context.allScope()) {
+            conditions.add("ownerId = ?" + (parameters.size() + 1));
+            parameters.add(context.subjectId());
+        }
+        appendContains(conditions, parameters, keyword, "title", "content", "noticeType");
+        appendContains(conditions, parameters, title, "title");
+        appendContains(conditions, parameters, content, "content");
+        appendContains(conditions, parameters, noticeType == null ? null : noticeType, "noticeType");
+        appendStatus(conditions, status);
+        if (published != null) {
+            conditions.add("published = " + published);
+        }
+        String queryText = String.join(" and ", conditions);
+        if (queryText.isBlank()) queryText = "1 = 1";
+        queryText += " order by coalesce(publishAt, createdAt) desc, id desc";
+        var query = find(queryText, parameters.toArray());
+        long total = query.count();
+        List<Notice> items = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize))
+                .list().stream().map(NoticeEntity::toModel).toList();
+        return new Page(items, safePage, safeSize, total);
+    }
+
+    private static void appendContains(List<String> conditions, List<Object> parameters, String value,
+                                       String... fields) {
+        if (value == null || value.isBlank()) return;
+        int index = parameters.size() + 1;
+        String pattern = "%" + value.trim().toLowerCase(Locale.ROOT) + "%";
+        String expression = java.util.Arrays.stream(fields)
+                .map(field -> "lower(" + field + ") like ?" + index)
+                .reduce((left, right) -> left + " or " + right)
+                .orElseThrow();
+        conditions.add("(" + expression + ")");
+        parameters.add(pattern);
+    }
+
+    private static void appendStatus(List<String> conditions, String status) {
+        if (status == null || status.isBlank() || "all".equalsIgnoreCase(status)) return;
+        switch (status.trim().toLowerCase(Locale.ROOT)) {
+            case "published" -> conditions.add("published = true");
+            case "unpublished" -> conditions.add("published = false");
+            case "active", "enabled" -> conditions.add("enabled = true");
+            case "inactive", "disabled" -> conditions.add("enabled = false");
+            default -> { }
+        }
     }
 
     @Transactional
@@ -113,5 +170,8 @@ public class NoticeRepository implements PanacheRepositoryBase<NoticeEntity, jav
         for (String id : ids) unique.add(app.keystone.identity.UuidValues.parse(id));
         if (unique.isEmpty()) throw new IllegalArgumentException("ids is required");
         return List.copyOf(unique);
+    }
+
+    public record Page(List<Notice> items, int page, int size, long total) {
     }
 }

@@ -26,7 +26,21 @@ public class NoticeResource {
     @Inject AuthorizationService authorization;
 
     @GET @PermitAll public ApiResponse<List<Notice>> publicList() { return ApiResponse.ok(notices.list(null, true)); }
-    @GET @Path("/manage") @RequiresPermission("notice:read") @app.keystone.auth.RequiresDataScope("notice") public ApiResponse<List<Notice>> manageList() { return ApiResponse.ok(notices.list(context(), false)); }
+    /** page/size 传入时返回分页对象；省略时保留旧数组响应，兼容旧调用方。 */
+    @GET @Path("/manage") @RequiresPermission("notice:read") @app.keystone.auth.RequiresDataScope("notice") public ApiResponse<?> manageList(
+            @QueryParam("page") Integer page,
+            @QueryParam("size") Integer size,
+            @QueryParam("keyword") String keyword,
+            @QueryParam("title") String title,
+            @QueryParam("content") String content,
+            @QueryParam("noticeType") String noticeType,
+            @QueryParam("type") String type,
+            @QueryParam("status") String status,
+            @QueryParam("published") Boolean published) {
+        if (page == null && size == null) return ApiResponse.ok(notices.list(context(), false));
+        return ApiResponse.ok(notices.list(context(), page == null ? 1 : page, size == null ? 20 : size,
+                keyword, title, content, noticeType == null ? type : noticeType, status, published));
+    }
     @POST @RequiresPermission("notice:create") @app.keystone.auth.RequiresDataScope("notice") public Response create(NoticeRequest request) { if (request == null) return bad("request body is required"); try { var notice = notices.create(context(), request.title(), request.content(), request.noticeType(), actor(), request.enabled()); logs.record(actor(), "CREATE", "notice", String.valueOf(notice.id()), notice.title()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(notice)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
     @PUT @Path("/{id}") @RequiresPermission("notice:update") @app.keystone.auth.RequiresDataScope("notice") public Response update(@PathParam("id") String id, NoticeRequest request) { if (request == null) return bad("request body is required"); try { var notice = notices.update(context(), id, request.title(), request.content(), request.noticeType(), request.enabled()); logs.record(actor(), "UPDATE", "notice", id, notice.title()); return Response.ok(ApiResponse.ok(notice)).build(); } catch (NoSuchElementException | IllegalArgumentException e) { return notFound(); } }
     @POST @Path("/{id}/publish") @RequiresPermission("notice:update") @app.keystone.auth.RequiresDataScope("notice") public Response publish(@PathParam("id") String id, PublishRequest request) { if (request == null || request.published() == null) return bad("published is required"); try { var notice = notices.publish(context(), id, request.published()); logs.record(actor(), "PUBLISH", "notice", id, String.valueOf(request.published())); return Response.ok(ApiResponse.ok(notice)).build(); } catch (NoSuchElementException | IllegalArgumentException e) { return notFound(); } }

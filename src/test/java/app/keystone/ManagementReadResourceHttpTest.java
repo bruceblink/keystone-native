@@ -34,6 +34,31 @@ class ManagementReadResourceHttpTest extends AuthTestFixture {
     }
 
     @Test
+    void adminCanReadPagedNoticesWithKeywordAndStatus() {
+        String token = login();
+        String title = "分页公告-" + System.nanoTime();
+        String noticeId = null;
+        try {
+            noticeId = given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"title\":\"" + title + "\",\"content\":\"分页内容\",\"noticeType\":\"NOTICE\"}")
+                    .when().post("/v1/notices")
+                    .then().statusCode(201)
+                    .extract().path("data.id");
+
+            given().auth().oauth2(token)
+                    .when().get("/v1/notices/manage?page=1&size=1&keyword=" + title + "&status=unpublished")
+                    .then().statusCode(200)
+                    .body("success", org.hamcrest.Matchers.is(true))
+                    .body("data.items", org.hamcrest.Matchers.hasSize(1))
+                    .body("data.page", org.hamcrest.Matchers.is(1))
+                    .body("data.size", org.hamcrest.Matchers.is(1))
+                    .body("data.total", org.hamcrest.Matchers.is(1));
+        } finally {
+            if (noticeId != null) given().auth().oauth2(token).when().delete("/v1/notices/" + noticeId);
+        }
+    }
+
+    @Test
     void adminCanReadDictionaryItemsAfterCreatingAType() {
         String token = login();
         String typeCode = "http_scope_" + System.nanoTime();
