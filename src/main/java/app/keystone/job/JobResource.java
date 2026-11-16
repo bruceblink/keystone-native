@@ -23,7 +23,20 @@ public class JobResource {
     @Inject SecurityIdentity identity;
     @Inject AuthorizationService authorization;
 
-    @GET @RequiresPermission("job:read") public ApiResponse<List<Job>> list() { return ApiResponse.ok(service.jobs(context())); }
+    /** page/size 传入时返回 {items,page,size,total}；省略时保留旧数组响应。 */
+    @GET @RequiresPermission("job:read") public ApiResponse<?> list(
+            @QueryParam("page") Integer page,
+            @QueryParam("size") Integer size,
+            @QueryParam("keyword") String keyword,
+            @QueryParam("jobName") String jobName,
+            @QueryParam("jobGroup") String jobGroup,
+            @QueryParam("status") String status) {
+        if (page == null && size == null && !hasFilter(keyword, jobName, jobGroup, status)) {
+            return ApiResponse.ok(service.jobs(context()));
+        }
+        return ApiResponse.ok(service.jobs(context(), page == null ? 1 : page, size == null ? 20 : size,
+                keyword, jobName, jobGroup, status));
+    }
 
     @GET @Path("/{id}") @RequiresPermission("job:read")
     public Response get(@PathParam("id") String id) {
@@ -98,6 +111,7 @@ public class JobResource {
     private AuthorizationContext context() { return authorization.context(identity); }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "job not found")).build(); }
+    private static boolean hasFilter(String... values) { return java.util.Arrays.stream(values).anyMatch(value -> value != null && !value.isBlank()); }
     private static List<String> splitIds(String ids) { if (ids == null || ids.isBlank()) throw new IllegalArgumentException("ids is required"); return java.util.Arrays.stream(ids.split(",")).map(String::trim).toList(); }
     public record JobRequest(String code, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {}
     public record StatusRequest(Boolean enabled) {}

@@ -2,12 +2,14 @@ package app.keystone.job;
 
 import app.keystone.auth.AuthorizationContext;
 import app.keystone.auth.AuthorizationService;
+import io.quarkus.hibernate.orm.panache.PanacheQuery;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.List;
 
 /** 使用 ORM 管理计划任务，数据库结构由 Flyway 管理。 */
@@ -27,6 +29,20 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
         var query = context.allScope() ? find("order by id")
                 : find("createdBy = ?1 order by id", context.subjectId());
         return query.list().stream().map(JobEntity::toModel).toList();
+    }
+
+    /** 按管理页面筛选条件读取任务当前页，并返回服务端总数。 */
+    @Transactional
+    public Page list(AuthorizationContext context, int page, int size, String keyword, String jobName,
+                     String jobGroup, String status) {
+        authorization.require(context, "job:read", "job");
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(100, Math.max(1, size));
+        PanacheQuery<JobEntity> query = jobQuery(context, keyword, jobName, jobGroup, status);
+        long total = query.count();
+        List<Job> items = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize)).list().stream()
+                .map(JobEntity::toModel).toList();
+        return new Page(items, safePage, safeSize, total);
     }
 
     /** 返回所有者创建的任务主键，供任务日志查询复用相同范围。 */
@@ -154,6 +170,42 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
         return false;
     }
 
+    private PanacheQuery<JobEntity> jobQuery(AuthorizationContext context, String keyword, String jobName,
+                                             String jobGroup, String status) {
+        List<String> conditions = new ArrayList<>();
+        List<Object> parameters = new ArrayList<>();
+        if (!context.allScope()) {
+            conditions.add("createdBy = ?" + (parameters.size() + 1));
+            parameters.add(context.subjectId());
+        }
+        appendContains(conditions, parameters, keyword, "code", "name", "jobGroup", "invokeTarget");
+        appendContains(conditions, parameters, jobName, "name");
+        appendContains(conditions, parameters, jobGroup, "jobGroup");
+        Boolean enabled = statusValue(status);
+        if (enabled != null) conditions.add("enabled = " + enabled);
+        String query = (conditions.isEmpty() ? "" : "where " + String.join(" and ", conditions)) + " order by id";
+        return parameters.isEmpty() ? find(query) : find(query, parameters.toArray());
+    }
+
+    private static void appendContains(List<String> conditions, List<Object> parameters, String value, String... fields) {
+        if (value == null || value.isBlank()) return;
+        int index = parameters.size() + 1;
+        String pattern = "%" + value.trim().toLowerCase(java.util.Locale.ROOT) + "%";
+        conditions.add("(" + java.util.Arrays.stream(fields)
+                .map(field -> "lower(" + field + ") like ?" + index)
+                .collect(java.util.stream.Collectors.joining(" or ")) + ")");
+        parameters.add(pattern);
+    }
+
+    private static Boolean statusValue(String status) {
+        if (status == null || status.isBlank() || "all".equalsIgnoreCase(status)) return null;
+        return switch (status.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "1", "true", "enabled", "active", "normal", "正常", "启用" -> true;
+            case "0", "false", "disabled", "inactive", "paused", "pause", "停用", "暂停" -> false;
+            default -> null;
+        };
+    }
+
     /** 规范化批量主键并去重，保持重复请求的幂等删除语义。 */
     private static List<java.util.UUID> parseIds(List<String> ids) {
         if (ids == null || ids.isEmpty()) throw new IllegalArgumentException("ids is required");
@@ -161,5 +213,8 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
         for (String id : ids) unique.add(app.keystone.identity.UuidValues.parse(id));
         if (unique.isEmpty()) throw new IllegalArgumentException("ids is required");
         return List.copyOf(unique);
+    }
+
+    public record Page(List<Job> items, int page, int size, long total) {
     }
 }

@@ -53,6 +53,13 @@ public class JobService {
         return jobs.list(context);
     }
 
+    /** 按筛选条件读取任务当前页，供管理页面保存服务端总数。 */
+    public JobRepository.Page jobs(AuthorizationContext context, int page, int size, String keyword,
+                                   String jobName, String jobGroup, String status) {
+        authorization.require(context, "job:read", "job");
+        return jobs.list(context, page, size, keyword, jobName, jobGroup, status);
+    }
+
     public Job update(AuthorizationContext context, String id, String name, String group, String invokeTarget, String jobParams, String cron, Boolean concurrent, Boolean enabled, String remark) {
         authorization.require(context, "job:update", "job");
         Job current = jobs.findById(context, id, "job:update");
