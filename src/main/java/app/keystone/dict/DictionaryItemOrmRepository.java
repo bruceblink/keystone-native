@@ -1,6 +1,7 @@
 package app.keystone.dict;
 
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
+import io.quarkus.hibernate.orm.panache.PanacheQuery;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
@@ -16,6 +17,19 @@ public class DictionaryItemOrmRepository implements PanacheRepositoryBase<Dictio
     public List<DictionaryItem> listItems(String typeCode) {
         return find("type.code = ?1 and type.enabled = true order by sortOrder, id", typeCode)
                 .list().stream().map(DictionaryItemEntity::toModel).toList();
+    }
+
+    /** 使用数据库分页读取指定字典类型的条目，避免管理页面一次加载全部数据。 */
+    @Transactional
+    public DictionaryRepository.Page listItems(String typeCode, int page, int size) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(100, Math.max(1, size));
+        PanacheQuery<DictionaryItemEntity> query = find(
+                "type.code = ?1 and type.enabled = true order by sortOrder, id", typeCode);
+        long total = query.count();
+        List<DictionaryItem> items = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize))
+                .list().stream().map(DictionaryItemEntity::toModel).toList();
+        return new DictionaryRepository.Page(items, safePage, safeSize, total);
     }
 
     @Transactional

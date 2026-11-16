@@ -32,6 +32,16 @@ public class DictionaryRepository {
         }
     }
 
+    /** 读取字典条目当前页，并返回总数供管理页面分页。 */
+    public Page items(AuthorizationContext context, String typeCode, int page, int size) {
+        authorization.require(context, "dictionary:read", "dictionary");
+        try {
+            return itemsRepository.listItems(typeCode, page, size);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not list dictionary items", e);
+        }
+    }
+
     public DictionaryType createType(AuthorizationContext context, String code, String name) {
         return createType(context, code, name, null);
     }
@@ -124,5 +134,8 @@ public class DictionaryRepository {
             if (name.contains("constraint") || message.contains("duplicate") || message.contains("unique")) return true;
         }
         return false;
+    }
+
+    public record Page(List<DictionaryItem> items, int page, int size, long total) {
     }
 }

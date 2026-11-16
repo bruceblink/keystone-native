@@ -87,6 +87,45 @@ class ManagementReadResourceHttpTest extends AuthTestFixture {
         }
     }
 
+    @Test
+    void adminCanReadPagedDictionaryItems() {
+        String token = login();
+        String typeCode = "http_page_scope_" + System.nanoTime();
+        String firstId = null;
+        String secondId = null;
+        try {
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"code\":\"" + typeCode + "\",\"name\":\"HTTP page type\",\"enabled\":true}")
+                    .when().post("/v1/dictionaries")
+                    .then().statusCode(201);
+
+            firstId = given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"value\":\"first\",\"label\":\"First\",\"sortOrder\":1,\"enabled\":true}")
+                    .when().post("/v1/dictionaries/" + typeCode + "/items")
+                    .then().statusCode(201)
+                    .extract().path("data.id");
+            secondId = given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"value\":\"second\",\"label\":\"Second\",\"sortOrder\":2,\"enabled\":true}")
+                    .when().post("/v1/dictionaries/" + typeCode + "/items")
+                    .then().statusCode(201)
+                    .extract().path("data.id");
+
+            given().auth().oauth2(token)
+                    .when().get("/v1/dictionaries/" + typeCode + "/items?page=2&size=1")
+                    .then().statusCode(200)
+                    .body("success", org.hamcrest.Matchers.is(true))
+                    .body("data.items", org.hamcrest.Matchers.hasSize(1))
+                    .body("data.items[0].id", org.hamcrest.Matchers.is(secondId))
+                    .body("data.page", org.hamcrest.Matchers.is(2))
+                    .body("data.size", org.hamcrest.Matchers.is(1))
+                    .body("data.total", org.hamcrest.Matchers.is(2));
+        } finally {
+            if (firstId != null) given().auth().oauth2(token).when().delete("/v1/dictionaries/items/" + firstId);
+            if (secondId != null) given().auth().oauth2(token).when().delete("/v1/dictionaries/items/" + secondId);
+            given().auth().oauth2(token).when().delete("/v1/dictionaries/types/" + typeCode);
+        }
+    }
+
     private static void assertDataList(String token, String path) {
         given().auth().oauth2(token)
                 .when().get(path)

@@ -27,7 +27,12 @@ public class DictionaryResource {
     @GET @RequiresPermission("dictionary:read")
     public ApiResponse<List<DictionaryType>> types() { return ApiResponse.ok(dictionaries.types(context())); }
     @GET @Path("/{typeCode}/items") @RequiresPermission("dictionary:read")
-    public ApiResponse<List<DictionaryItem>> items(@PathParam("typeCode") String typeCode) { return ApiResponse.ok(dictionaries.items(context(), typeCode)); }
+    public ApiResponse<?> items(@PathParam("typeCode") String typeCode,
+                                @QueryParam("page") Integer page,
+                                @QueryParam("size") Integer size) {
+        if (page == null && size == null) return ApiResponse.ok(dictionaries.items(context(), typeCode));
+        return ApiResponse.ok(dictionaries.items(context(), typeCode, page == null ? 1 : page, size == null ? 20 : size));
+    }
 
     @POST @RequiresPermission("dictionary:create")
     public Response createType(TypeRequest request) {
