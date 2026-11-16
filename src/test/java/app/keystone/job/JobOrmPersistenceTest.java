@@ -43,6 +43,8 @@ class JobOrmPersistenceTest {
         assertTrue(service.contains("AuthorizationContext.system()"));
         assertTrue(service.contains("jobs.enabled(SCHEDULER_CONTEXT)"));
         assertTrue(service.contains("jobs.findById(SCHEDULER_CONTEXT, id, \"job:run\")"));
+        assertTrue(service.contains("catch (java.util.NoSuchElementException e)"));
+        assertTrue(service.contains("Skipping deleted Keystone job"));
         assertFalse(service.contains("jobs.enabled()"));
         assertFalse(service.contains("jobs.findById(id)"));
         assertTrue(repository.contains("enabled(AuthorizationContext context)"));

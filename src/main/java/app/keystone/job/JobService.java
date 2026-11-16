@@ -133,8 +133,10 @@ public class JobService {
         if (scheduler.getScheduledJob(idValue) != null) scheduler.unscheduleJob(idValue);
     }
 
+    /** 调度触发与任务删除可能交错；已删除任务应记录为跳过，不输出误导性的错误堆栈。 */
     private void run(String id, ScheduledExecution execution) {
         try { run(jobs.findById(SCHEDULER_CONTEXT, id, "job:run"), AUTO_TRIGGER); }
+        catch (java.util.NoSuchElementException e) { LOG.infof("Skipping deleted Keystone job %s", id); }
         catch (Exception e) { LOG.errorf(e, "Keystone job %s failed", id); }
     }
 
