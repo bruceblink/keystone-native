@@ -3,11 +3,14 @@ package app.keystone.post;
 import app.keystone.auth.AuthorizationContext;
 import app.keystone.auth.AuthorizationService;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
+import io.quarkus.hibernate.orm.panache.PanacheQuery;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 
 import java.util.List;
+import java.util.ArrayList;
+import java.util.Locale;
 
 /** 岗位管理入口；具体持久化由 Panache Repository 负责。 */
 @ApplicationScoped
@@ -18,6 +21,19 @@ public class PostRepository implements PanacheRepositoryBase<PostEntity, java.ut
     public List<Post> list(AuthorizationContext context) {
         authorization.require(context, "post:read", "post");
         return find("order by sortOrder, id").list().stream().map(PostEntity::toModel).toList();
+    }
+
+    /** 按管理端筛选条件读取岗位当前页，并返回服务端总数。 */
+    @Transactional
+    public Page list(AuthorizationContext context, int page, int size, String keyword, String status) {
+        authorization.require(context, "post:read", "post");
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(100, Math.max(1, size));
+        PanacheQuery<PostEntity> query = postQuery(keyword, status);
+        long total = query.count();
+        List<Post> items = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize))
+                .list().stream().map(PostEntity::toModel).toList();
+        return new Page(items, safePage, safeSize, total);
     }
 
     /** 岗位导出复用全量查询和资源范围检查。 */
@@ -77,4 +93,25 @@ public class PostRepository implements PanacheRepositoryBase<PostEntity, java.ut
         }
         return false;
     }
+
+    private PanacheQuery<PostEntity> postQuery(String keyword, String status) {
+        List<String> conditions = new ArrayList<>();
+        List<Object> parameters = new ArrayList<>();
+        if (keyword != null && !keyword.isBlank()) {
+            conditions.add("(lower(code) like ?1 or lower(name) like ?1)");
+            parameters.add("%" + keyword.trim().toLowerCase(Locale.ROOT) + "%");
+        }
+        if (status != null && !status.isBlank()) {
+            String normalized = status.trim().toLowerCase(Locale.ROOT);
+            if (normalized.equals("enabled") || normalized.equals("active") || normalized.equals("true") || normalized.equals("1")) {
+                conditions.add("enabled = true");
+            } else if (normalized.equals("disabled") || normalized.equals("inactive") || normalized.equals("false") || normalized.equals("0")) {
+                conditions.add("enabled = false");
+            }
+        }
+        String query = conditions.isEmpty() ? "order by sortOrder, id" : String.join(" and ", conditions) + " order by sortOrder, id";
+        return parameters.isEmpty() ? find(query) : find(query, parameters.toArray());
+    }
+
+    public record Page(List<Post> items, int page, int size, long total) {}
 }

@@ -26,8 +26,18 @@ public class PostResource {
     @Inject SecurityIdentity identity;
     @Inject AuthorizationService authorization;
 
+    /** page/size 或筛选条件传入时返回 {items,page,size,total}；省略时保留旧数组响应。 */
     @GET @RequiresPermission("post:read")
-    public ApiResponse<List<Post>> list() { return ApiResponse.ok(posts.list(context())); }
+    public ApiResponse<?> list(
+            @QueryParam("page") Integer page,
+            @QueryParam("size") Integer size,
+            @QueryParam("keyword") String keyword,
+            @QueryParam("status") String status) {
+        if (page == null && size == null && !hasFilter(keyword, status)) {
+            return ApiResponse.ok(posts.list(context()));
+        }
+        return ApiResponse.ok(posts.list(context(), page == null ? 1 : page, size == null ? 20 : size, keyword, status));
+    }
     @GET @Path("/export") @Produces(ExcelExporter.CONTENT_TYPE) @RequiresPermission("post:export")
     public Response export() {
         return Response.ok(PostExcelExporter.export(posts.export(context())))
@@ -42,5 +52,6 @@ public class PostResource {
     private String actor() { return identity.getPrincipal().getName(); }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
     private static Response notFound() { return Response.status(404).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "post not found")).build(); }
+    private static boolean hasFilter(String... values) { return java.util.Arrays.stream(values).anyMatch(value -> value != null && !value.isBlank()); }
     public record PostRequest(String code, String name, Integer sortOrder, Boolean enabled) {}
 }
