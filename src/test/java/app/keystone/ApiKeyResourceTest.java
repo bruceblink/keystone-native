@@ -77,6 +77,34 @@ class ApiKeyResourceTest extends AuthTestFixture {
     }
 
     @Test
+    void apiKeyListSupportsServerPaginationKeywordAndStatusFilters() {
+        String admin = login();
+        String marker = "page-key-" + System.nanoTime();
+        var first = issue(admin, marker + "-a", "api-key:read");
+        var second = issue(admin, marker + "-b", "api-key:read");
+        String firstId = first.path("data.id");
+        String secondId = second.path("data.id");
+
+        given().auth().oauth2(admin)
+                .when().get("/v1/api-keys?page=1&size=1&keyword=" + marker + "&status=active")
+                .then().statusCode(200)
+                .body("data.page", equalTo(1))
+                .body("data.size", equalTo(1))
+                .body("data.total", equalTo(2))
+                .body("data.items", hasSize(1))
+                .body("data.items[0].name", startsWith(marker));
+
+        revoke(admin, firstId);
+        given().auth().oauth2(admin)
+                .when().get("/v1/api-keys?page=1&size=20&keyword=" + marker + "&status=revoked")
+                .then().statusCode(200)
+                .body("data.total", equalTo(1))
+                .body("data.items[0].id", equalTo(firstId));
+
+        revoke(admin, secondId);
+    }
+
+    @Test
     void rotatingAnApiKeyRevokesTheOldSecretAndKeepsTheApprovedScope() {
         String admin = login();
         var issued = issue(admin, "rotation", "operation-log:read");

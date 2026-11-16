@@ -98,6 +98,39 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
                 .toList();
     }
 
+    /** 按名称、前缀、权限范围和生命周期状态分页读取元数据。 */
+    public Page list(String userId, int page, int size, String keyword, String status) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(100, Math.max(1, size));
+        var conditions = new java.util.ArrayList<String>();
+        var parameters = new java.util.ArrayList<Object>();
+        conditions.add("userId = ?1");
+        parameters.add(userId);
+        appendKeyword(conditions, parameters, keyword);
+        appendStatus(conditions, status);
+        String queryText = String.join(" and ", conditions);
+        var query = find(queryText, Sort.by("createdAt", Sort.Direction.Descending), parameters.toArray());
+        long total = query.count();
+        List<ApiKeyMetadata> items = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize))
+                .list().stream().map(this::metadata).toList();
+        return new Page(items, safePage, safeSize, total);
+    }
+
+    private static void appendKeyword(List<String> conditions, List<Object> parameters, String keyword) {
+        if (keyword == null || keyword.isBlank()) return;
+        int index = parameters.size() + 1;
+        String pattern = "%" + keyword.trim().toLowerCase(java.util.Locale.ROOT) + "%";
+        conditions.add("(lower(name) like ?" + index + " or lower(keyPrefix) like ?" + index
+                + " or lower(scopes) like ?" + index + ")");
+        parameters.add(pattern);
+    }
+
+    private static void appendStatus(List<String> conditions, String status) {
+        if (status == null || status.isBlank() || "all".equalsIgnoreCase(status)) return;
+        if ("revoked".equalsIgnoreCase(status)) conditions.add("revokedAt is not null");
+        if ("active".equalsIgnoreCase(status)) conditions.add("revokedAt is null");
+    }
+
     /**
      * 生成 API Key 生命周期报告。报告只返回计数，不返回密钥值、摘要或完整主体凭据。
      * 单租户部署使用 userId 作为可选主体筛选条件；传入 null 表示当前租户全部主体。
@@ -209,6 +242,9 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
 
     public record ApiKeyMetadata(String id, String name, String prefix, List<String> scopes, Instant expiresAt,
                                  Instant revokedAt, Instant lastUsedAt, Instant createdAt) {
+    }
+
+    public record Page(List<ApiKeyMetadata> items, int page, int size, long total) {
     }
 
     public record RotationReport(long total, long active, long revoked, long rotated, long expiring,

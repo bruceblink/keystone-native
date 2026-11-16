@@ -32,9 +32,16 @@ public class ApiKeyResource {
         logs.record(identity.getPrincipal().getName(), "CREATE", "api-key", value.id(), value.prefix());
         return Response.status(201).entity(ApiResponse.ok(value)).build();
     }
-    @GET @RequiresPermission("api-key:read") public Response list() {
+    /** page/size 传入时返回分页对象；省略时保留旧数组响应，兼容旧调用方。 */
+    @GET @RequiresPermission("api-key:read") public Response list(
+            @QueryParam("page") Integer page,
+            @QueryParam("size") Integer size,
+            @QueryParam("keyword") String keyword,
+            @QueryParam("status") String status) {
         var user = owner();
-        return Response.ok(ApiResponse.ok(keys.list(user.id()))).build();
+        if (page == null && size == null) return Response.ok(ApiResponse.ok(keys.list(user.id()))).build();
+        return Response.ok(ApiResponse.ok(keys.list(user.id(), page == null ? 1 : page,
+                size == null ? 20 : size, keyword, status))).build();
     }
     @POST @Path("/{id}/rotate") @RequiresPermission("api-key:rotate") @RequiresMfaStepUp public Response rotate(@PathParam("id") String id) {
         var user = owner();
