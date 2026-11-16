@@ -41,8 +41,15 @@ public class RoleResource {
 
     /** 返回角色已分配或尚未分配的用户 ID，查询范围由角色资源规则统一限制。 */
     @GET @Path("/{id}/users") @RequiresPermission("role:read")
-    public Response users(@PathParam("id") String id, @QueryParam("allocated") @DefaultValue("true") boolean allocated) {
-        try { return Response.ok(ApiResponse.ok(roles.userIdsById(context(), id, allocated))).build(); }
+    public Response users(
+            @PathParam("id") String id,
+            @QueryParam("allocated") @DefaultValue("true") boolean allocated,
+            @QueryParam("username") String username,
+            @QueryParam("phoneNumber") String phoneNumber) {
+        try {
+            return Response.ok(ApiResponse.ok(
+                    roles.userIdsById(context(), id, allocated, username, phoneNumber))).build();
+        }
         catch (IllegalArgumentException e) { return bad("id must be a UUID"); }
         catch (NoSuchElementException e) { return notFound(); }
     }

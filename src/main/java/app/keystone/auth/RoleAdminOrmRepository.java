@@ -199,9 +199,15 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
 
     @Transactional
     public List<String> userIdsById(String id, boolean allocated) {
+        return userIdsById(id, allocated, null, null);
+    }
+
+    /** 在角色关联查询中按用户名和电话号码筛选，并返回完整 ID 数组。 */
+    @Transactional
+    public List<String> userIdsById(String id, boolean allocated, String username, String phoneNumber) {
         ApiKeyRoleEntity role = findRoleEntityById(id);
         if (role == null) throw new java.util.NoSuchElementException("role not found");
-        return users.findUserIdsByRole(role.uuid(), allocated);
+        return users.findUserIdsByRole(role.uuid(), allocated, username, phoneNumber);
     }
 
     private void assignUsers(ApiKeyRoleEntity role, List<String> userIds) {

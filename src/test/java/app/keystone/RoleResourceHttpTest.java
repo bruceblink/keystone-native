@@ -3,6 +3,7 @@ package app.keystone;
 import io.quarkus.test.junit.QuarkusTest;
 import org.junit.jupiter.api.Test;
 
+import java.util.Comparator;
 import java.util.List;
 import java.util.UUID;
 
@@ -111,6 +112,104 @@ class RoleResourceHttpTest extends AuthTestFixture {
         }
     }
 
+    /** 通过真实 HTTP 验证角色成员的大小写、包含筛选、空白处理和 UUID 降序。 */
+    @Test
+    void administratorCanFilterRoleMembersLikePhoenix() {
+        String admin = login("admin", "password");
+        String roleId = createRole(admin, "HTTP_ROLE_USER_FILTER_" + System.nanoTime());
+        String firstUserId = null;
+        String secondUserId = null;
+        String suffix = Long.toString(System.nanoTime());
+        String firstUsername = "role_member_" + suffix;
+        String secondUsername = "roleXmember_" + suffix;
+
+        try {
+            firstUserId = createRoleMember(admin, firstUsername, "Alpha-138000");
+            secondUserId = createRoleMember(admin, secondUsername, "Beta-139000");
+
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"userIds\":[\"" + firstUserId + "\",\"" + secondUserId + "\"]}")
+                    .when().put("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200).body("data.updated", is(true));
+
+            List<String> expectedDescending = List.of(firstUserId, secondUserId).stream()
+                    .sorted(Comparator.reverseOrder())
+                    .toList();
+
+            List<String> usernameMatches = given().auth().oauth2(admin)
+                    .queryParam("allocated", true)
+                    .queryParam("username", "ROLE%MEMBER")
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200).extract().path("data");
+            assertEquals(expectedDescending, usernameMatches);
+
+            List<String> underscoreWildcardMatches = given().auth().oauth2(admin)
+                    .queryParam("allocated", true)
+                    .queryParam("username", "role_member")
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200).extract().path("data");
+            assertEquals(expectedDescending, underscoreWildcardMatches);
+
+            List<String> phoneMatches = given().auth().oauth2(admin)
+                    .queryParam("allocated", true)
+                    .queryParam("phoneNumber", "ALPHA-138")
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200).extract().path("data");
+            assertEquals(List.of(firstUserId), phoneMatches);
+
+            List<String> combinedMatches = given().auth().oauth2(admin)
+                    .queryParam("allocated", true)
+                    .queryParam("username", "ROLE%MEMBER")
+                    .queryParam("phoneNumber", "ALPHA-138")
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200).extract().path("data");
+            assertEquals(List.of(firstUserId), combinedMatches);
+
+            List<String> blankFilters = given().auth().oauth2(admin)
+                    .queryParam("allocated", true)
+                    .queryParam("username", "  ")
+                    .queryParam("phoneNumber", "")
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200).extract().path("data");
+            assertEquals(expectedDescending, blankFilters);
+
+            List<String> noMatches = given().auth().oauth2(admin)
+                    .queryParam("allocated", true)
+                    .queryParam("username", "missing-user")
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200).extract().path("data");
+            assertTrue(noMatches.isEmpty());
+
+            List<String> unallocatedMatches = given().auth().oauth2(admin)
+                    .queryParam("allocated", false)
+                    .queryParam("username", "ROLE%MEMBER")
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200).extract().path("data");
+            assertTrue(unallocatedMatches.isEmpty());
+
+            // 撤销第二名用户后，验证 allocated=false 能按电话筛选返回该用户。
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"userIds\":[\"" + secondUserId + "\"]}")
+                    .when().delete("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200).body("data.updated", is(true));
+
+            List<String> positiveUnallocatedMatches = given().auth().oauth2(admin)
+                    .queryParam("allocated", false)
+                    .queryParam("phoneNumber", "BETA-139")
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200).extract().path("data");
+            assertEquals(List.of(secondUserId), positiveUnallocatedMatches);
+        } finally {
+            if (firstUserId != null) {
+                given().auth().oauth2(admin).when().delete("/v1/users/" + firstUserId).then().statusCode(200);
+            }
+            if (secondUserId != null) {
+                given().auth().oauth2(admin).when().delete("/v1/users/" + secondUserId).then().statusCode(200);
+            }
+            given().auth().oauth2(admin).when().delete("/v1/roles/" + roleId).then().statusCode(200);
+        }
+    }
+
     @Test
     void administratorBatchRoleDeleteRollsBackMissingTargetAndDeduplicatesIds() {
         String admin = login("admin", "password");
@@ -199,6 +298,12 @@ class RoleResourceHttpTest extends AuthTestFixture {
         return given().auth().oauth2(admin).contentType(JSON)
                 .body("{\"code\":\"" + code + "\",\"name\":\"HTTP batch role\"}")
                 .when().post("/v1/roles").then().statusCode(201).extract().path("data.id");
+    }
+
+    private static String createRoleMember(String admin, String username, String phoneNumber) {
+        return given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Role member\",\"phoneNumber\":\"" + phoneNumber + "\",\"roleCodes\":[\"USER\"]}")
+                .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
     }
 
     private static String login(String username, String password) {

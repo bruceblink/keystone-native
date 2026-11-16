@@ -178,9 +178,15 @@ public class RoleRepository {
 
     /** 按 UUID 主键读取角色成员或未分配用户的 ID 列表。 */
     public List<String> userIdsById(AuthorizationContext context, String id, boolean allocated) {
+        return userIdsById(context, id, allocated, null, null);
+    }
+
+    /** 读取指定角色的成员 ID，并按用户名和电话号码执行包含筛选。 */
+    public List<String> userIdsById(AuthorizationContext context, String id, boolean allocated,
+                                    String username, String phoneNumber) {
         authorization.require(context, "role:read", "role");
         requireId(id);
-        return ormRoles.userIdsById(id, allocated);
+        return ormRoles.userIdsById(id, allocated, username, phoneNumber);
     }
 
     private static void require(String value, String field) {

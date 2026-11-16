@@ -11,6 +11,7 @@ import jakarta.persistence.LockModeType;
 import java.util.Set;
 import java.util.Optional;
 import java.time.Instant;
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -270,12 +271,35 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
     }
 
     List<String> findUserIdsByRole(java.util.UUID roleId, boolean allocated) {
-        if (allocated) {
-            return find("select distinct u from ApiKeyUserEntity u join u.roles r where r.id = ?1 order by u.id", roleId)
-                    .list().stream().map(ApiKeyUserEntity::id).toList();
-        }
-        return find("select u from ApiKeyUserEntity u where not exists (select r.id from u.roles r where r.id = ?1) order by u.id", roleId)
+        return findUserIdsByRole(roleId, allocated, null, null);
+    }
+
+    /** 按 Phoenix 的不区分大小写包含语义筛选，并保持 UUID 降序 ID 数组。 */
+    List<String> findUserIdsByRole(java.util.UUID roleId, boolean allocated,
+                                   String username, String phoneNumber) {
+        StringBuilder query = new StringBuilder(allocated
+                ? "select distinct u from ApiKeyUserEntity u join u.roles r where r.id = ?1"
+                : "select u from ApiKeyUserEntity u where not exists (select r.id from u.roles r where r.id = ?1)");
+        List<Object> parameters = new ArrayList<>();
+        parameters.add(roleId);
+
+        appendContainsFilter(query, parameters, "username", username);
+        appendContainsFilter(query, parameters, "phoneNumber", phoneNumber);
+        query.append(" order by u.id desc");
+
+        return find(query.toString(), parameters.toArray())
                 .list().stream().map(ApiKeyUserEntity::id).toList();
+    }
+
+    /** 空白搜索不缩小结果集；保留 LIKE 通配符以匹配 Phoenix ILIKE 查询。 */
+    private static void appendContainsFilter(StringBuilder query, List<Object> parameters,
+                                             String field, String rawValue) {
+        if (rawValue == null) return;
+        String value = rawValue.strip().toLowerCase(Locale.ROOT);
+        if (value.isEmpty()) return;
+
+        parameters.add("%" + value + "%");
+        query.append(" and lower(u.").append(field).append(") like ?").append(parameters.size());
     }
 
     java.util.Set<String> permissions(ApiKeyUserEntity user) {
