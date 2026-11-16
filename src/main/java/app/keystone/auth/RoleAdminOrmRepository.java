@@ -1,13 +1,17 @@
 package app.keystone.auth;
 
 import app.keystone.role.Role;
+import app.keystone.role.RoleRepository;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
+import io.quarkus.hibernate.orm.panache.PanacheQuery;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.LockModeType;
 import jakarta.transaction.Transactional;
 
+import java.util.ArrayList;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 
@@ -20,6 +24,37 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
     @Transactional
     public List<Role> listRoles() {
         return find("order by code").list().stream().map(ApiKeyRoleEntity::toRole).toList();
+    }
+
+    /** 按角色编码、名称和启用状态查询当前页，保留统一的角色字段映射。 */
+    @Transactional
+    public RoleRepository.Page listRoles(int page, int size, String keyword, String status) {
+        int safePage = Math.max(1, page);
+        int safeSize = Math.min(100, Math.max(1, size));
+        PanacheQuery<ApiKeyRoleEntity> query = roleQuery(keyword, status);
+        long total = query.count();
+        List<Role> items = query.page(io.quarkus.panache.common.Page.of(safePage - 1, safeSize))
+                .list().stream().map(ApiKeyRoleEntity::toRole).toList();
+        return new RoleRepository.Page(items, safePage, safeSize, total);
+    }
+
+    private PanacheQuery<ApiKeyRoleEntity> roleQuery(String keyword, String status) {
+        List<String> conditions = new ArrayList<>();
+        List<Object> parameters = new ArrayList<>();
+        if (keyword != null && !keyword.isBlank()) {
+            conditions.add("(lower(code) like ?1 or lower(name) like ?1)");
+            parameters.add("%" + keyword.trim().toLowerCase(Locale.ROOT) + "%");
+        }
+        if (status != null && !status.isBlank()) {
+            String normalized = status.trim().toLowerCase(Locale.ROOT);
+            if (normalized.equals("enabled") || normalized.equals("active") || normalized.equals("true") || normalized.equals("1")) {
+                conditions.add("enabled = true");
+            } else if (normalized.equals("disabled") || normalized.equals("inactive") || normalized.equals("false") || normalized.equals("0")) {
+                conditions.add("enabled = false");
+            }
+        }
+        String query = conditions.isEmpty() ? "order by code" : String.join(" and ", conditions) + " order by code";
+        return parameters.isEmpty() ? find(query) : find(query, parameters.toArray());
     }
 
     @Transactional

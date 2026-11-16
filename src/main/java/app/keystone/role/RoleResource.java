@@ -26,8 +26,18 @@ public class RoleResource {
     @Inject SecurityIdentity identity;
     @Inject AuthorizationService authorization;
 
+    /** page/size 或筛选条件传入时返回 {items,page,size,total}；省略时保留旧数组响应。 */
     @GET @RequiresPermission("role:read")
-    public ApiResponse<java.util.List<Role>> list() { return ApiResponse.ok(roles.list(context())); }
+    public ApiResponse<?> list(
+            @QueryParam("page") Integer page,
+            @QueryParam("size") Integer size,
+            @QueryParam("keyword") String keyword,
+            @QueryParam("status") String status) {
+        if (page == null && size == null && !hasFilter(keyword, status)) {
+            return ApiResponse.ok(roles.list(context()));
+        }
+        return ApiResponse.ok(roles.list(context(), page == null ? 1 : page, size == null ? 20 : size, keyword, status));
+    }
 
     /** 返回角色已分配或尚未分配的用户 ID，查询范围由角色资源规则统一限制。 */
     @GET @Path("/{id}/users") @RequiresPermission("role:read")
@@ -88,6 +98,7 @@ public class RoleResource {
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "role not found")).build(); }
     private static Response notFound(String message) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, message)).build(); }
     private static List<String> splitIds(String raw) { return raw == null ? List.of() : java.util.Arrays.stream(raw.split(",")).map(String::trim).filter(value -> !value.isEmpty()).toList(); }
+    private static boolean hasFilter(String... values) { return java.util.Arrays.stream(values).anyMatch(value -> value != null && !value.isBlank()); }
     public record RoleRequest(String code, String name, Boolean enabled) {}
     public record PermissionRequest(List<String> permissions) {}
     public record UserAssignmentRequest(List<String> userIds) {}

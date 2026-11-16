@@ -8,7 +8,10 @@ import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.hamcrest.Matchers.greaterThanOrEqualTo;
 import static org.hamcrest.Matchers.is;
 
 /** 通过真实 HTTP 验证角色成员的查询、分配、撤销和批量失败回滚边界。 */
@@ -136,6 +139,59 @@ class RoleResourceHttpTest extends AuthTestFixture {
         } finally {
             if (firstId != null) given().auth().oauth2(admin).when().delete("/v1/roles/" + firstId);
             if (secondId != null) given().auth().oauth2(admin).when().delete("/v1/roles/" + secondId);
+        }
+    }
+
+    /** 验证角色列表在兼容旧数组响应的同时支持服务端分页、关键字和状态筛选。 */
+    @Test
+    void administratorCanPageAndFilterRoles() {
+        String admin = login("admin", "password");
+        String roleId = null;
+        String roleCode = "HTTP_ROLE_PAGE_" + System.nanoTime();
+        String roleName = "Role pagination " + System.nanoTime();
+        try {
+            roleId = given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"code\":\"" + roleCode + "\",\"name\":\"" + roleName + "\",\"enabled\":false}")
+                    .when().post("/v1/roles").then().statusCode(201).extract().path("data.id");
+
+            List<String> legacy = given().auth().oauth2(admin)
+                    .when().get("/v1/roles")
+                    .then().statusCode(200).extract().path("data.id");
+            assertTrue(legacy.contains(roleId));
+
+            given().auth().oauth2(admin)
+                    .when().get("/v1/roles?page=1&size=1")
+                    .then().statusCode(200)
+                    .body("data.page", is(1))
+                    .body("data.size", is(1))
+                    .body("data.items.size()", is(1))
+                    .body("data.total", greaterThanOrEqualTo(1));
+
+            given().auth().oauth2(admin)
+                    .when().get("/v1/roles?keyword=" + roleCode.toLowerCase())
+                    .then().statusCode(200)
+                    .body("data.items.size()", is(1))
+                    .body("data.items[0].id", is(roleId))
+                    .body("data.items[0].code", is(roleCode));
+
+            given().auth().oauth2(admin).queryParam("keyword", roleName)
+                    .when().get("/v1/roles")
+                    .then().statusCode(200)
+                    .body("data.items.size()", is(1))
+                    .body("data.items[0].id", is(roleId));
+
+            List<Boolean> disabled = given().auth().oauth2(admin)
+                    .when().get("/v1/roles?status=disabled")
+                    .then().statusCode(200).extract().path("data.items.enabled");
+            assertFalse(disabled.isEmpty());
+            assertTrue(disabled.stream().allMatch(value -> !value));
+            assertEquals(Boolean.FALSE, given().auth().oauth2(admin)
+                    .when().get("/v1/roles?status=0&keyword=" + roleCode)
+                    .then().statusCode(200).extract().path("data.items[0].enabled"));
+        } finally {
+            if (roleId != null) {
+                given().auth().oauth2(admin).when().delete("/v1/roles/" + roleId).then().statusCode(200);
+            }
         }
     }
 

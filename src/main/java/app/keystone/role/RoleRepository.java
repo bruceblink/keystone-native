@@ -19,6 +19,12 @@ public class RoleRepository {
         return ormRoles.listRoles();
     }
 
+    /** 按管理端筛选条件读取角色当前页，并返回服务端总数。 */
+    public Page list(AuthorizationContext context, int page, int size, String keyword, String status) {
+        authorization.require(context, "role:read", "role");
+        return ormRoles.listRoles(page, size, keyword, status);
+    }
+
     /** 角色导出复用全量查询和资源范围检查。 */
     public List<Role> export(AuthorizationContext context) {
         authorization.require(context, "role:export", "role");
@@ -197,4 +203,6 @@ public class RoleRepository {
         }
         return false;
     }
+
+    public record Page(List<Role> items, int page, int size, long total) {}
 }
