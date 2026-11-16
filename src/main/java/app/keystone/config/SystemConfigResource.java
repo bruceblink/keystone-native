@@ -12,7 +12,6 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
-import java.util.List;
 
 @Path("/v1/configs")
 @Produces(MediaType.APPLICATION_JSON)
@@ -24,7 +23,15 @@ public class SystemConfigResource {
     @Inject SecurityIdentity identity;
     @Inject AuthorizationService authorization;
 
-    @GET @RequiresPermission("config:read") public ApiResponse<List<SystemConfig>> list() { return ApiResponse.ok(configs.list(context())); }
+    /** page/size 传入时返回分页对象；省略时保留旧数组响应，兼容尚未迁移的调用方。 */
+    @GET @RequiresPermission("config:read") public ApiResponse<?> list(
+            @QueryParam("page") Integer page,
+            @QueryParam("size") Integer size,
+            @QueryParam("keyword") String keyword,
+            @QueryParam("configKey") String configKey) {
+        if (page == null && size == null) return ApiResponse.ok(configs.list(context(), keyword, configKey));
+        return ApiResponse.ok(configs.list(context(), page == null ? 1 : page, size == null ? 20 : size, keyword, configKey));
+    }
     @GET @Path("/{key}") @RequiresPermission("config:read") public ApiResponse<SystemConfig> get(@PathParam("key") String key) { try { return ApiResponse.ok(configs.find(context(), key)); } catch (java.util.NoSuchElementException e) { throw new NotFoundException("config not found"); } }
     @POST @RequiresPermission("config:create") public Response create(ConfigRequest request) { if (request == null) return bad("request body is required"); try { var config = configs.create(context(), request.key(), request.value(), request.description(), request.enabled()); logs.record(actor(), "CREATE", "config", String.valueOf(config.id()), config.key()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(config)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
     @PUT @Path("/{key}") @RequiresPermission("config:update") public Response update(@PathParam("key") String key, ConfigRequest request) { if (request == null) return bad("request body is required"); try { var config = configs.update(context(), key, request.value(), request.description(), request.enabled()); logs.record(actor(), "UPDATE", "config", String.valueOf(config.id()), config.key()); return Response.ok(ApiResponse.ok(config)).build(); } catch (java.util.NoSuchElementException e) { return notFound(); } }

@@ -20,6 +20,20 @@ class ManagementReadResourceHttpTest extends AuthTestFixture {
     }
 
     @Test
+    void adminCanReadPagedConfigsWithTotal() {
+        String token = login();
+
+        given().auth().oauth2(token)
+                .when().get("/v1/configs?page=1&size=20&keyword=system")
+                .then().statusCode(200)
+                .body("success", org.hamcrest.Matchers.is(true))
+                .body("data.items", notNullValue())
+                .body("data.page", org.hamcrest.Matchers.is(1))
+                .body("data.size", org.hamcrest.Matchers.is(20))
+                .body("data.total", org.hamcrest.Matchers.greaterThanOrEqualTo(0));
+    }
+
+    @Test
     void adminCanReadDictionaryItemsAfterCreatingAType() {
         String token = login();
         String typeCode = "http_scope_" + System.nanoTime();

@@ -14,9 +14,24 @@ public class SystemConfigRepository {
     @Inject AuthorizationService authorization;
 
     public List<SystemConfig> list(AuthorizationContext context) {
+        return list(context, null, null);
+    }
+
+    /** 读取配置列表；无分页参数时保留旧的数组返回入口。 */
+    public List<SystemConfig> list(AuthorizationContext context, String keyword, String configKey) {
         authorization.require(context, "config:read", "config");
         try {
-            return ormConfigs.listConfigs();
+            return ormConfigs.listConfigs(keyword, configKey);
+        } catch (RuntimeException e) {
+            throw new IllegalStateException("Could not list system configs", e);
+        }
+    }
+
+    /** 读取配置当前页，并返回总数供管理页面分页。 */
+    public Page list(AuthorizationContext context, int page, int size, String keyword, String configKey) {
+        authorization.require(context, "config:read", "config");
+        try {
+            return ormConfigs.listConfigs(page, size, keyword, configKey);
         } catch (RuntimeException e) {
             throw new IllegalStateException("Could not list system configs", e);
         }
@@ -83,5 +98,8 @@ public class SystemConfigRepository {
             if (name.contains("constraint") || message.contains("duplicate") || message.contains("unique")) return true;
         }
         return false;
+    }
+
+    public record Page(List<SystemConfig> items, int page, int size, long total) {
     }
 }
