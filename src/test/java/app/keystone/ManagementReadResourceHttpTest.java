@@ -126,6 +126,51 @@ class ManagementReadResourceHttpTest extends AuthTestFixture {
         }
     }
 
+    @Test
+    void adminCanFilterPagedDictionaryItemsByValueAndLabel() {
+        String token = login();
+        String typeCode = "http_filter_scope_" + System.nanoTime();
+        String firstId = null;
+        String secondId = null;
+        try {
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"code\":\"" + typeCode + "\",\"name\":\"HTTP filter type\",\"enabled\":true}")
+                    .when().post("/v1/dictionaries")
+                    .then().statusCode(201);
+
+            firstId = createDictionaryItem(token, typeCode, "first", "Primary label", 1);
+            secondId = createDictionaryItem(token, typeCode, "second", "Secondary label", 2);
+
+            given().auth().oauth2(token)
+                    .queryParam("page", 1).queryParam("size", 20).queryParam("keyword", "second")
+                    .when().get("/v1/dictionaries/" + typeCode + "/items")
+                    .then().statusCode(200)
+                    .body("data.items", org.hamcrest.Matchers.hasSize(1))
+                    .body("data.items[0].id", org.hamcrest.Matchers.is(secondId))
+                    .body("data.total", org.hamcrest.Matchers.is(1));
+
+            given().auth().oauth2(token)
+                    .queryParam("page", 1).queryParam("size", 20).queryParam("keyword", "primary")
+                    .when().get("/v1/dictionaries/" + typeCode + "/items")
+                    .then().statusCode(200)
+                    .body("data.items", org.hamcrest.Matchers.hasSize(1))
+                    .body("data.items[0].id", org.hamcrest.Matchers.is(firstId))
+                    .body("data.total", org.hamcrest.Matchers.is(1));
+        } finally {
+            if (firstId != null) given().auth().oauth2(token).when().delete("/v1/dictionaries/items/" + firstId);
+            if (secondId != null) given().auth().oauth2(token).when().delete("/v1/dictionaries/items/" + secondId);
+            given().auth().oauth2(token).when().delete("/v1/dictionaries/types/" + typeCode);
+        }
+    }
+
+    private static String createDictionaryItem(String token, String typeCode, String value, String label, int sortOrder) {
+        return given().auth().oauth2(token).contentType(JSON)
+                .body("{\"value\":\"" + value + "\",\"label\":\"" + label + "\",\"sortOrder\":" + sortOrder + ",\"enabled\":true}")
+                .when().post("/v1/dictionaries/" + typeCode + "/items")
+                .then().statusCode(201)
+                .extract().path("data.id");
+    }
+
     private static void assertDataList(String token, String path) {
         given().auth().oauth2(token)
                 .when().get(path)

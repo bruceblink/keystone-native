@@ -24,9 +24,14 @@ public class DictionaryRepository {
     }
 
     public List<DictionaryItem> items(AuthorizationContext context, String typeCode) {
+        return items(context, typeCode, null);
+    }
+
+    /** 读取字典条目数组；keyword 同时匹配条目值和显示名称。 */
+    public List<DictionaryItem> items(AuthorizationContext context, String typeCode, String keyword) {
         authorization.require(context, "dictionary:read", "dictionary");
         try {
-            return itemsRepository.listItems(typeCode);
+            return itemsRepository.listItems(typeCode, keyword);
         } catch (RuntimeException e) {
             throw new IllegalStateException("Could not list dictionary items", e);
         }
@@ -34,9 +39,14 @@ public class DictionaryRepository {
 
     /** 读取字典条目当前页，并返回总数供管理页面分页。 */
     public Page items(AuthorizationContext context, String typeCode, int page, int size) {
+        return items(context, typeCode, page, size, null);
+    }
+
+    /** 读取字典条目当前页；筛选条件在数据库查询中执行并参与总数计算。 */
+    public Page items(AuthorizationContext context, String typeCode, int page, int size, String keyword) {
         authorization.require(context, "dictionary:read", "dictionary");
         try {
-            return itemsRepository.listItems(typeCode, page, size);
+            return itemsRepository.listItems(typeCode, page, size, keyword);
         } catch (RuntimeException e) {
             throw new IllegalStateException("Could not list dictionary items", e);
         }

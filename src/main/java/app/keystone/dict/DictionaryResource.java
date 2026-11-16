@@ -29,9 +29,11 @@ public class DictionaryResource {
     @GET @Path("/{typeCode}/items") @RequiresPermission("dictionary:read")
     public ApiResponse<?> items(@PathParam("typeCode") String typeCode,
                                 @QueryParam("page") Integer page,
-                                @QueryParam("size") Integer size) {
-        if (page == null && size == null) return ApiResponse.ok(dictionaries.items(context(), typeCode));
-        return ApiResponse.ok(dictionaries.items(context(), typeCode, page == null ? 1 : page, size == null ? 20 : size));
+                                @QueryParam("size") Integer size,
+                                @QueryParam("keyword") String keyword) {
+        if (page == null && size == null) return ApiResponse.ok(dictionaries.items(context(), typeCode, keyword));
+        return ApiResponse.ok(dictionaries.items(context(), typeCode, page == null ? 1 : page,
+                size == null ? 20 : size, keyword));
     }
 
     @POST @RequiresPermission("dictionary:create")
