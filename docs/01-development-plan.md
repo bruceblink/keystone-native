@@ -108,6 +108,10 @@ Native 与 Phoenix 分别实现，但必须遵守统一架构中的 Principal、
 
 为限制认证请求记录增长，Native 默认允许每个人类会话在 60 秒内创建 10 条 step-up 请求；超过上限返回 HTTP 429 和 `rate_limited`。系统每分钟分批清理过期认证请求，并保留仍在签发计数窗口内的记录。真实 MySQL 8.4 测试覆盖限速、不同会话隔离、清理边界及 V60 迁移重跑；全量测试为 254 项通过。Phoenix `11fb9ee` 已实现相同的默认限速和分批清理；真实 PostgreSQL 18.6 定向测试与全量集成测试通过，双节点运行测试仍未完成。
 
+Phoenix `6516ed2` 按 Native 当前规则检查最近 600 秒的 OTP 或恢复码认证，并对齐普通敏感操作、MFA 管理和 Passkey 注册的账号策略；用户导入仍强制二次认证。Codex 内置浏览器已验证 MFA 策略关闭时创建角色，以及用户导入的二次认证提示。真实 PostgreSQL 全量集成测试为 541 项通过；此结果早于最后一次 Passkey 权限测试调整，调整后的相关定向测试为 4 项通过。硬件 Passkey 仍未验收。
+
+Phoenix `409f9de` 修复 API Key 使用 `permission:manage` 扩大数据范围的问题；真实 HTTP 和授权定向测试为 18 项通过。人类管理员范围和 API Key 所有者范围在两端的差异仍需验收。未登记 MFA 时，Phoenix 返回 HTTP 422，Native 返回 HTTP 409；现有状态暂时保持，差异仍需解决。
+
 上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `type=access`、`aal`、`amr`、`kid`。`GET /api/.well-known/jwks.json` 发布当前 RSA 公钥；当前实现支持通过 `JWT_JWK_KEYS` 发布多个重叠公钥，并在启用多 key 时要求 `JWT_VERIFY_PUBLIC_KEY_LOCATION` 指向 JWK Set 文件或 HTTPS JWK Set URL。安全事件已补充 `session_id`、批准范围和 `request_id`。
 
 当前验证边界：本地 MySQL 8.4.13 已完成 Flyway、健康检查、JWK 注册表、登录、刷新、旧令牌重放撤销、注销、非法 UUID 统一错误响应、资源范围矩阵、API Key 生命周期、MFA TOTP/恢复码/step-up、OIDC 输入边界、WebAuthn 路由启动、用户导入导出、角色/用户/公告/任务批量操作验收。`DatabaseConcurrencyIntegrationTest` 已证明刷新、API Key 轮换和 MFA 恢复码在真实 MySQL 下各只有一次成功；owner 范围真实 HTTP 测试证明不同主体只能读取和操作自己的公告/任务，混合删除在越界时回滚。Native 全局资源按 `ALL`/`TENANT` 约束，用户/部门按查询条件过滤，公告/任务按 owner 过滤，不能访问未定义的 owner/member 关系。备份还原、容器停止/恢复、应用进程数据库断开时 fail-closed 并恢复、整进程重启后的旧访问令牌恢复、API Key 猜测限流、ACTIVE/RETIRING key 轮换、临时 TLS 终止代理和本地 OIDC provider 均已通过。公网 IdP、浏览器 CSRF/Cookie、真实浏览器/硬件 Passkey、多节点、V56 生产升级、真实生产数据恢复和发布窗口属于外部运维验收。
