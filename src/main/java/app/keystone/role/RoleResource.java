@@ -109,8 +109,8 @@ public class RoleResource {
     private AuthorizationContext context() { return authorization.context(identity); }
     private String actor() { return identity.getPrincipal().getName(); }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
-    private static Response systemRoleProtected() { return ApiResponse.response(422, ErrorCode.RESOURCE_CONFLICT, "管理员角色不能删除"); }
-    private static Response roleHasUsers() { return ApiResponse.response(422, ErrorCode.RESOURCE_CONFLICT, "角色存在用户，不能删除"); }
+    private static Response systemRoleProtected() { return ApiResponse.response(422, ErrorCode.ROLE_PROTECTED, "管理员角色不能删除"); }
+    private static Response roleHasUsers() { return ApiResponse.response(422, ErrorCode.ROLE_HAS_MEMBERS, "角色存在用户，不能删除"); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "role not found")).build(); }
     private static Response notFound(String message) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, message)).build(); }
     private static List<String> splitIds(String raw) { return raw == null ? List.of() : java.util.Arrays.stream(raw.split(",")).map(String::trim).filter(value -> !value.isEmpty()).toList(); }

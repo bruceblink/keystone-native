@@ -27,6 +27,8 @@ public enum ErrorCode {
     SESSION_REVOKED("session_revoked", 401, "会话已撤销或失效", RetryAdvice.NEVER, "error.session_revoked", true),
     ACTIVE_SESSION_CONFLICT("active_session_conflict", 409, "账号已有活动会话", RetryAdvice.AFTER_CORRECTION, "error.active_session_conflict", true),
     RESOURCE_CONFLICT("resource_conflict", 409, "资源状态或唯一约束发生冲突", RetryAdvice.AFTER_CORRECTION, "error.resource_conflict", true),
+    ROLE_HAS_MEMBERS("role_has_members", 422, "角色仍有关联用户，不能删除", RetryAdvice.AFTER_CORRECTION, "error.role_has_members", true),
+    ROLE_PROTECTED("role_protected", 422, "内置管理员角色不能删除", RetryAdvice.NEVER, "error.role_protected", true),
     RATE_LIMITED("rate_limited", 429, "请求频率超过限制", RetryAdvice.AFTER_BACKOFF, "error.rate_limited", true),
     PRECONDITION_REQUIRED("precondition_required", 428, "完成前置条件后才能继续", RetryAdvice.AFTER_CORRECTION, "error.precondition_required", true),
     RESOURCE_NOT_FOUND("resource_not_found", 404, "请求的资源不存在", RetryAdvice.NEVER, "error.resource_not_found", true),

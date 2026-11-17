@@ -375,7 +375,8 @@ class RoleResourceHttpTest extends AuthTestFixture {
             given().auth().oauth2(admin)
                     .when().delete("/v1/roles/" + roleId)
                     .then().statusCode(422)
-                    .body("error.code", is("resource_conflict"));
+                    .body("error.code", is("role_has_members"))
+                    .body("message", is("角色存在用户，不能删除"));
 
             List<String> roleIds = given().auth().oauth2(admin)
                     .when().get("/v1/roles")
@@ -408,7 +409,8 @@ class RoleResourceHttpTest extends AuthTestFixture {
             given().auth().oauth2(admin)
                     .when().delete("/v1/roles?ids=" + emptyRoleId + "," + assignedRoleId)
                     .then().statusCode(422)
-                    .body("error.code", is("resource_conflict"));
+                    .body("error.code", is("role_has_members"))
+                    .body("message", is("角色存在用户，不能删除"));
 
             List<String> roleIds = given().auth().oauth2(admin)
                     .when().get("/v1/roles")
@@ -434,7 +436,7 @@ class RoleResourceHttpTest extends AuthTestFixture {
         given().auth().oauth2(admin)
                 .when().delete("/v1/roles/" + SYSTEM_ADMIN_ROLE_ID)
                 .then().statusCode(422)
-                .body("error.code", is("resource_conflict"))
+                .body("error.code", is("role_protected"))
                 .body("message", is("管理员角色不能删除"));
 
         List<String> memberIds = given().auth().oauth2(admin)
@@ -452,7 +454,7 @@ class RoleResourceHttpTest extends AuthTestFixture {
             given().auth().oauth2(admin)
                     .when().delete("/v1/roles?ids=" + ordinaryRoleId + "," + SYSTEM_ADMIN_ROLE_ID)
                     .then().statusCode(422)
-                    .body("error.code", is("resource_conflict"))
+                    .body("error.code", is("role_protected"))
                     .body("message", is("管理员角色不能删除"));
 
             List<String> roleIds = given().auth().oauth2(admin)
