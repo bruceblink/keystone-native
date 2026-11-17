@@ -47,6 +47,25 @@ class ApiKeyResourceTest extends AuthTestFixture {
         revoke(admin, valid);
     }
 
+    /** 表情和组合字符按数据库使用的 Unicode 码点数校验名称上限。 */
+    @Test
+    void issueNameLimitFollowsDatabaseUnicodeCodePoints() {
+        String admin = login();
+        for (String name : new String[]{"😀".repeat(128), "e\u0301".repeat(64)}) {
+            String id = given().auth().oauth2(admin).contentType(JSON)
+                    .body(java.util.Map.of("name", name, "scopes", java.util.List.of("api-key:read")))
+                    .when().post("/v1/api-keys").then().statusCode(201)
+                    .body("data.name", is(name)).extract().path("data.id");
+            revoke(admin, id);
+        }
+        for (String name : new String[]{"😀".repeat(129), "e\u0301".repeat(64) + "e"}) {
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body(java.util.Map.of("name", name, "scopes", java.util.List.of("api-key:read")))
+                    .when().post("/v1/api-keys").then().statusCode(422)
+                    .body("error.code", is("api_key_name_invalid"));
+        }
+    }
+
     @Test
     void adminCanIssueAndUseAndRevokeAnApiKey() {
         String admin = given().contentType(JSON).body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")

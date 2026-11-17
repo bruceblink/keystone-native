@@ -199,7 +199,8 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
     }
 
     private static void validateIssue(String name, Instant expiresAt) {
-        if (name == null || name.isBlank() || name.trim().length() > 128) {
+        // 数据库 varchar(128) 按 Unicode 码点计数，而不是 UTF-16 单元数量。
+        if (name == null || name.isBlank() || name.trim().codePointCount(0, name.trim().length()) > 128) {
             throw new ApiKeyIssueValidationException(ErrorCode.API_KEY_NAME_INVALID,
                     "API Key name must contain 1 to 128 characters");
         }
