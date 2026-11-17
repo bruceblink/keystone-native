@@ -11,15 +11,20 @@ import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.empty;
 import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.containsString;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
 import java.time.Instant;
 import java.util.zip.ZipInputStream;
 
 @QuarkusTest
 class UserResourceTest extends AuthTestFixture {
     @jakarta.inject.Inject MfaService mfaService;
+    private static final String PROFILE_PASSWORD = "Profile-Changed-123!";
+
     @Test
     void administratorCanCreateDisabledUserFromTheRequestedStatus() {
         String admin = login("admin", "password");
@@ -117,6 +122,77 @@ class UserResourceTest extends AuthTestFixture {
                 .when().post("/v1/users/import")
                 .then().statusCode(403)
                 .body("error.code", is("mfa_required"));
+    }
+
+    // 未启用强制 MFA 时，个人改密应成功、撤销旧会话，并允许新密码登录。
+    @Test
+    void profilePasswordChangeSucceedsWithoutRequiredMfaAndRevokesTheOldSession() {
+        String admin = login("admin", "password");
+        String username = "profile_password_" + System.nanoTime();
+        String userId = null;
+        try {
+            userId = createTemporaryAdmin(admin, username);
+            String oldAccessToken = login(username, "password");
+
+            given().auth().oauth2(oldAccessToken).contentType(JSON)
+                    .body("{\"password\":\"" + PROFILE_PASSWORD + "\"}")
+                    .when().put("/v1/profile/password")
+                    .then().statusCode(200)
+                    .body("data.updated", is(true));
+
+            given().auth().oauth2(oldAccessToken)
+                    .when().get("/v1/profile")
+                    .then().statusCode(401);
+
+            String newAccessToken = login(username, PROFILE_PASSWORD);
+            given().auth().oauth2(newAccessToken)
+                    .when().get("/v1/profile")
+                    .then().statusCode(200)
+                    .body("data.username", is(username));
+        } finally {
+            deleteTemporaryUser(admin, userId);
+        }
+    }
+
+    // 启用 MFA 策略后，AAL1 改密请求应被拒绝，且拒绝时密码仍保持不变。
+    @Test
+    void profilePasswordChangeRequiresStepUpWhenAccountMfaPolicyIsEnabled() throws Exception {
+        String admin = login("admin", "password");
+        String username = "profile_password_mfa_" + System.nanoTime();
+        String userId = null;
+        try {
+            userId = createTemporaryAdmin(admin, username);
+            String accessToken = login(username, "password");
+            var enrollment = given().auth().oauth2(accessToken)
+                    .contentType(JSON)
+                    .when().post("/v1/auth/mfa/enroll")
+                    .then().statusCode(201).extract();
+            String enrollmentCode = new TotpService().code(enrollment.path("data.secret"), Instant.now());
+            given().auth().oauth2(accessToken).contentType(JSON)
+                    .body("{\"challengeId\":\"" + enrollment.path("data.challengeId")
+                            + "\",\"code\":\"" + enrollmentCode + "\"}")
+                    .when().post("/v1/auth/mfa/enroll/verify")
+                    .then().statusCode(200);
+            assertTrue(mfaService.setRequired(userId, true));
+
+            String passwordHashBefore = readPasswordHash(username);
+            given().auth().oauth2(accessToken).contentType(JSON)
+                    .body("{\"password\":\"" + PROFILE_PASSWORD + "\"}")
+                    .when().put("/v1/profile/password")
+                    .then().statusCode(403)
+                    .body("error.code", is("mfa_required"));
+
+            String passwordHashAfter = readPasswordHash(username);
+            assertTrue(MessageDigest.isEqual(passwordHashBefore.getBytes(StandardCharsets.UTF_8),
+                    passwordHashAfter.getBytes(StandardCharsets.UTF_8)));
+            assertTrue(io.quarkus.elytron.security.common.BcryptUtil.matches("password", passwordHashAfter));
+            assertFalse(io.quarkus.elytron.security.common.BcryptUtil.matches(PROFILE_PASSWORD, passwordHashAfter));
+            given().auth().oauth2(accessToken)
+                    .when().get("/v1/profile")
+                    .then().statusCode(200);
+        } finally {
+            deleteTemporaryUser(admin, userId);
+        }
     }
 
     @Test
@@ -298,5 +374,34 @@ class UserResourceTest extends AuthTestFixture {
     private static String login(String username, String password) {
         return given().contentType(JSON).body("{\"username\":\"" + username + "\",\"password\":\"" + password + "\",\"forceLogin\":true}")
                 .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");
+    }
+
+    /** 在测试库创建具备个人改密权限的临时管理员，并由各测试在 finally 中清理。 */
+    private static String createTemporaryAdmin(String admin, String username) {
+        return given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Profile password test\",\"roleCodes\":[\"ADMIN\"]}")
+                .when().post("/v1/users")
+                .then().statusCode(201)
+                .extract().path("data.id");
+    }
+
+    /** 仅比较测试用户当前哈希是否匹配旧密码或新密码，不将哈希写入断言输出。 */
+    private String readPasswordHash(String username) throws Exception {
+        try (var connection = dataSource.getConnection();
+             var statement = connection.prepareStatement("SELECT password_hash FROM sys_user WHERE username = ?")) {
+            statement.setString(1, username);
+            try (var result = statement.executeQuery()) {
+                if (!result.next()) throw new AssertionError("temporary profile test user is missing");
+                return result.getString(1);
+            }
+        }
+    }
+
+    private static void deleteTemporaryUser(String admin, String userId) {
+        if (userId != null) {
+            given().auth().oauth2(admin)
+                    .when().delete("/v1/users/" + userId)
+                    .then().statusCode(200);
+        }
     }
 }
