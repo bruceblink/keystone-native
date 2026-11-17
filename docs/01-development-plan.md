@@ -2,6 +2,12 @@
 
 跨项目统一架构见 [`02-auth-authorization-parity-architecture.md`](02-auth-authorization-parity-architecture.md)。本文件同时记录 Native 本地实施任务和与 Keystone Phoenix 的跨项目验收要求。项目采用一次性重构，不保留旧接口、旧权限格式、旧响应封装或旧整数主键。
 
+## 2026-11-18 站内通知
+
+- Native 新增当前用户通知列表、详情和已读接口，按登录用户隔离数据并拒绝 API Key 访问。签发、轮换和首次撤销 API Key 时，同一事务会生成不含密钥信息的通知；通知公告仍独立管理。
+- MySQL 8.4.13 上的通知专项测试为 4 项通过，全量测试为 258 项通过。V61 建表迁移重复执行通过。Codex 内置浏览器连接 Native 和 admin-web，验证了空列表、三种密钥事件、通知详情和已读数量变化。
+- Phoenix 和 admin-web 切换后端的同一流程、其他页面完整写操作矩阵及生产环境验收仍需继续完成。
+
 ## 2026-11-16 业务错误码目录基线
 
 Native 的错误码目录引用 [`03-business-error-code-catalog.md`](03-business-error-code-catalog.md)，跨项目主目录位于 `keystone-phoenix/docs/11-business-error-code-catalog.md`。Native `aea1a35`/`7cb6533` 与 Phoenix `56ba348` 的服务端目录均为 21 个代码；Phoenix `56ba348` 补齐了 `mfa_invalid_code`、`mfa_state_conflict` 和 `https_required`。admin-web `33c20ff`/`dd1b280`/`9e6e5e9` 已按同一集合提供反查元数据，并补齐缺少业务码的失败响应兜底，另保留 4 个客户端本地代码。目录明确代码到业务条件的反查、HTTP 状态保持和 `authorization_unavailable` 的旧边界范围。

@@ -28,6 +28,8 @@ import app.keystone.menu.MenuNode;
 import app.keystone.menu.MenuRepository;
 import app.keystone.notice.Notice;
 import app.keystone.notice.NoticeResource;
+import app.keystone.notification.NotificationInbox;
+import app.keystone.notification.NotificationItem;
 import app.keystone.post.Post;
 import app.keystone.post.PostResource;
 import app.keystone.profile.ProfileResource;
@@ -53,6 +55,7 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
         DictionaryType.class, DictionaryItem.class, DictionaryResource.TypeRequest.class, DictionaryResource.ItemRequest.class,
         SystemConfig.class, SystemConfigResource.ConfigRequest.class,
         Notice.class, NoticeResource.NoticeRequest.class, NoticeResource.PublishRequest.class,
+        NotificationInbox.class, NotificationItem.class,
         Post.class, PostResource.PostRequest.class,
         Job.class, JobLog.class, JobLogRepository.Page.class, JobInvocationService.JobTarget.class, JobResource.JobRequest.class, JobResource.StatusRequest.class,
         SessionRepository.OnlineSession.class, OperationLog.class, OperationLogRepository.Page.class, LoginLog.class, LoginLogRepository.Page.class,

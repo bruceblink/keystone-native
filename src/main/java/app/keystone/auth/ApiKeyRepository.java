@@ -2,6 +2,8 @@ package app.keystone.auth;
 
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
 import io.quarkus.panache.common.Sort;
+import app.keystone.identity.UuidValues;
+import app.keystone.notification.NotificationService;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.persistence.LockModeType;
@@ -18,7 +20,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.NoSuchElementException;
 import java.util.Set;
-import app.keystone.identity.UuidValues;
 
 /** 使用 Panache 管理 API Key 主记录，密钥明文只在签发结果中返回一次。 */
 @ApplicationScoped
@@ -27,6 +28,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
 
     @Inject ApiKeyUserRepository users;
     @Inject ServiceSubjectRepository subjects;
+    @Inject NotificationService notifications;
 
     /** 多节点部署使用参数化 HQL 条件更新，避免本地缓存造成重复写入。 */
     @ConfigProperty(name = "keystone.security.api-key.last-used-update-interval-seconds", defaultValue = "60")
@@ -47,6 +49,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         String subjectId = ensureSubject(userId);
         persistAndFlush(new ApiKeyEntity(id, userId, subjectId, userId, name.trim(), prefix, hash(value),
                 String.join(" ", normalizedScopes), expiresAt));
+        notifications.apiKeyCreated(userId);
         return new IssuedApiKey(id, name.trim(), prefix, value, normalizedScopes, expiresAt);
     }
 
@@ -84,11 +87,15 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
 
     @Transactional
     public void revoke(String userId, String id) {
-        Instant now = Instant.now();
-        long updated = update("revokedAt = coalesce(revokedAt, ?1), revokedReason = coalesce(revokedReason, ?2) "
-                        + "where id = ?3 and userId = ?4",
-                now, "revoked by owner", UuidValues.parse(id), userId);
-        if (updated == 0) throw new NoSuchElementException("API key not found");
+        ApiKeyEntity key = find("id = ?1 and userId = ?2", UuidValues.parse(id), userId)
+                .withLock(LockModeType.PESSIMISTIC_WRITE)
+                .firstResult();
+        if (key == null) throw new NoSuchElementException("API key not found");
+        if (key.revokedAt() == null) {
+            key.revoke(Instant.now(), "revoked by owner", null);
+            flush();
+            notifications.apiKeyRevoked(userId);
+        }
     }
 
     public List<ApiKeyMetadata> list(String userId) {
@@ -172,6 +179,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
                 hash(value), String.join(" ", scopes), current.expiresAt()));
         current.revoke(Instant.now(), "rotated", replacementId);
         flush();
+        notifications.apiKeyRotated(userId);
         return new IssuedApiKey(replacementId, current.name(), prefix, value, scopes, current.expiresAt());
     }
 
