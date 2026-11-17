@@ -104,7 +104,9 @@ Native 与 Phoenix 分别实现，但必须遵守统一架构中的 Principal、
 
 新登录入口在密码正确且用户要求 MFA 时返回 `MFA_REQUIRED` 和不透明认证请求 ID，不创建会话或令牌；`POST /api/v1/auth/mfa/verify` 校验 TOTP 或恢复码后才创建会话和令牌。`POST /api/v1/auth/mfa/enroll`、`POST /api/v1/auth/mfa/enroll/verify` 提供管理员 enrollment，`PUT /api/v1/auth/mfa/policy/{userId}` 只允许对已完成 enrollment 的用户启用策略。API Key 被拒绝进入这些人类 MFA 路径。恢复码只在 enrollment 成功响应中返回一次，数据库保存 HMAC，不保存恢复码明文。
 
-当前会话 step-up 使用 `POST /api/v1/auth/mfa/step-up` 和 `POST /api/v1/auth/mfa/step-up/verify`。前者只返回 `challengeId`、`clientId` 和 `expiresAt`，认证请求在数据库中绑定当前用户、`sid`、`client_id` 和 `STEP_UP` 用途；后者必须继续使用同一 Bearer 会话，并返回不含 `refreshToken` 的短时 AAL2 access token。step-up 令牌使用新的 UUIDv7 `jti`。Native 在事务中把当前刷新记录的访问令牌标识替换为新 `jti`，保持刷新令牌哈希、令牌族、会话、客户端和刷新期限不变，因此旧访问令牌立即失效而刷新状态仍可安全轮换。两个入口要求 `mfa:manage`，并拒绝 API Key。
+当前会话 step-up 使用 `POST /api/v1/auth/mfa/step-up` 和 `POST /api/v1/auth/mfa/step-up/verify`。前者只返回 `challengeId`、`clientId` 和 `expiresAt`，认证请求在数据库中绑定当前用户、`sid`、`client_id` 和 `STEP_UP` 用途；后者必须继续使用同一 Bearer 会话，并返回不含 `refreshToken` 的短时 AAL2 access token。step-up 令牌使用新的 UUIDv7 `jti`。Native 在事务中把当前刷新记录的访问令牌标识替换为新 `jti`，保持刷新令牌哈希、令牌族、会话、客户端和刷新期限不变，因此旧访问令牌立即失效而刷新状态仍可安全轮换。两个入口要求有效的人类会话、已登记 MFA 和当前用户/会话绑定，并拒绝 API Key；它们不要求 `mfa:manage`，使业务权限用户可以完成自己的 step-up。enrollment、恢复码、MFA 策略等管理入口继续要求 `mfa:manage`。
+
+为限制认证请求记录增长，Native 默认允许每个人类会话在 60 秒内创建 10 条 step-up 请求；超过上限返回 HTTP 429 和 `rate_limited`。系统每分钟分批清理过期认证请求，并保留仍在签发计数窗口内的记录。真实 MySQL 8.4 测试覆盖限速、不同会话隔离、清理边界及 V60 迁移重跑；全量测试为 254 项通过。Phoenix 的同等限速和清理仍需完成。
 
 上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `type=access`、`aal`、`amr`、`kid`。`GET /api/.well-known/jwks.json` 发布当前 RSA 公钥；当前实现支持通过 `JWT_JWK_KEYS` 发布多个重叠公钥，并在启用多 key 时要求 `JWT_VERIFY_PUBLIC_KEY_LOCATION` 指向 JWK Set 文件或 HTTPS JWK Set URL。安全事件已补充 `session_id`、批准范围和 `request_id`。
 

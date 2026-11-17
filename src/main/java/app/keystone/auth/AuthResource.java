@@ -146,7 +146,7 @@ public class AuthResource {
     }
 
     /** 为当前人类会话创建绑定 sid/client_id 的短期 step-up 请求。 */
-    @POST @Path("/mfa/step-up") @RequiresPermission("mfa:manage") @RejectApiKey
+    @POST @Path("/mfa/step-up") @RejectApiKey
     public Response beginMfaStepUp(MfaStepUpRequest request) {
         var current = currentHumanSession();
         try {
@@ -155,6 +155,8 @@ public class AuthResource {
             return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(challenge)).build();
         } catch (IllegalArgumentException e) {
             return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, e.getMessage())).build();
+        } catch (MfaService.StepUpRateLimitedException e) {
+            return Response.status(429).entity(ApiResponse.error(ErrorCode.RATE_LIMITED, "too many MFA step-up requests")).build();
         } catch (IllegalStateException e) {
             if ("MFA is not enabled".equals(e.getMessage())) {
                 return Response.status(Response.Status.CONFLICT).entity(ApiResponse.error(ErrorCode.MFA_STATE_CONFLICT, e.getMessage())).build();
@@ -164,7 +166,7 @@ public class AuthResource {
     }
 
     /** 消费当前会话的 step-up 请求，并签发不含 refresh token 的短时 AAL2 访问令牌。 */
-    @POST @Path("/mfa/step-up/verify") @RequiresPermission("mfa:manage") @RejectApiKey
+    @POST @Path("/mfa/step-up/verify") @RejectApiKey
     public Response verifyMfaStepUp(MfaCodeRequest request, @HeaderParam("X-Forwarded-For") String ipAddress) {
         if (request == null || request.challengeId() == null || request.code() == null) {
             return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, "challengeId and code are required")).build();

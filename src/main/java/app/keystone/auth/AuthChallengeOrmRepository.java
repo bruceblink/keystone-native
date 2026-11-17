@@ -3,6 +3,7 @@ package app.keystone.auth;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.persistence.LockModeType;
+import io.quarkus.panache.common.Page;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -20,6 +21,21 @@ public class AuthChallengeOrmRepository implements PanacheRepositoryBase<AuthCha
     java.util.List<AuthChallengeEntity> listActive(String userId, String clientId, String purpose,
                                                    String sessionId, Instant now, int maxAttempts) {
         return activeQuery(null, userId, clientId, purpose, sessionId, now, maxAttempts).list();
+    }
+
+    long countStepUpCreatedSince(String userId, String sessionId, Instant createdAfter) {
+        return count("userId = ?1 and sessionId = ?2 and purpose = ?3 and createdAt > ?4",
+                userId, sessionId, MfaChallengeRepository.Purpose.STEP_UP.value(), createdAfter);
+    }
+
+    java.util.List<AuthChallengeEntity> listExpired(Instant now, Instant stepUpIssueCutoff, int batchSize) {
+        return find("expiresAt <= ?1 and (purpose <> ?2 or createdAt <= ?3) order by expiresAt asc",
+                now, MfaChallengeRepository.Purpose.STEP_UP.value(), stepUpIssueCutoff)
+                .page(Page.ofSize(batchSize)).list();
+    }
+
+    long deleteByIds(java.util.List<UUID> ids) {
+        return delete("id in ?1", ids);
     }
 
     /** 在用户行锁之后锁定认证请求，保持 MFA 事务的统一锁顺序。 */

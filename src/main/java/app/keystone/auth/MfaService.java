@@ -35,6 +35,10 @@ public class MfaService {
     @Inject SecurityObservability securityObservability;
     @ConfigProperty(name = "keystone.security.mfa.challenge-lifetime-seconds", defaultValue = "300")
     long challengeLifetimeSeconds;
+    @ConfigProperty(name = "keystone.security.mfa.step-up.issue.max-requests", defaultValue = "10")
+    int stepUpIssueMaxRequests;
+    @ConfigProperty(name = "keystone.security.mfa.step-up.issue.window-seconds", defaultValue = "60")
+    long stepUpIssueWindowSeconds;
     @ConfigProperty(name = "keystone.security.mfa.issuer", defaultValue = "Keystone")
     String issuer;
 
@@ -55,9 +59,14 @@ public class MfaService {
         String boundSessionId = requiredSessionId(sessionId);
         var status = status(userId);
         if (!status.enabled() || status.mfaId() == null) throw new IllegalStateException("MFA is not enabled");
-        var challenge = challenges.create(userId, MfaChallengeRepository.Purpose.STEP_UP,
-                boundClientId, boundSessionId, contextHash, expiresAt());
-        return new StepUpChallenge(challenge.id(), challenge.clientId(), challenge.expiresAt());
+        if (stepUpIssueMaxRequests < 1 || stepUpIssueWindowSeconds < 1) {
+            throw new IllegalStateException("MFA step-up issue limit configuration must be positive");
+        }
+        Instant now = Instant.now();
+        var challenge = challenges.createStepUp(userId, boundClientId, boundSessionId, contextHash,
+                now.minusSeconds(stepUpIssueWindowSeconds), stepUpIssueMaxRequests, expiresAt());
+        return challenge.map(value -> new StepUpChallenge(value.id(), value.clientId(), value.expiresAt()))
+                .orElseThrow(StepUpRateLimitedException::new);
     }
 
     /** 为当前人类会话创建待验证 enrollment，并只返回一次 TOTP 配置材料。 */
@@ -272,4 +281,9 @@ public class MfaService {
     public record Enrollment(String challengeId, String mfaId, String secret, String otpauthUri, Instant expiresAt) {}
     public record EnrollmentResult(java.util.List<String> recoveryCodes) {}
     public record LoginVerification(String assurance, String amr) {}
+
+    /** 当前会话在时间窗口内已达到 step-up 请求签发上限。 */
+    public static final class StepUpRateLimitedException extends RuntimeException {
+        private static final long serialVersionUID = 1L;
+    }
 }

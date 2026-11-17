@@ -13,6 +13,7 @@ import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -38,6 +39,23 @@ class MfaStepUpInterceptorTest {
         assertStepUp(AuthResource.class, "verifyMfaEnrollment", AuthResource.MfaCodeRequest.class);
         assertStepUp(AuthResource.class, "setMfaPolicy", String.class, AuthResource.MfaPolicyRequest.class);
         assertStepUp(AuthResource.class, "rotateRecoveryCodes", AuthResource.CurrentPasswordRequest.class);
+    }
+
+    /** step-up 属于当前会话的认证流程；MFA 管理权限仍只保护管理入口。 */
+    @Test
+    void stepUpRoutesRequireHumanSessionButNotMfaManagementPermission() throws Exception {
+        var begin = AuthResource.class.getDeclaredMethod("beginMfaStepUp", AuthResource.MfaStepUpRequest.class);
+        var verify = AuthResource.class.getDeclaredMethod("verifyMfaStepUp", AuthResource.MfaCodeRequest.class, String.class);
+        assertNull(begin.getAnnotation(RequiresPermission.class));
+        assertNull(verify.getAnnotation(RequiresPermission.class));
+        assertNotNull(begin.getAnnotation(RejectApiKey.class));
+        assertNotNull(verify.getAnnotation(RejectApiKey.class));
+
+        assertPermission("beginMfaEnrollment", "mfa:manage");
+        assertPermission("verifyMfaEnrollment", "mfa:manage", AuthResource.MfaCodeRequest.class);
+        assertPermission("verifyMfaEnrollment", "mfa:manage", AuthResource.MfaCodeRequest.class, String.class);
+        assertPermission("setMfaPolicy", "mfa:manage", String.class, AuthResource.MfaPolicyRequest.class);
+        assertPermission("rotateRecoveryCodes", "mfa:manage", AuthResource.CurrentPasswordRequest.class);
     }
 
     @Test
@@ -84,6 +102,13 @@ class MfaStepUpInterceptorTest {
     private static void assertStepUp(Class<?> type, String name, Class<?>... parameters) throws Exception {
         Method method = type.getDeclaredMethod(name, parameters);
         assertNotNull(method.getAnnotation(RequiresMfaStepUp.class));
+    }
+
+    private static void assertPermission(String name, String permission, Class<?>... parameters) throws Exception {
+        Method method = AuthResource.class.getDeclaredMethod(name, parameters);
+        var requirement = method.getAnnotation(RequiresPermission.class);
+        assertNotNull(requirement);
+        assertEquals(permission, requirement.value());
     }
 
     private static JsonWebToken jwt(Map<String, Object> claims) {

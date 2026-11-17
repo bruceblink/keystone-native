@@ -17,6 +17,8 @@ public class MfaChallengeRepository {
     private static final int DEFAULT_MAX_ATTEMPTS = 5;
 
     @Inject AuthChallengeOrmRepository repository;
+    @Inject AuthSessionRepository sessions;
+    @Inject ApiKeyUserRepository users;
 
     /** 创建短期认证请求；上下文摘要只保存在数据库内部。 */
     @Transactional
@@ -32,6 +34,36 @@ public class MfaChallengeRepository {
         repository.persistAndFlush(new AuthChallengeEntity(id, userId, checkedPurpose.value(), checkedClientId,
                 checkedSessionId, checkedContextHash, checkedExpiry));
         return new Challenge(id, userId, checkedPurpose, checkedClientId, checkedSessionId, checkedExpiry, 0, null);
+    }
+
+    /** 在会话行锁内限制短时间内的 step-up 签发次数，避免并发请求绕过计数。 */
+    @Transactional
+    public Optional<Challenge> createStepUp(String userId, String clientId, String sessionId,
+                                            String contextHash, Instant createdAfter, int maxRequests,
+                                            Instant expiresAt) {
+        requireUser(userId);
+        if (maxRequests < 1 || createdAfter == null) throw new IllegalArgumentException("step-up issue limit is invalid");
+        String checkedClientId = normalizeClientId(clientId);
+        String checkedSessionId = normalizeSessionId(sessionId);
+        if (checkedSessionId == null) throw new IllegalArgumentException("sessionId is required");
+        if (users.findAnyForUpdate(userId) == null) throw new IllegalStateException("user is unavailable");
+        sessions.findForUpdate(checkedSessionId);
+        if (repository.countStepUpCreatedSince(userId, checkedSessionId, createdAfter) >= maxRequests) {
+            return Optional.empty();
+        }
+        return Optional.of(create(userId, Purpose.STEP_UP, checkedClientId, checkedSessionId, contextHash, expiresAt));
+    }
+
+    /** 每次最多删除一批已过期请求；有效请求不会进入删除查询。 */
+    @Transactional
+    public int deleteExpiredBatch(Instant now, Instant stepUpIssueCutoff, int batchSize) {
+        if (now == null || stepUpIssueCutoff == null || batchSize < 1 || batchSize > 10_000) {
+            throw new IllegalArgumentException("challenge cleanup batch is invalid");
+        }
+        List<AuthChallengeEntity> expired = repository.listExpired(now, stepUpIssueCutoff, batchSize);
+        if (expired.isEmpty()) return 0;
+        List<java.util.UUID> ids = expired.stream().map(challenge -> UuidValues.parse(challenge.id())).toList();
+        return Math.toIntExact(repository.deleteByIds(ids));
     }
 
     /** 按主体、客户端、用途和会话读取仍可用的认证请求。 */
