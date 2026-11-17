@@ -1,6 +1,7 @@
 package app.keystone.auth;
 
 import app.keystone.role.Role;
+import app.keystone.role.RoleMember;
 import app.keystone.role.RoleRepository;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import io.quarkus.hibernate.orm.panache.PanacheQuery;
@@ -208,6 +209,14 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
         ApiKeyRoleEntity role = findRoleEntityById(id);
         if (role == null) throw new java.util.NoSuchElementException("role not found");
         return users.findUserIdsByRole(role.uuid(), allocated, username, phoneNumber);
+    }
+
+    /** 按 ID 查询使用相同成员条件，只把页面识别用户所需的三项字段传到 API。 */
+    @Transactional
+    public List<RoleMember> membersById(String id, boolean allocated, String username, String phoneNumber) {
+        ApiKeyRoleEntity role = findRoleEntityById(id);
+        if (role == null) throw new java.util.NoSuchElementException("role not found");
+        return users.findRoleMembersByRole(role.uuid(), allocated, username, phoneNumber);
     }
 
     private void assignUsers(ApiKeyRoleEntity role, List<String> userIds) {

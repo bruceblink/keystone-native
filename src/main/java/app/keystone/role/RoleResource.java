@@ -39,16 +39,19 @@ public class RoleResource {
         return ApiResponse.ok(roles.list(context(), page == null ? 1 : page, size == null ? 20 : size, keyword, status));
     }
 
-    /** 返回角色已分配或尚未分配的用户 ID，查询范围由角色资源规则统一限制。 */
+    /** 默认返回 ID 数组；仅显式请求身份字段时返回最小成员 DTO。 */
     @GET @Path("/{id}/users") @RequiresPermission("role:read")
     public Response users(
             @PathParam("id") String id,
             @QueryParam("allocated") @DefaultValue("true") boolean allocated,
             @QueryParam("username") String username,
-            @QueryParam("phoneNumber") String phoneNumber) {
+            @QueryParam("phoneNumber") String phoneNumber,
+            @QueryParam("include") String include) {
         try {
-            return Response.ok(ApiResponse.ok(
-                    roles.userIdsById(context(), id, allocated, username, phoneNumber))).build();
+            Object members = "identity".equals(include)
+                    ? roles.membersById(context(), id, allocated, username, phoneNumber)
+                    : roles.userIdsById(context(), id, allocated, username, phoneNumber);
+            return Response.ok(ApiResponse.ok(members)).build();
         }
         catch (IllegalArgumentException e) { return bad("id must be a UUID"); }
         catch (NoSuchElementException e) { return notFound(); }

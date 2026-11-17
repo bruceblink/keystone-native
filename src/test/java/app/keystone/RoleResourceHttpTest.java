@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
@@ -112,6 +114,115 @@ class RoleResourceHttpTest extends AuthTestFixture {
         }
     }
 
+    /** 验证 role:read 主体可读取最小身份字段，旧 ID 响应和其他权限边界保持不变。 */
+    @Test
+    void roleReaderCanRequestMinimalMemberIdentityWithoutUserRead() {
+        String admin = login("admin", "password");
+        String roleCode = "HTTP_ROLE_IDENTITY_" + System.nanoTime();
+        String noReadRoleCode = "HTTP_ROLE_NO_READ_" + System.nanoTime();
+        String roleId = null;
+        String noReadRoleId = null;
+        String firstUserId = null;
+        String secondUserId = null;
+        String candidateUserId = null;
+        String blockedUserId = null;
+        String firstUsername = "identity_member_a_" + System.nanoTime();
+        String secondUsername = "identity_member_b_" + System.nanoTime();
+        String candidateUsername = "identity_candidate_" + System.nanoTime();
+        String blockedUsername = "identity_blocked_" + System.nanoTime();
+
+        try {
+            roleId = createRole(admin, roleCode);
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"permissions\":[\"role:read\"]}")
+                    .when().put("/v1/roles/" + roleId + "/permissions")
+                    .then().statusCode(200).body("data.updated", is(true));
+
+            firstUserId = createRoleMember(admin, firstUsername, "Member A", "member-a@example.test",
+                    "13800000001", roleCode);
+            secondUserId = createRoleMember(admin, secondUsername, "Member B", "member-b@example.test",
+                    "13800000002", roleCode);
+            candidateUserId = createRoleMember(admin, candidateUsername, "Available member",
+                    "candidate@example.test", "13900000001", "USER");
+
+            List<String> rolePermissions = given().auth().oauth2(admin)
+                    .queryParam("keyword", roleCode)
+                    .when().get("/v1/roles")
+                    .then().statusCode(200)
+                    .extract().path("data.items[0].permissions");
+            assertEquals(List.of("role:read"), rolePermissions);
+
+            String readerToken = login(firstUsername, "password");
+            List<String> expectedMemberIds = List.of(firstUserId, secondUserId).stream()
+                    .sorted(Comparator.reverseOrder())
+                    .toList();
+
+            List<String> legacyIds = given().auth().oauth2(readerToken)
+                    .queryParam("allocated", true)
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200)
+                    .extract().path("data");
+            assertEquals(expectedMemberIds, legacyIds);
+
+            List<Map<String, Object>> identityMembers = given().auth().oauth2(readerToken)
+                    .queryParam("allocated", true)
+                    .queryParam("include", "identity")
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200)
+                    .extract().jsonPath().getList("data");
+
+            assertEquals(expectedMemberIds,
+                    identityMembers.stream().map(member -> member.get("id")).toList());
+            assertEquals(Set.of("id", "username", "displayName"), identityMembers.get(0).keySet());
+            assertEquals(firstUsername, identityMembers.stream()
+                    .filter(member -> firstUsername.equals(member.get("username")))
+                    .findFirst().orElseThrow().get("username"));
+            assertEquals("Member A", identityMembers.stream()
+                    .filter(member -> firstUsername.equals(member.get("username")))
+                    .findFirst().orElseThrow().get("displayName"));
+
+            List<Map<String, Object>> filteredMembers = given().auth().oauth2(readerToken)
+                    .queryParam("allocated", true)
+                    .queryParam("include", "identity")
+                    .queryParam("username", firstUsername.toUpperCase())
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200)
+                    .extract().jsonPath().getList("data");
+            assertEquals(1, filteredMembers.size());
+            assertEquals(firstUserId, filteredMembers.get(0).get("id"));
+            assertEquals(Set.of("id", "username", "displayName"), filteredMembers.get(0).keySet());
+
+            List<Map<String, Object>> unallocatedMembers = given().auth().oauth2(readerToken)
+                    .queryParam("allocated", false)
+                    .queryParam("include", "identity")
+                    .queryParam("phoneNumber", "13900000001")
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200)
+                    .extract().jsonPath().getList("data");
+            assertEquals(1, unallocatedMembers.size());
+            assertEquals(candidateUserId, unallocatedMembers.get(0).get("id"));
+            assertEquals(candidateUsername, unallocatedMembers.get(0).get("username"));
+            assertEquals("Available member", unallocatedMembers.get(0).get("displayName"));
+            assertEquals(Set.of("id", "username", "displayName"), unallocatedMembers.get(0).keySet());
+
+            noReadRoleId = createRole(admin, noReadRoleCode);
+            blockedUserId = createRoleMember(admin, blockedUsername, "Blocked member",
+                    "blocked@example.test", "13900000002", noReadRoleCode);
+            String blockedToken = login(blockedUsername, "password");
+            given().auth().oauth2(blockedToken)
+                    .queryParam("include", "identity")
+                    .when().get("/v1/roles/" + noReadRoleId + "/users")
+                    .then().statusCode(403);
+        } finally {
+            if (firstUserId != null) deleteUser(admin, firstUserId);
+            if (secondUserId != null) deleteUser(admin, secondUserId);
+            if (candidateUserId != null) deleteUser(admin, candidateUserId);
+            if (blockedUserId != null) deleteUser(admin, blockedUserId);
+            if (roleId != null) deleteRole(admin, roleId);
+            if (noReadRoleId != null) deleteRole(admin, noReadRoleId);
+        }
+    }
+
     /** 通过真实 HTTP 验证角色成员的大小写、包含筛选、空白处理和 UUID 降序。 */
     @Test
     void administratorCanFilterRoleMembersLikePhoenix() {
@@ -182,7 +293,7 @@ class RoleResourceHttpTest extends AuthTestFixture {
 
             List<String> unallocatedMatches = given().auth().oauth2(admin)
                     .queryParam("allocated", false)
-                    .queryParam("username", "ROLE%MEMBER")
+                    .queryParam("username", "ROLE%MEMBER_" + suffix)
                     .when().get("/v1/roles/" + roleId + "/users")
                     .then().statusCode(200).extract().path("data");
             assertTrue(unallocatedMatches.isEmpty());
@@ -304,6 +415,30 @@ class RoleResourceHttpTest extends AuthTestFixture {
         return given().auth().oauth2(admin).contentType(JSON)
                 .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Role member\",\"phoneNumber\":\"" + phoneNumber + "\",\"roleCodes\":[\"USER\"]}")
                 .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
+    }
+
+    /** 创建具备指定角色的测试用户，并写入敏感字段用于检查响应投影。 */
+    private static String createRoleMember(String admin, String username, String displayName,
+                                           String email, String phoneNumber, String roleCode) {
+        return given().auth().oauth2(admin).contentType(JSON)
+                .body(Map.of(
+                        "username", username,
+                        "password", "password",
+                        "displayName", displayName,
+                        "email", email,
+                        "phoneNumber", phoneNumber,
+                        "roleCodes", List.of(roleCode)))
+                .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
+    }
+
+    /** 使用管理员测试令牌删除当前测试创建的账号。 */
+    private static void deleteUser(String admin, String userId) {
+        given().auth().oauth2(admin).when().delete("/v1/users/" + userId).then().statusCode(200);
+    }
+
+    /** 使用管理员测试令牌删除当前测试创建的角色。 */
+    private static void deleteRole(String admin, String roleId) {
+        given().auth().oauth2(admin).when().delete("/v1/roles/" + roleId).then().statusCode(200);
     }
 
     private static String login(String username, String password) {

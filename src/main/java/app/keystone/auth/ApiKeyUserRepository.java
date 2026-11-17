@@ -18,6 +18,7 @@ import java.util.Locale;
 import app.keystone.user.User;
 import app.keystone.user.UserRepository;
 import app.keystone.user.PasswordPolicy;
+import app.keystone.role.RoleMember;
 
 /** 通过 ORM 读取 API Key 认证主体和签发权限。 */
 @ApplicationScoped
@@ -277,6 +278,22 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
     /** 按 Phoenix 的不区分大小写包含语义筛选，并保持 UUID 降序 ID 数组。 */
     List<String> findUserIdsByRole(java.util.UUID roleId, boolean allocated,
                                    String username, String phoneNumber) {
+        return findUsersByRole(roleId, allocated, username, phoneNumber)
+                .stream().map(ApiKeyUserEntity::id).toList();
+    }
+
+    /** 返回角色成员身份字段，复用 ID 查询的成员条件、筛选和排序。 */
+    List<RoleMember> findRoleMembersByRole(java.util.UUID roleId, boolean allocated,
+                                           String username, String phoneNumber) {
+        return findUsersByRole(roleId, allocated, username, phoneNumber)
+                .stream()
+                .map(user -> new RoleMember(user.id(), user.username(), user.displayName()))
+                .toList();
+    }
+
+    /** 统一成员查询条件，保证 ID 和身份响应使用相同筛选与排序。 */
+    private List<ApiKeyUserEntity> findUsersByRole(java.util.UUID roleId, boolean allocated,
+                                                   String username, String phoneNumber) {
         StringBuilder query = new StringBuilder(allocated
                 ? "select distinct u from ApiKeyUserEntity u join u.roles r where r.id = ?1"
                 : "select u from ApiKeyUserEntity u where not exists (select r.id from u.roles r where r.id = ?1)");
@@ -287,8 +304,7 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         appendContainsFilter(query, parameters, "phoneNumber", phoneNumber);
         query.append(" order by u.id desc");
 
-        return find(query.toString(), parameters.toArray())
-                .list().stream().map(ApiKeyUserEntity::id).toList();
+        return find(query.toString(), parameters.toArray()).list();
     }
 
     /** 空白搜索不缩小结果集；保留 LIKE 通配符以匹配 Phoenix ILIKE 查询。 */
