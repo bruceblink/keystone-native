@@ -112,6 +112,8 @@ Phoenix `6516ed2` 按 Native 当前规则检查最近 600 秒的 OTP 或恢复�
 
 Phoenix `409f9de` 修复 API Key 使用 `permission:manage` 扩大数据范围的问题；真实 HTTP 和授权定向测试为 18 项通过。人类管理员范围和 API Key 所有者范围在两端的差异仍需验收。未登记 MFA 时，Phoenix 返回 HTTP 422，Native 返回 HTTP 409；现有状态暂时保持，差异仍需解决。
 
+2026-11-18 使用 Codex 内置浏览器验证 Native 与 admin-web：在独立 MySQL 8.4.13 测试库中完成用户新增、编辑、查询和确认删除；完成 API Key 签发、轮换和撤销；创建并手动执行心跳任务，列表显示最近成功时间，执行日志显示手动触发成功。测试账号和业务数据仅存在于独立测试库；测试结束后停止应用并删除该库，原有 MySQL 服务保留。通知铃铛的列表和详情交互可以打开，但当前读取公开公告，尚未满足独立站内通知的要求。
+
 上述 MFA 代码已通过全量主源码和测试源码静态 `javac`，并通过固定向量和输入边界 smoke 检查。MFA 失败现在按主体和来源地址双维度限流，API Key、角色、用户、在线会话和 MFA enrollment/策略管理的敏感写操作已接入最近十分钟 AAL2 step-up 检查，恢复码轮换还要求当前密码。密码强度和账户锁定指数退避已接入用户创建及密码修改路径。JWT 不再使用仓库内公钥 fallback，签发必须配置外部密钥和 `JWT_KEY_ID`，访问令牌写入 `type=access`、`aal`、`amr`、`kid`。`GET /api/.well-known/jwks.json` 发布当前 RSA 公钥；当前实现支持通过 `JWT_JWK_KEYS` 发布多个重叠公钥，并在启用多 key 时要求 `JWT_VERIFY_PUBLIC_KEY_LOCATION` 指向 JWK Set 文件或 HTTPS JWK Set URL。安全事件已补充 `session_id`、批准范围和 `request_id`。
 
 当前验证边界：本地 MySQL 8.4.13 已完成 Flyway、健康检查、JWK 注册表、登录、刷新、旧令牌重放撤销、注销、非法 UUID 统一错误响应、资源范围矩阵、API Key 生命周期、MFA TOTP/恢复码/step-up、OIDC 输入边界、WebAuthn 路由启动、用户导入导出、角色/用户/公告/任务批量操作验收。`DatabaseConcurrencyIntegrationTest` 已证明刷新、API Key 轮换和 MFA 恢复码在真实 MySQL 下各只有一次成功；owner 范围真实 HTTP 测试证明不同主体只能读取和操作自己的公告/任务，混合删除在越界时回滚。Native 全局资源按 `ALL`/`TENANT` 约束，用户/部门按查询条件过滤，公告/任务按 owner 过滤，不能访问未定义的 owner/member 关系。备份还原、容器停止/恢复、应用进程数据库断开时 fail-closed 并恢复、整进程重启后的旧访问令牌恢复、API Key 猜测限流、ACTIVE/RETIRING key 轮换、临时 TLS 终止代理和本地 OIDC provider 均已通过。公网 IdP、浏览器 CSRF/Cookie、真实浏览器/硬件 Passkey、多节点、V56 生产升级、真实生产数据恢复和发布窗口属于外部运维验收。
