@@ -20,6 +20,9 @@ import static org.hamcrest.Matchers.is;
 /** 通过真实 HTTP 验证角色成员的查询、分配、撤销和批量失败回滚边界。 */
 @QuarkusTest
 class RoleResourceHttpTest extends AuthTestFixture {
+    /** V46 初始化的系统 ADMIN 角色 UUID；请求测试不修改其成员关系。 */
+    private static final String SYSTEM_ADMIN_ROLE_ID = "2f57b9e0-836d-5f15-97a3-d4be27dc0bef";
+
     /** 通过真实 HTTP 验证角色自身的创建、更新、权限绑定和删除生命周期。 */
     @Test
     void administratorCanManageRoleLifecycle() {
@@ -344,11 +347,125 @@ class RoleResourceHttpTest extends AuthTestFixture {
                     .when().delete("/v1/roles?ids=" + firstId + "," + firstId + "," + secondId)
                     .then().statusCode(200)
                     .body("data.deleted", is(2));
+            List<String> afterSuccessfulDelete = given().auth().oauth2(admin)
+                    .when().get("/v1/roles")
+                    .then().statusCode(200).extract().path("data.id");
+            assertFalse(afterSuccessfulDelete.contains(firstId));
+            assertFalse(afterSuccessfulDelete.contains(secondId));
             firstId = null;
             secondId = null;
         } finally {
             if (firstId != null) given().auth().oauth2(admin).when().delete("/v1/roles/" + firstId);
             if (secondId != null) given().auth().oauth2(admin).when().delete("/v1/roles/" + secondId);
+        }
+    }
+
+    /** 真实 HTTP 删除单个有成员角色时必须返回冲突，并保留角色和成员关联。 */
+    @Test
+    void administratorCannotDeleteRoleWithAssignedUser() {
+        String admin = login("admin", "password");
+        String roleCode = "HTTP_ROLE_IN_USE_SINGLE_" + System.nanoTime();
+        String roleId = null;
+        String userId = null;
+        try {
+            roleId = createRole(admin, roleCode);
+            userId = createRoleMember(admin, "role_in_use_single_" + System.nanoTime(),
+                    "Role in use", "role-in-use-single@example.test", "13800000101", roleCode);
+
+            given().auth().oauth2(admin)
+                    .when().delete("/v1/roles/" + roleId)
+                    .then().statusCode(422)
+                    .body("error.code", is("resource_conflict"));
+
+            List<String> roleIds = given().auth().oauth2(admin)
+                    .when().get("/v1/roles")
+                    .then().statusCode(200).extract().path("data.id");
+            List<String> memberIds = given().auth().oauth2(admin)
+                    .when().get("/v1/roles/" + roleId + "/users?allocated=true")
+                    .then().statusCode(200).extract().path("data");
+            assertTrue(roleIds.contains(roleId));
+            assertTrue(memberIds.contains(userId));
+        } finally {
+            if (userId != null) deleteUser(admin, userId);
+            deleteRoleIfPresent(admin, roleId);
+        }
+    }
+
+    /** 混合批次含有成员角色时必须整体拒绝，不能删除批次中的空角色。 */
+    @Test
+    void administratorBatchRoleDeleteRejectsAssignedRoleWithoutPartialDeletion() {
+        String admin = login("admin", "password");
+        String emptyRoleId = null;
+        String assignedRoleId = null;
+        String userId = null;
+        try {
+            emptyRoleId = createRole(admin, "HTTP_ROLE_BATCH_EMPTY_" + System.nanoTime());
+            String assignedRoleCode = "HTTP_ROLE_BATCH_IN_USE_" + System.nanoTime();
+            assignedRoleId = createRole(admin, assignedRoleCode);
+            userId = createRoleMember(admin, "role_in_use_batch_" + System.nanoTime(),
+                    "Role in use batch", "role-in-use-batch@example.test", "13800000102", assignedRoleCode);
+
+            given().auth().oauth2(admin)
+                    .when().delete("/v1/roles?ids=" + emptyRoleId + "," + assignedRoleId)
+                    .then().statusCode(422)
+                    .body("error.code", is("resource_conflict"));
+
+            List<String> roleIds = given().auth().oauth2(admin)
+                    .when().get("/v1/roles")
+                    .then().statusCode(200).extract().path("data.id");
+            List<String> memberIds = given().auth().oauth2(admin)
+                    .when().get("/v1/roles/" + assignedRoleId + "/users?allocated=true")
+                    .then().statusCode(200).extract().path("data");
+            assertTrue(roleIds.contains(emptyRoleId));
+            assertTrue(roleIds.contains(assignedRoleId));
+            assertTrue(memberIds.contains(userId));
+        } finally {
+            if (userId != null) deleteUser(admin, userId);
+            deleteRoleIfPresent(admin, emptyRoleId);
+            deleteRoleIfPresent(admin, assignedRoleId);
+        }
+    }
+
+    /** 单项删除内置 ADMIN 必须返回与 Phoenix 相同的保护错误，且不改管理员成员绑定。 */
+    @Test
+    void administratorCannotDeleteBuiltInAdminRole() {
+        String admin = login("admin", "password");
+
+        given().auth().oauth2(admin)
+                .when().delete("/v1/roles/" + SYSTEM_ADMIN_ROLE_ID)
+                .then().statusCode(422)
+                .body("error.code", is("resource_conflict"))
+                .body("message", is("管理员角色不能删除"));
+
+        List<String> memberIds = given().auth().oauth2(admin)
+                .when().get("/v1/roles/" + SYSTEM_ADMIN_ROLE_ID + "/users?allocated=true")
+                .then().statusCode(200).extract().path("data");
+        assertTrue(memberIds.contains("5faed4bb-63af-5158-bd3c-1200c539cfd9"));
+    }
+
+    /** 混合批次包含内置 ADMIN 时整体拒绝，并保留普通角色和管理员成员绑定。 */
+    @Test
+    void administratorBatchDeleteRejectsBuiltInAdminWithoutPartialDeletion() {
+        String admin = login("admin", "password");
+        String ordinaryRoleId = createRole(admin, "HTTP_ROLE_WITH_ADMIN_BATCH_" + System.nanoTime());
+        try {
+            given().auth().oauth2(admin)
+                    .when().delete("/v1/roles?ids=" + ordinaryRoleId + "," + SYSTEM_ADMIN_ROLE_ID)
+                    .then().statusCode(422)
+                    .body("error.code", is("resource_conflict"))
+                    .body("message", is("管理员角色不能删除"));
+
+            List<String> roleIds = given().auth().oauth2(admin)
+                    .when().get("/v1/roles")
+                    .then().statusCode(200).extract().path("data.id");
+            List<String> adminMemberIds = given().auth().oauth2(admin)
+                    .when().get("/v1/roles/" + SYSTEM_ADMIN_ROLE_ID + "/users?allocated=true")
+                    .then().statusCode(200).extract().path("data");
+            assertTrue(roleIds.contains(ordinaryRoleId));
+            assertTrue(roleIds.contains(SYSTEM_ADMIN_ROLE_ID));
+            assertTrue(adminMemberIds.contains("5faed4bb-63af-5158-bd3c-1200c539cfd9"));
+        } finally {
+            deleteRoleIfPresent(admin, ordinaryRoleId);
         }
     }
 
@@ -439,6 +556,15 @@ class RoleResourceHttpTest extends AuthTestFixture {
     /** 使用管理员测试令牌删除当前测试创建的角色。 */
     private static void deleteRole(String admin, String roleId) {
         given().auth().oauth2(admin).when().delete("/v1/roles/" + roleId).then().statusCode(200);
+    }
+
+    /** 清理测试创建的角色；角色已被待测请求删除时不再重复请求。 */
+    private static void deleteRoleIfPresent(String admin, String roleId) {
+        if (roleId == null) return;
+        List<String> roleIds = given().auth().oauth2(admin)
+                .when().get("/v1/roles")
+                .then().statusCode(200).extract().path("data.id");
+        if (roleIds != null && roleIds.contains(roleId)) deleteRole(admin, roleId);
     }
 
     private static String login(String username, String password) {

@@ -271,6 +271,12 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         return find("select distinct u from ApiKeyUserEntity u join u.roles r where r.id = ?1 order by u.id", roleId).list();
     }
 
+    /** 检查角色是否仍绑定用户；删除入口在同一事务中使用此结果拒绝删除。 */
+    boolean hasUsersWithRole(java.util.UUID roleId) {
+        return find("select distinct u from ApiKeyUserEntity u join u.roles r where r.id = ?1", roleId)
+                .firstResult() != null;
+    }
+
     List<String> findUserIdsByRole(java.util.UUID roleId, boolean allocated) {
         return findUserIdsByRole(roleId, allocated, null, null);
     }

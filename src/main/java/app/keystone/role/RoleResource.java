@@ -86,7 +86,7 @@ public class RoleResource {
         catch (NoSuchElementException e) { return notFound(e.getMessage()); }
     }
 
-    @DELETE @Path("/{id}") @RequiresPermission("role:delete") @RequiresMfaStepUp public Response delete(@PathParam("id") String id) { try { roles.deleteById(context(), id); logs.record(actor(), "DELETE", "role", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
+    @DELETE @Path("/{id}") @RequiresPermission("role:delete") @RequiresMfaStepUp public Response delete(@PathParam("id") String id) { try { roles.deleteById(context(), id); logs.record(actor(), "DELETE", "role", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", true))).build(); } catch (ProtectedSystemRoleException e) { return systemRoleProtected(); } catch (RoleHasAssignedUsersException e) { return roleHasUsers(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
 
     /** 批量删除角色；请求包含非法或不存在目标时全部回滚。 */
     @DELETE @RequiresPermission("role:delete") @RequiresMfaStepUp
@@ -99,12 +99,18 @@ public class RoleResource {
             return bad(e.getMessage());
         } catch (NoSuchElementException e) {
             return notFound();
+        } catch (ProtectedSystemRoleException e) {
+            return systemRoleProtected();
+        } catch (RoleHasAssignedUsersException e) {
+            return roleHasUsers();
         }
     }
 
     private AuthorizationContext context() { return authorization.context(identity); }
     private String actor() { return identity.getPrincipal().getName(); }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
+    private static Response systemRoleProtected() { return ApiResponse.response(422, ErrorCode.RESOURCE_CONFLICT, "管理员角色不能删除"); }
+    private static Response roleHasUsers() { return ApiResponse.response(422, ErrorCode.RESOURCE_CONFLICT, "角色存在用户，不能删除"); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "role not found")).build(); }
     private static Response notFound(String message) { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, message)).build(); }
     private static List<String> splitIds(String raw) { return raw == null ? List.of() : java.util.Arrays.stream(raw.split(",")).map(String::trim).filter(value -> !value.isEmpty()).toList(); }

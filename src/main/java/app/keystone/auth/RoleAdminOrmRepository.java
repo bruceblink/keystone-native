@@ -2,6 +2,8 @@ package app.keystone.auth;
 
 import app.keystone.role.Role;
 import app.keystone.role.RoleMember;
+import app.keystone.role.RoleHasAssignedUsersException;
+import app.keystone.role.ProtectedSystemRoleException;
 import app.keystone.role.RoleRepository;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import io.quarkus.hibernate.orm.panache.PanacheQuery;
@@ -97,16 +99,18 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
     public void deleteRole(String code) {
         ApiKeyRoleEntity role = find("code", code).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (role == null) throw new java.util.NoSuchElementException("role not found");
-        bumpPermissionVersion(role);
-        delete(role);
+        ensureNotSystemAdmin(role);
+        ensureNoAssignedUsers(role);
+        deleteRoleEntity(role);
     }
 
     @Transactional
     public void deleteRoleById(String id) {
-        ApiKeyRoleEntity role = findRoleEntityById(id);
+        ApiKeyRoleEntity role = findRoleEntityByIdForUpdate(id);
         if (role == null) throw new java.util.NoSuchElementException("role not found");
-        bumpPermissionVersion(role);
-        delete(role);
+        ensureNotSystemAdmin(role);
+        ensureNoAssignedUsers(role);
+        deleteRoleEntity(role);
     }
 
     /** 在同一事务内锁定并删除全部角色，任何目标缺失时整体回滚。 */
@@ -120,13 +124,26 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
         List<UUID> values = normalized.stream().map(app.keystone.identity.UuidValues::parse).toList();
         List<ApiKeyRoleEntity> roles = find("id in ?1", values).withLock(LockModeType.PESSIMISTIC_WRITE).list();
         if (roles.size() != values.size()) throw new java.util.NoSuchElementException("role not found");
+        // 先检查整批目标的系统角色，再检查成员，保证系统角色错误优先且整批不变。
+        roles.forEach(RoleAdminOrmRepository::ensureNotSystemAdmin);
+        // 先检查整批目标，再执行删除，避免成员冲突发生在部分角色已经处理之后。
+        roles.forEach(this::ensureNoAssignedUsers);
         roles.forEach(this::deleteRoleEntity);
         return roles.size();
     }
 
     private void deleteRoleEntity(ApiKeyRoleEntity role) {
-        bumpPermissionVersion(role);
         delete(role);
+    }
+
+    /** 角色成员关系会承载授权；有成员时不允许删除角色。 */
+    private void ensureNoAssignedUsers(ApiKeyRoleEntity role) {
+        if (users.hasUsersWithRole(role.uuid())) throw new RoleHasAssignedUsersException();
+    }
+
+    /** 按 Phoenix 的系统角色代码语义保护 ADMIN，不依赖 UUID、显示名称或成员关系。 */
+    static void ensureNotSystemAdmin(ApiKeyRoleEntity role) {
+        if ("ADMIN".equalsIgnoreCase(role.code())) throw new ProtectedSystemRoleException();
     }
 
     @Transactional
