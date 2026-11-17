@@ -117,7 +117,7 @@ public class UserRepository {
             throw new app.keystone.auth.AuthorizationDeniedException(ErrorCode.PERMISSION_DENIED, "role assignment is not allowed");
         }
         return create(record.username(), record.password(), record.displayName(), record.deptId(), record.postId(),
-                record.email(), record.phoneNumber(), record.sex(), record.avatar(), record.remark(), null,
+                record.email(), record.phoneNumber(), record.sex(), record.avatar(), record.remark(), record.enabled(),
                 ormUsers.resolveRoleCodes(record.roleIds()));
     }
 

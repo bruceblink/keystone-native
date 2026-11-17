@@ -199,8 +199,10 @@ class UserResourceTest extends AuthTestFixture {
     void userImportSucceedsWithAal2AndReportsPerRowResult() throws Exception {
         String admin = login("admin", "password");
         String username = "import_aal2_admin_" + System.nanoTime();
+        String importedUsername = "imported_aal2_" + System.nanoTime();
+        String disabledUsername = importedUsername + "_disabled";
+        String defaultEnabledUsername = importedUsername + "_default";
         String temporaryAdminId = null;
-        String importedId = null;
         try {
             temporaryAdminId = given().auth().oauth2(admin).contentType(JSON)
                     .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"AAL2 Import Admin\",\"roleCodes\":[\"ADMIN\"]}")
@@ -234,11 +236,12 @@ class UserResourceTest extends AuthTestFixture {
             org.junit.jupiter.api.Assertions.assertEquals("AAL2", claims.path("aal").asText());
             org.junit.jupiter.api.Assertions.assertEquals("recovery", claims.path("amr").get(0).asText());
 
-            String importedUsername = "imported_aal2_" + System.nanoTime();
+            // 验证导入保留禁用状态、缺省状态，并继续逐行报告无效记录。
             byte[] workbook = ExcelExporter.export(
                     java.util.List.of("部门ID", "用户名", "昵称", "密码", "状态"),
                     java.util.List.of(
-                            java.util.List.of("", importedUsername, "AAL2 导入用户", "password", true),
+                            java.util.List.of("", disabledUsername, "AAL2 禁用用户", "password", false),
+                            java.util.List.of("", defaultEnabledUsername, "AAL2 默认启用用户", "password", ""),
                             java.util.List.of("", importedUsername + "_invalid", "缺少密码", "", true)));
 
             given().auth().oauth2(aal2)
@@ -246,17 +249,31 @@ class UserResourceTest extends AuthTestFixture {
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                     .when().post("/v1/users/import")
                     .then().statusCode(200)
-                    .body("data.total", is(2))
-                    .body("data.success", is(1))
+                    .body("data.total", is(3))
+                    .body("data.success", is(2))
                     .body("data.failed.size()", is(1))
-                    .body("data.failed[0].row", is(3));
+                    .body("data.failed[0].row", is(4));
 
-            importedId = given().auth().oauth2(aal2).when().get("/v1/users?username=" + importedUsername)
-                    .then().statusCode(200).body("data.items.size()", is(1)).extract().path("data.items[0].id");
+            var disabledUser = given().auth().oauth2(aal2).when().get("/v1/users?username=" + disabledUsername)
+                    .then().statusCode(200).extract();
+            org.junit.jupiter.api.Assertions.assertEquals(1, (int) disabledUser.path("data.items.size()"));
+            assertFalse((Boolean) disabledUser.path("data.items[0].enabled"));
+
+            given().contentType(JSON)
+                    .body("{\"username\":\"" + disabledUsername + "\",\"password\":\"password\"}")
+                    .when().post("/v1/auth/login")
+                    .then().statusCode(401).body("error.code", is("invalid_credential"));
+
+            var defaultEnabledUser = given().auth().oauth2(aal2)
+                    .when().get("/v1/users?username=" + defaultEnabledUsername)
+                    .then().statusCode(200).extract();
+            org.junit.jupiter.api.Assertions.assertEquals(1, (int) defaultEnabledUser.path("data.items.size()"));
+            assertTrue((Boolean) defaultEnabledUser.path("data.items[0].enabled"));
+            assertFalse(login(defaultEnabledUsername, "password").isBlank());
         } finally {
-            if (importedId != null) {
-                given().auth().oauth2(admin).when().delete("/v1/users/" + importedId).then().statusCode(200);
-            }
+            cleanupImportedUser(admin, disabledUsername);
+            cleanupImportedUser(admin, defaultEnabledUsername);
+            cleanupImportedUser(admin, importedUsername + "_invalid");
             if (temporaryAdminId != null) {
                 given().auth().oauth2(admin).when().delete("/v1/users/" + temporaryAdminId).then().statusCode(200);
             }
@@ -374,6 +391,18 @@ class UserResourceTest extends AuthTestFixture {
     private static String login(String username, String password) {
         return given().contentType(JSON).body("{\"username\":\"" + username + "\",\"password\":\"" + password + "\",\"forceLogin\":true}")
                 .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");
+    }
+
+    /** 通过管理接口按唯一用户名清理导入测试创建的用户。 */
+    private static void cleanupImportedUser(String admin, String username) {
+        java.util.List<String> ids = given().auth().oauth2(admin)
+                .when().get("/v1/users?username=" + username)
+                .then().statusCode(200)
+                .extract().path("data.items.id");
+        if (ids == null) return;
+        for (String id : ids) {
+            given().auth().oauth2(admin).when().delete("/v1/users/" + id).then().statusCode(200);
+        }
     }
 
     /** 在测试库创建具备个人改密权限的临时管理员，并由各测试在 finally 中清理。 */
