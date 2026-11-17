@@ -39,6 +39,12 @@ class ErrorCodeCatalogTest {
         assertEquals("rate_limited", ErrorCode.RATE_LIMITED.code());
         assertEquals("resource_not_found", ErrorCode.RESOURCE_NOT_FOUND.code());
         assertEquals("resource_conflict", ErrorCode.RESOURCE_CONFLICT.code());
+        assertEquals("api_key_name_invalid", ErrorCode.API_KEY_NAME_INVALID.code());
+        assertEquals("api_key_expiry_invalid", ErrorCode.API_KEY_EXPIRY_INVALID.code());
+        assertEquals("api_key_expiry_out_of_range", ErrorCode.API_KEY_EXPIRY_OUT_OF_RANGE.code());
+        assertEquals(422, ErrorCode.API_KEY_NAME_INVALID.httpStatus());
+        assertEquals(422, ErrorCode.API_KEY_EXPIRY_INVALID.httpStatus());
+        assertEquals(422, ErrorCode.API_KEY_EXPIRY_OUT_OF_RANGE.httpStatus());
         assertEquals("role_has_members", ErrorCode.ROLE_HAS_MEMBERS.code());
         assertEquals(422, ErrorCode.ROLE_HAS_MEMBERS.httpStatus());
         assertEquals("role_protected", ErrorCode.ROLE_PROTECTED.code());

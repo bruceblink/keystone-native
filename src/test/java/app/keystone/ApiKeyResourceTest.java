@@ -8,6 +8,7 @@ import org.junit.jupiter.api.Test;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
+import java.time.Instant;
 
 import static io.restassured.RestAssured.given;
 import static io.restassured.http.ContentType.JSON;
@@ -18,6 +19,33 @@ import static org.hamcrest.Matchers.*;
 @QuarkusTest
 class ApiKeyResourceTest extends AuthTestFixture {
     @Inject DataSource dataSource;
+
+    /** 校验名称和到期时间错误分别返回唯一业务码，且保持 HTTP 422。 */
+    @Test
+    void issueReturnsUniqueCodesForNameAndExpiryValidation() {
+        String admin = login();
+        assertIssueError(admin, "{\"scopes\":[\"api-key:read\"]}", "api_key_name_invalid");
+        assertIssueError(admin, "{\"name\":\"   \",\"scopes\":[\"api-key:read\"]}", "api_key_name_invalid");
+        assertIssueError(admin, "{\"name\":\"" + "x".repeat(129)
+                + "\",\"scopes\":[\"api-key:read\"]}", "api_key_name_invalid");
+        assertIssueError(admin, "{\"name\":\"bad-expiry\",\"scopes\":[\"api-key:read\"],"
+                + "\"expiresAt\":\"not-a-date\"}", "api_key_expiry_invalid");
+        assertIssueError(admin, "{\"name\":\"typed-expiry\",\"scopes\":[\"api-key:read\"],"
+                + "\"expiresAt\":7}", "api_key_expiry_invalid");
+        assertIssueError(admin, "{\"name\":\"expired\",\"scopes\":[\"api-key:read\"],"
+                + "\"expiresAt\":\"" + Instant.now().minusSeconds(60) + "\"}",
+                "api_key_expiry_out_of_range");
+        assertIssueError(admin, "{\"name\":\"too-far\",\"scopes\":[\"api-key:read\"],"
+                + "\"expiresAt\":\"" + Instant.now().plusSeconds(91L * 24 * 3600) + "\"}",
+                "api_key_expiry_out_of_range");
+
+        String valid = given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"name\":\"valid-expiry\",\"scopes\":[\"api-key:read\"],"
+                        + "\"expiresAt\":\"" + Instant.now().plusSeconds(30L * 24 * 3600) + "\"}")
+                .when().post("/v1/api-keys").then().statusCode(201)
+                .extract().path("data.id");
+        revoke(admin, valid);
+    }
 
     @Test
     void adminCanIssueAndUseAndRevokeAnApiKey() {
@@ -190,6 +218,13 @@ class ApiKeyResourceTest extends AuthTestFixture {
                 .then().statusCode(201)
                 .body("data.apiKey", startsWith("ks_live_"))
                 .extract();
+    }
+
+    /** 用真实 HTTP 签发请求核对校验失败的状态和业务码。 */
+    private static void assertIssueError(String admin, String body, String errorCode) {
+        given().auth().oauth2(admin).contentType(JSON).body(body)
+                .when().post("/v1/api-keys")
+                .then().statusCode(422).body("error.code", is(errorCode));
     }
 
     private void clearApiKeyRateLimits() throws Exception {

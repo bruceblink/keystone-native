@@ -1,18 +1,21 @@
 package app.keystone.auth;
 
 import app.keystone.ErrorCode;
-
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.user.UserRepository;
+import com.fasterxml.jackson.databind.JsonNode;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import java.time.Instant;
+import java.time.format.DateTimeParseException;
 import java.util.List;
 import java.util.NoSuchElementException;
+import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
 @Path("/v1/api-keys")
 @Produces(MediaType.APPLICATION_JSON)
@@ -24,13 +27,31 @@ public class ApiKeyResource {
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
     @POST @RequiresPermission("api-key:create") @RequiresMfaStepUp public Response issue(Request request) {
-        if (request == null || request.name() == null || request.name().isBlank()) return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, "name is required")).build();
+        if (request == null) return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, "request is invalid")).build();
+        Instant expiresAt;
+        try {
+            expiresAt = parseExpiry(request.expiresAt());
+        } catch (DateTimeParseException | IllegalArgumentException e) {
+            return Response.status(422).entity(ApiResponse.error(ErrorCode.API_KEY_EXPIRY_INVALID,
+                    "API Key expiration must be a valid ISO-8601 date-time")).build();
+        }
         var user = users.findAuthUserByUsername(identity.getPrincipal().getName());
         if (user.isEmpty()) return Response.status(403).entity(ApiResponse.error(ErrorCode.PERMISSION_DENIED, "API key identity cannot issue API keys")).build();
         String userId = user.get().id();
-        var value = keys.issue(userId, request.name(), request.scopes(), request.expiresAt());
+        ApiKeyRepository.IssuedApiKey value;
+        try {
+            value = keys.issue(userId, request.name(), request.scopes(), expiresAt);
+        } catch (ApiKeyIssueValidationException e) {
+            return Response.status(422).entity(ApiResponse.error(e.errorCode(), e.getMessage())).build();
+        }
         logs.record(identity.getPrincipal().getName(), "CREATE", "api-key", value.id(), value.prefix());
         return Response.status(201).entity(ApiResponse.ok(value)).build();
+    }
+    /** 只在 API Key 签发边界解析日期，避免影响其他请求 DTO 的 JSON 日期错误映射。 */
+    private static Instant parseExpiry(JsonNode value) {
+        if (value == null || value.isNull()) return null;
+        if (!value.isTextual()) throw new IllegalArgumentException("expiresAt must be a string");
+        return Instant.parse(value.textValue());
     }
     /** page/size 传入时返回分页对象；省略时保留旧数组响应，兼容旧调用方。 */
     @GET @RequiresPermission("api-key:read") public Response list(
@@ -61,5 +82,6 @@ public class ApiKeyResource {
         }
         return user.get();
     }
-    public record Request(String name, List<String> scopes, Instant expiresAt) {}
+    public record Request(String name, List<String> scopes,
+                          @Schema(type = SchemaType.STRING, format = "date-time") JsonNode expiresAt) {}
 }

@@ -2,6 +2,7 @@ package app.keystone.auth;
 
 import io.quarkus.hibernate.orm.panache.PanacheRepository;
 import io.quarkus.panache.common.Sort;
+import app.keystone.ErrorCode;
 import app.keystone.identity.UuidValues;
 import app.keystone.notification.NotificationService;
 import jakarta.enterprise.context.ApplicationScoped;
@@ -198,11 +199,14 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
     }
 
     private static void validateIssue(String name, Instant expiresAt) {
-        if (name == null || name.isBlank()) throw new IllegalArgumentException("name is required");
-        if (name.trim().length() > 128) throw new IllegalArgumentException("name is too long");
+        if (name == null || name.isBlank() || name.trim().length() > 128) {
+            throw new ApiKeyIssueValidationException(ErrorCode.API_KEY_NAME_INVALID,
+                    "API Key name must contain 1 to 128 characters");
+        }
         Instant now = Instant.now();
         if (expiresAt != null && (expiresAt.isBefore(now) || expiresAt.isAfter(now.plusSeconds(90L * 24 * 3600)))) {
-            throw new IllegalArgumentException("expiresAt must be within 90 days");
+            throw new ApiKeyIssueValidationException(ErrorCode.API_KEY_EXPIRY_OUT_OF_RANGE,
+                    "API Key expiration must be after now and within 90 days");
         }
     }
 
