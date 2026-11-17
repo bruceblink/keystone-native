@@ -128,6 +128,22 @@ class InitialAdminBootstrapHttpTest {
     }
 
     @Test
+    void initialPasswordMustChangeBeforeLogin() throws Exception {
+        String password = replacementPassword();
+        createBootstrapTestUser(BcryptUtil.bcryptHash(password));
+
+        given().contentType(JSON)
+                .body(Map.of("username", bootstrapUsername, "currentPassword", password, "newPassword", password))
+                .when().post("/v1/auth/change-initial-password")
+                .then().statusCode(422).body("error.code", is("validation_failed"));
+
+        given().contentType(JSON)
+                .body(Map.of("username", bootstrapUsername, "password", password))
+                .when().post("/v1/auth/login")
+                .then().statusCode(428).body("error.code", is("precondition_required"));
+    }
+
+    @Test
     void v59RepairsOnlyTheExactUnusedSeedAndIsIdempotent() throws Exception {
         String oldHash = migrationHash("V46__uuid_identity_core.sql", V46_SEED_HASH);
         String migration = executableMigration("V59__repair_initial_admin.sql");
