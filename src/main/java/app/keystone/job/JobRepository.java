@@ -87,15 +87,11 @@ public class JobRepository implements PanacheRepositoryBase<JobEntity, java.util
         return job.toModel();
     }
 
-    /** 运行状态写入失败不改变任务执行结果。 */
+    /** 在日志事务中按完成时间更新最近状态，避免旧结果覆盖较新的执行结果。 */
     @Transactional
-    public void markRun(String id, String status) {
-        try {
-            JobEntity job = find("id = ?1", parse(id)).firstResult();
-            if (job != null) job.markRun(status, Instant.now());
-        } catch (RuntimeException ignored) {
-            // 运行状态只用于诊断，持久化异常不能改变调度结果。
-        }
+    public void markRun(String id, String status, Instant finishedAt) {
+        update("lastStatus = ?1, lastRunAt = ?2 where id = ?3 and (lastRunAt is null or lastRunAt <= ?2)",
+                status, finishedAt, parse(id));
     }
 
     @Transactional

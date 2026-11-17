@@ -90,11 +90,6 @@ public class JobEntity {
         if (newRemark != null) remark = newRemark;
     }
 
-    void markRun(String status, Instant at) {
-        lastStatus = status;
-        lastRunAt = at;
-    }
-
     Job toModel() {
         return new Job(id == null ? null : id.toString(), code, name, jobGroup, invokeTarget, jobParams, cron, concurrent,
                 enabled, remark, lastStatus, lastRunAt);

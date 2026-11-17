@@ -156,19 +156,16 @@ public class JobService {
             try {
                 LOG.infof("Executing Keystone job %s (%s)", job.id(), job.invokeTarget());
                 invocations.invoke(job.invokeTarget(), job.jobParams());
-                jobs.markRun(job.id(), "SUCCESS");
             } catch (Exception e) {
                 status = FAILED;
                 message = "任务执行失败: " + trim(e.getMessage(), 450);
                 exception = trim(stackTrace(e), 4000);
                 failure = e instanceof RuntimeException runtime ? runtime : new IllegalStateException(e);
-                jobs.markRun(job.id(), "FAILED");
                 if (triggerType == AUTO_TRIGGER) LOG.errorf(e, "Keystone job %s failed", job.id());
             } finally {
                 if (!job.concurrent()) lock.unlock();
             }
         }
-        if (status == SKIPPED) jobs.markRun(job.id(), "SKIPPED");
         Instant finished = Instant.now();
         jobLogs.save(new JobLog(null, job.id(), job.code(), job.name(), job.group(), job.invokeTarget(), job.jobParams(), job.cron(), triggerType, status, message, exception, started, finished, (System.nanoTime() - startNanos) / 1_000_000, finished));
         if (failure != null && triggerType == MANUAL_TRIGGER) throw failure;

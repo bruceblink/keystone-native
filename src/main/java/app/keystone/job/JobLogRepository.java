@@ -14,10 +14,23 @@ public class JobLogRepository implements PanacheRepository<JobLogEntity> {
     @Transactional
     public void save(JobLog log) {
         try {
-            persist(new JobLogEntity(log));
+            persistAndFlush(new JobLogEntity(log));
+            if (log.jobId() != null && log.finishedAt() != null) {
+                jobs.markRun(log.jobId(), latestStatus(log.status()), log.finishedAt());
+            }
         } catch (RuntimeException e) {
             throw new IllegalStateException("Could not save job log", e);
         }
+    }
+
+    /** 将执行日志中的数字状态转换为任务列表使用的文本状态。 */
+    private static String latestStatus(int status) {
+        return switch (status) {
+            case 0 -> "FAILED";
+            case 1 -> "SUCCESS";
+            case 2 -> "SKIPPED";
+            default -> throw new IllegalArgumentException("unsupported job run status");
+        };
     }
 
     @Transactional
