@@ -93,7 +93,7 @@ scope_allowed(principal, scope, resource, context)
 - API Key：使用 `ks_live_<prefix>_<secret>` 格式。数据库只保存哈希、前缀、主体、范围、过期和撤销状态。明文只返回一次。有效范围是请求范围、签发者可授予范围和主体当前权限的交集。API Key 不能访问密码修改、MFA 或 API Key 管理路径。
 - MFA：第一版使用 TOTP、一次性恢复码和短期认证请求。敏感写操作需要 AAL2 step-up。并发消费必须只有一次成功。
 - MFA step-up：人类会话使用 `POST /api/v1/auth/mfa/step-up` 创建绑定当前 `sid`、`client_id` 的短期请求，响应只返回 `challengeId`、`clientId` 和 `expiresAt`；使用同一 Bearer 会话调用 `POST /api/v1/auth/mfa/step-up/verify` 并提交 TOTP 或恢复码，成功返回 `accessToken`、`expiresIn`、`authenticationLevel=AAL2` 和 `amr`。step-up 令牌使用新的 UUIDv7 `jti`，服务端在同一事务内替换当前刷新记录的访问令牌标识并延长访问令牌期限，不创建新的 refresh token，不改变刷新令牌哈希、令牌族、`sid`、`client_id` 或刷新期限。旧 `jti` 立即失效，新的短时令牌仍通过会话、权限版本和撤销状态检查。step-up 入口要求有效的人类会话、已登记 MFA 和当前用户/会话绑定，并拒绝 API Key；它不要求 `mfa:manage`，enrollment、恢复码与策略管理仍要求该权限。错误使用统一 `invalid_credential=401`、`permission_denied=403`、`validation_failed=422` 和 `authorization_unavailable=503` 分类。
-- step-up 签发限制：Native 默认允许每个会话在 60 秒内创建 10 条请求，超过上限返回 `rate_limited=429`。过期请求按批次清理；仍在签发计数窗口内的请求保留至窗口结束。Phoenix 尚需实现相同限制和清理。
+- step-up 签发限制：Native 和 Phoenix 默认允许每个会话在 60 秒内创建 10 条请求，超过上限返回 `rate_limited=429`。过期请求按批次清理；仍在签发计数窗口内的请求保留至窗口结束。两端均已通过各自数据库的定向测试；双节点运行测试仍未完成。
 - 外部身份：OIDC 使用 Authorization Code + PKCE。服务端生成并保存 `state`、`nonce` 和 verifier，回调只接受一次性 `code` 与 `state`，并校验 JWKS、RS256、issuer、audience、`azp`、nonce 和时间窗口。外部主体按完整 issuer 与 subject 绑定本地用户。
 - Passkey：WebAuthn 使用一次性 challenge、受控 RP ID/origin、凭据公钥、算法、签名计数器和账户映射。注册要求已完成 AAL2 step-up；登录成功签发 AAL2 会话。API Key 不能进入注册和登录入口。
 
