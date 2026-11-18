@@ -135,7 +135,7 @@ class InitialAdminBootstrapHttpTest {
         given().contentType(JSON)
                 .body(Map.of("username", bootstrapUsername, "currentPassword", password, "newPassword", password))
                 .when().post("/v1/auth/change-initial-password")
-                .then().statusCode(422).body("error.code", is("validation_failed"));
+                .then().statusCode(422).body("error.code", is("password_same_as_current"));
 
         given().contentType(JSON)
                 .body(Map.of("username", bootstrapUsername, "password", password))

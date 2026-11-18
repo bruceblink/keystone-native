@@ -295,7 +295,7 @@ public class AuthResource {
         if (user.isEmpty()) return Response.status(401).entity(ApiResponse.error(ErrorCode.INVALID_CREDENTIAL, "invalid credentials")).build();
         if (!user.get().mustChangePassword()) return Response.status(409).entity(ApiResponse.error(ErrorCode.RESOURCE_CONFLICT, "password change is not required")).build();
         // 首次改密必须替换原密码，避免保留已知的初始凭据。
-        if (request.currentPassword().equals(request.newPassword())) return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, "new password must differ from current password")).build();
+        if (request.currentPassword().equals(request.newPassword())) return Response.status(422).entity(ApiResponse.error(ErrorCode.PASSWORD_SAME_AS_CURRENT, "new password must differ from current password")).build();
         try { users.updateInitialPassword(AuthorizationContext.system(), user.get().id(), request.newPassword()); }
         catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, e.getMessage())).build(); }
         sessions.revokeAll(user.get().id());

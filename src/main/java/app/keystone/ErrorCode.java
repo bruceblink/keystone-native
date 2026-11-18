@@ -28,6 +28,8 @@ public enum ErrorCode {
     ACTIVE_SESSION_CONFLICT("active_session_conflict", 409, "账号已有活动会话", RetryAdvice.AFTER_CORRECTION, "error.active_session_conflict", true),
     RESOURCE_CONFLICT("resource_conflict", 409, "资源状态或唯一约束发生冲突", RetryAdvice.AFTER_CORRECTION, "error.resource_conflict", true),
     API_KEY_NAME_INVALID("api_key_name_invalid", 422, "API Key 名称缺失、空白或超过 128 个字符", RetryAdvice.AFTER_CORRECTION, "error.api_key_name_invalid", true),
+    // 仅表示新密码与已验证的当前密码相同，不覆盖密码策略校验失败。
+    PASSWORD_SAME_AS_CURRENT("password_same_as_current", 422, "新密码与当前密码相同", RetryAdvice.AFTER_CORRECTION, "error.password_same_as_current", true),
     // 仅表示个人资料展示名缺失或空白，不复用其他字段校验错误。
     PROFILE_DISPLAY_NAME_REQUIRED("profile_display_name_required", 422, "个人资料展示名缺失或为空白", RetryAdvice.AFTER_CORRECTION, "error.profile_display_name_required", true),
     // 单独更新头像时地址缺失或空白，不能覆盖现有头像。
