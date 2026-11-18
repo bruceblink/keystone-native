@@ -173,6 +173,7 @@ public class UserResource {
     }
 
     private static String importFailureCode(RuntimeException error) {
+        if (error instanceof UsernameAlreadyExistsException) return ErrorCode.USERNAME_ALREADY_EXISTS.code();
         if (error instanceof PasswordPolicyException policy) return policy.errorCode().code();
         if (error instanceof app.keystone.auth.AuthorizationDeniedException denied) return denied.code();
         if (error instanceof java.util.NoSuchElementException) return ErrorCode.RESOURCE_NOT_FOUND.code();

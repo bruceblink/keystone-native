@@ -51,6 +51,10 @@ class ErrorCodeCatalogTest {
         assertEquals("password_missing_lowercase", ErrorCode.PASSWORD_MISSING_LOWERCASE.code());
         assertEquals("password_missing_digit", ErrorCode.PASSWORD_MISSING_DIGIT.code());
         assertEquals("password_missing_special", ErrorCode.PASSWORD_MISSING_SPECIAL.code());
+        assertEquals("username_already_exists", ErrorCode.USERNAME_ALREADY_EXISTS.code());
+        assertEquals("username_invalid_format", ErrorCode.USERNAME_INVALID_FORMAT.code());
+        assertEquals(422, ErrorCode.USERNAME_ALREADY_EXISTS.httpStatus());
+        assertEquals(422, ErrorCode.USERNAME_INVALID_FORMAT.httpStatus());
         assertEquals(422, ErrorCode.API_KEY_NAME_INVALID.httpStatus());
         assertEquals(422, ErrorCode.API_KEY_EXPIRY_INVALID.httpStatus());
         assertEquals(422, ErrorCode.API_KEY_EXPIRY_OUT_OF_RANGE.httpStatus());

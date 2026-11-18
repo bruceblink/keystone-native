@@ -316,6 +316,9 @@ class UserResourceTest extends AuthTestFixture {
         String disabledUsername = importedUsername + "_disabled";
         String defaultEnabledUsername = importedUsername + "_default";
         String disallowedUsername = importedUsername + "_disallowed";
+        String foreignKeyUsername = importedUsername + "_invalid_post";
+        String legacyPunctuationUsername = importedUsername + "-legacy";
+        String missingPostId = java.util.UUID.randomUUID().toString();
         String temporaryAdminId = null;
         try {
             temporaryAdminId = given().auth().oauth2(admin).contentType(JSON)
@@ -350,31 +353,53 @@ class UserResourceTest extends AuthTestFixture {
             org.junit.jupiter.api.Assertions.assertEquals("AAL2", claims.path("aal").asText());
             org.junit.jupiter.api.Assertions.assertEquals("recovery", claims.path("amr").get(0).asText());
 
+            // 用户创建接口继续使用原有 HTTP 422 和通用校验码。
+            given().auth().oauth2(aal2).contentType(JSON)
+                    .body("{\"username\":\"" + username + "\",\"password\":\"Strong!123\",\"displayName\":\"Duplicate\",\"roleCodes\":[\"USER\"]}")
+                    .when().post("/v1/users").then().statusCode(422)
+                    .body("error.code", is("validation_failed"));
+            given().auth().oauth2(aal2).contentType(JSON)
+                    .body("{\"username\":\"" + foreignKeyUsername + "\",\"password\":\"Strong!123\",\"displayName\":\"Missing post\",\"postId\":\"" + missingPostId + "\",\"roleCodes\":[\"USER\"]}")
+                    .when().post("/v1/users").then().statusCode(422)
+                    .body("error.code", is("validation_failed"));
+
             // 验证导入保留禁用状态、缺省状态，并继续逐行报告无效记录。
             byte[] workbook = ExcelExporter.export(
-                    java.util.List.of("部门ID", "用户名", "昵称", "密码", "状态"),
+                    java.util.List.of("部门ID", "用户名", "昵称", "密码", "状态", "职位ID"),
                     java.util.List.of(
-                            java.util.List.of("", disabledUsername, "AAL2 禁用用户", "password", false),
-                            java.util.List.of("", defaultEnabledUsername, "AAL2 默认启用用户", "password", ""),
-                            java.util.List.of("", importedUsername + "_invalid", "缺少密码", "", true),
-                            java.util.List.of("", disallowedUsername, "禁止密码", "test-only-disallowed", true)));
+                            java.util.List.of("", disabledUsername, "AAL2 禁用用户", "password", false, ""),
+                            java.util.List.of("", defaultEnabledUsername, "AAL2 默认启用用户", "password", "", ""),
+                            java.util.List.of("", importedUsername + "_invalid", "缺少密码", "", true, ""),
+                            java.util.List.of("", username, "重复 AAL2 管理员", "password", true, ""),
+                            java.util.List.of("", foreignKeyUsername, "缺少岗位", "password", true, missingPostId),
+                            java.util.List.of("", disallowedUsername, "禁止密码", "test-only-disallowed", true, ""),
+                            java.util.List.of("", legacyPunctuationUsername, "保留旧用户名格式", "password", true, "")));
 
             given().auth().oauth2(aal2)
                     .multiPart("file", "users.xlsx", workbook,
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                     .when().post("/v1/users/import")
                     .then().statusCode(200)
-                    .body("data.total", is(4))
-                    .body("data.success", is(2))
-                    .body("data.failed.size()", is(2))
+                    .body("data.total", is(7))
+                    .body("data.success", is(3))
+                    .body("data.failed.size()", is(4))
                     .body("data.failed[0].row", is(4))
                     .body("data.failed[0].username", is(importedUsername + "_invalid"))
                     .body("data.failed[0].reason", is("password does not meet security policy"))
                     .body("data.failed[0].code", is("password_required"))
                     .body("data.failed[1].row", is(5))
-                    .body("data.failed[1].username", is(disallowedUsername))
-                    .body("data.failed[1].reason", is("password does not meet security policy"))
-                    .body("data.failed[1].code", is("password_disallowed"));
+                    .body("data.failed[1].username", is(username))
+                    .body("data.failed[1].reason", is("username already exists"))
+                    .body("data.failed[1].code", is("username_already_exists"))
+                    .body("data.failed[2].row", is(6))
+                    .body("data.failed[2].username", is(foreignKeyUsername))
+                    .body("data.failed[2].reason", is("username already exists"))
+                    .body("data.failed[2].code", is("validation_failed"))
+                    .body("data.failed[2].code", not(is("username_already_exists")))
+                    .body("data.failed[3].row", is(7))
+                    .body("data.failed[3].username", is(disallowedUsername))
+                    .body("data.failed[3].reason", is("password does not meet security policy"))
+                    .body("data.failed[3].code", is("password_disallowed"));
 
             var disabledUser = given().auth().oauth2(aal2).when().get("/v1/users?username=" + disabledUsername)
                     .then().statusCode(200).extract();
@@ -392,11 +417,13 @@ class UserResourceTest extends AuthTestFixture {
             org.junit.jupiter.api.Assertions.assertEquals(1, (int) defaultEnabledUser.path("data.items.size()"));
             assertTrue((Boolean) defaultEnabledUser.path("data.items[0].enabled"));
             assertFalse(login(defaultEnabledUsername, "password").isBlank());
+            assertFalse(login(legacyPunctuationUsername, "password").isBlank());
         } finally {
             cleanupImportedUser(admin, disabledUsername);
             cleanupImportedUser(admin, defaultEnabledUsername);
             cleanupImportedUser(admin, importedUsername + "_invalid");
             cleanupImportedUser(admin, disallowedUsername);
+            cleanupImportedUser(admin, legacyPunctuationUsername);
             if (temporaryAdminId != null) {
                 given().auth().oauth2(admin).when().delete("/v1/users/" + temporaryAdminId).then().statusCode(200);
             }

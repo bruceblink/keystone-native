@@ -8,6 +8,7 @@ import io.quarkus.elytron.security.common.BcryptUtil;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import java.sql.SQLException;
 import java.util.List;
 import java.util.Optional;
 
@@ -136,7 +137,8 @@ public class UserRepository {
         } catch (IllegalArgumentException e) {
             throw e;
         } catch (RuntimeException e) {
-            if (isUniqueConstraint(e)) throw new IllegalArgumentException("username already exists", e);
+            if (isUsernameUniqueViolation(e)) throw new UsernameAlreadyExistsException(e);
+            if (hasLegacyConstraintSignal(e)) throw new IllegalArgumentException("username already exists", e);
             throw new IllegalStateException("Could not create user", e);
         }
     }
@@ -311,13 +313,36 @@ public class UserRepository {
             throw new IllegalStateException("Could not read user permission version", e);
         }
     }
-    private static boolean isUniqueConstraint(Throwable error) {
+    private static boolean isUsernameUniqueViolation(Throwable error) {
+        for (Throwable current = error; current != null; current = current.getCause()) {
+            if (current instanceof org.hibernate.exception.ConstraintViolationException violation &&
+                    isMysqlDuplicateUsernameIndex(violation.getSQLException(), violation.getConstraintName())) {
+                return true;
+            }
+            if (current instanceof SQLException sqlException &&
+                    isMysqlDuplicateUsernameIndex(sqlException, null)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /** 保留旧约束异常的通用 422 映射；该分支不会使用用户名重复专码。 */
+    private static boolean hasLegacyConstraintSignal(Throwable error) {
         for (Throwable current = error; current != null; current = current.getCause()) {
             String name = current.getClass().getSimpleName().toLowerCase(java.util.Locale.ROOT);
             String message = String.valueOf(current.getMessage()).toLowerCase(java.util.Locale.ROOT);
             if (name.contains("constraint") || message.contains("duplicate") || message.contains("unique")) return true;
         }
         return false;
+    }
+
+    /** 只把 MySQL 用户名唯一索引冲突转换成用户名重复，不混淆外键错误。 */
+    private static boolean isMysqlDuplicateUsernameIndex(SQLException error, String constraintName) {
+        if (error == null || error.getErrorCode() != 1062 || !"23000".equals(error.getSQLState())) return false;
+        if ("username".equals(constraintName) || "sys_user.username".equals(constraintName)) return true;
+        String message = String.valueOf(error.getMessage()).toLowerCase(java.util.Locale.ROOT);
+        return message.endsWith("for key 'username'") || message.endsWith("for key 'sys_user.username'");
     }
 
     public record AuthUser(String id, String username, String displayName, List<String> roles, boolean mustChangePassword,

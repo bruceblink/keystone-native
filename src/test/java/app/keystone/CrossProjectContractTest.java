@@ -62,6 +62,8 @@ class CrossProjectContractTest {
         assertEquals("validation_failed", ApiResponse.error(ErrorCode.VALIDATION_FAILED, "request body is required").error().get("code"));
         assertTrue(ErrorCode.isRegistered("active_session_conflict"));
         assertTrue(ErrorCode.isRegistered("mfa_required"));
+        assertTrue(ErrorCode.isRegistered("username_already_exists"));
+        assertTrue(ErrorCode.isRegistered("username_invalid_format"));
     }
 
     private static Set<String> recordFields(Class<?> recordType) {
