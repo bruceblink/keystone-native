@@ -76,6 +76,70 @@ class MenuResourceHttpTest extends AuthTestFixture {
     }
 
     @Test
+    void managerCanKeepOrRemoveBoundDisabledRolesButCannotAddAnotherDisabledRole() throws SQLException {
+        String token = login();
+        String suffix = UUID.randomUUID().toString().replace("-", "");
+        String menuId = createMenu(token, "disabled_role_menu_" + suffix, null);
+        String boundRoleId = UUID.randomUUID().toString();
+        String unboundRoleId = UUID.randomUUID().toString();
+        String boundRoleCode = "DISABLED_BOUND_" + suffix;
+        String unboundRoleCode = "DISABLED_UNBOUND_" + suffix;
+        try {
+            try (var connection = dataSource.getConnection()) {
+                insertDisabledRole(connection, boundRoleId, boundRoleCode);
+                insertDisabledRole(connection, unboundRoleId, unboundRoleCode);
+                insertRoleMenu(connection, boundRoleId, menuId);
+            }
+
+            given().auth().oauth2(token)
+                    .when().get("/v1/menus/" + menuId + "/roles")
+                    .then().statusCode(200)
+                    .body("data.roleCodes", hasItem(boundRoleCode));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"roleCodes\":[\"ADMIN\",\"" + boundRoleCode + "\"]}")
+                    .when().put("/v1/menus/" + menuId + "/roles")
+                    .then().statusCode(200)
+                    .body("data.updated", is(true));
+
+            given().auth().oauth2(token)
+                    .when().get("/v1/menus/" + menuId + "/roles")
+                    .then().statusCode(200)
+                    .body("data.roleCodes", hasItem("ADMIN"))
+                    .body("data.roleCodes", hasItem(boundRoleCode));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"roleCodes\":[\"ADMIN\"]}")
+                    .when().put("/v1/menus/" + menuId + "/roles")
+                    .then().statusCode(200);
+
+            given().auth().oauth2(token)
+                    .when().get("/v1/menus/" + menuId + "/roles")
+                    .then().statusCode(200)
+                    .body("data.roleCodes", hasItem("ADMIN"))
+                    .body("data.roleCodes", org.hamcrest.Matchers.not(hasItem(boundRoleCode)));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"roleCodes\":[\"ADMIN\",\"" + unboundRoleCode + "\"]}")
+                    .when().put("/v1/menus/" + menuId + "/roles")
+                    .then().statusCode(422)
+                    .body("message", is("角色编码无效"));
+
+            given().auth().oauth2(token)
+                    .when().get("/v1/menus/" + menuId + "/roles")
+                    .then().statusCode(200)
+                    .body("data.roleCodes", hasItem("ADMIN"))
+                    .body("data.roleCodes", org.hamcrest.Matchers.not(hasItem(unboundRoleCode)));
+        } finally {
+            try {
+                deleteMenu(token, menuId);
+            } finally {
+                deleteSyntheticRoles(boundRoleId, unboundRoleId);
+            }
+        }
+    }
+
+    @Test
     void managerCanMoveMenuAndRejectsMissingOrCyclicParents() {
         String token = login();
         String rootId = createMenu(token, "move_root_" + UUID.randomUUID(), null);
@@ -249,6 +313,36 @@ class MenuResourceHttpTest extends AuthTestFixture {
             statement.setString(1, roleId);
             statement.setString(2, menuId);
             statement.executeUpdate();
+        }
+    }
+
+    /** 创建未绑定的停用角色，用于核验 API 不能通过菜单新授予它。 */
+    private static void insertDisabledRole(java.sql.Connection connection, String roleId, String code) throws SQLException {
+        try (var statement = connection.prepareStatement(
+                "INSERT INTO sys_role(id, code, name, enabled, data_scope) VALUES (UUID_TO_BIN(?), ?, ?, FALSE, 'ALL')")) {
+            statement.setString(1, roleId);
+            statement.setString(2, code);
+            statement.setString(3, code);
+            statement.executeUpdate();
+        }
+    }
+
+    private void deleteSyntheticRoles(String firstRoleId, String secondRoleId) throws SQLException {
+        try (var connection = dataSource.getConnection()) {
+            for (String table : new String[]{"sys_role_menu", "sys_role_permission"}) {
+                try (var statement = connection.prepareStatement(
+                        "DELETE FROM " + table + " WHERE role_id IN (UUID_TO_BIN(?), UUID_TO_BIN(?))")) {
+                    statement.setString(1, firstRoleId);
+                    statement.setString(2, secondRoleId);
+                    statement.executeUpdate();
+                }
+            }
+            try (var statement = connection.prepareStatement(
+                    "DELETE FROM sys_role WHERE id IN (UUID_TO_BIN(?), UUID_TO_BIN(?))")) {
+                statement.setString(1, firstRoleId);
+                statement.setString(2, secondRoleId);
+                statement.executeUpdate();
+            }
         }
     }
 

@@ -110,7 +110,8 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.ut
         for (String code : roleCodes == null ? List.<String>of() : roleCodes) {
             if (code != null && !code.isBlank()) normalized.add(code.trim());
         }
-        List<ApiKeyRoleEntity> found = roles.findEnabledByCodes(List.copyOf(normalized));
+        List<String> alreadyBoundCodes = menu.roles().stream().map(ApiKeyRoleEntity::codeValue).toList();
+        List<ApiKeyRoleEntity> found = roles.findAssignableByCodes(List.copyOf(normalized), alreadyBoundCodes);
         if (found.size() != normalized.size()) {
             throw new IllegalArgumentException("unknown role");
         }

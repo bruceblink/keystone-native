@@ -6,10 +6,12 @@ import jakarta.enterprise.context.ApplicationScoped;
 
 import java.util.List;
 
-/** 读取菜单角色绑定所需的启用角色。 */
+/** 查询可新增的启用角色，以及菜单已经绑定的停用角色。 */
 @ApplicationScoped
 class MenuRoleOrmRepository implements PanacheRepositoryBase<ApiKeyRoleEntity, java.util.UUID> {
-    List<ApiKeyRoleEntity> findEnabledByCodes(List<String> codes) {
-        return find("code in ?1 and enabled = true", codes).list();
+    List<ApiKeyRoleEntity> findAssignableByCodes(List<String> codes, List<String> alreadyBoundCodes) {
+        if (codes.isEmpty()) return List.of();
+        if (alreadyBoundCodes.isEmpty()) return find("code in ?1 and enabled = true", codes).list();
+        return find("code in ?1 and (enabled = true or code in ?2)", codes, alreadyBoundCodes).list();
     }
 }
