@@ -86,7 +86,11 @@ public final class AuthorizationContext {
     public boolean selfScope() { return selfScope; }
     public boolean ownerScope() { return ownerScope; }
     public DataScopeService.Scope scope() { return scope; }
-    public boolean hasPermission(String permission) { return isSystem() || permissions.contains(permission); }
+    /** API Key 的有效权限必须同时存在于主体权限和该密钥批准的范围中。 */
+    public boolean hasPermission(String permission) {
+        return isSystem() || (permissions.contains(permission)
+                && (!"API_KEY".equals(credentialType) || approvedScopes.contains(permission)));
+    }
 
     private static String dataScope(DataScopeService.Scope scope) {
         if (scope == null) return "NONE";

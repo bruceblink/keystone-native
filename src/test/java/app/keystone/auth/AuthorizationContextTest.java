@@ -4,6 +4,7 @@ import app.keystone.role.RoleRepository;
 import app.keystone.user.UserRepository;
 import app.keystone.dept.DepartmentRepository;
 import app.keystone.audit.OperationLogRepository;
+import io.quarkus.test.TestTransaction;
 import io.quarkus.test.junit.QuarkusTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
@@ -79,6 +80,25 @@ class AuthorizationContextTest {
         assertEquals("TENANT", context.dataScope());
         assertEquals(9, context.permissionVersion());
         assertEquals("AAL2", context.authenticationLevel());
+    }
+
+    @Test
+    @TestTransaction
+    void apiKeyCommandRejectsPermissionOutsideApprovedScope() {
+        AuthorizationContext context = AuthorizationContext.user(
+                "00000000-0000-7000-8000-000000000007", "SERVICE", "service", "API_KEY",
+                "00000000-0000-7000-8000-000000000008", "api", Set.of("role:create", "role:read"),
+                Set.of("role:read"), "ALL", 1, "AAL1", DataScopeService.Scope.unrestricted());
+
+        assertFalse(context.hasPermission("role:create"));
+        AuthorizationDeniedException error = assertThrows(
+                AuthorizationDeniedException.class,
+                () -> roles.create(context, "API_KEY_SCOPE_BYPASS", "Denied by key scope"));
+
+        assertEquals("permission_denied", error.code());
+        assertEquals(403, error.status());
+        assertFalse(roles.list(context).stream()
+                .anyMatch(role -> "API_KEY_SCOPE_BYPASS".equals(role.code())));
     }
 
     @Test
