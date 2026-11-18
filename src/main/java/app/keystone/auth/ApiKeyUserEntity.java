@@ -255,17 +255,19 @@ public class ApiKeyUserEntity {
     }
 
     /** 更新用户资料字段；调用方必须在用户行写锁事务内调用。 */
-    void updateProfile(String newDisplayName, boolean updateDept, String newDeptId, String newPostId,
-                       String newEmail, String newPhoneNumber, Integer newSex, String newAvatar,
-                       String newRemark, Boolean newEnabled) {
+    void updateProfile(String newDisplayName, boolean updateDept, String newDeptId, boolean updatePostId,
+                       String newPostId, boolean updateEmail, String newEmail, boolean updatePhoneNumber,
+                       String newPhoneNumber, boolean updateSex, Integer newSex, boolean updateAvatar,
+                       String newAvatar, boolean updateRemark, String newRemark, Boolean newEnabled) {
         if (newDisplayName != null && !newDisplayName.isBlank()) displayName = newDisplayName.trim();
         if (updateDept) deptId = newDeptId;
-        if (newPostId != null) postId = app.keystone.identity.UuidValues.parse(newPostId);
-        if (newEmail != null) email = emptyToNull(newEmail);
-        if (newPhoneNumber != null) phoneNumber = emptyToNull(newPhoneNumber);
-        if (newSex != null) sex = newSex;
-        if (newAvatar != null) avatar = emptyToNull(newAvatar);
-        if (newRemark != null) remark = emptyToNull(newRemark);
+        if (updatePostId) postId = newPostId == null || newPostId.isBlank()
+                ? null : app.keystone.identity.UuidValues.parse(newPostId);
+        if (updateEmail) email = emptyToNull(newEmail);
+        if (updatePhoneNumber) phoneNumber = emptyToNull(newPhoneNumber);
+        if (updateSex) sex = newSex;
+        if (updateAvatar) avatar = emptyToNull(newAvatar);
+        if (updateRemark) remark = emptyToNull(newRemark);
         if (newEnabled != null) enabled = newEnabled;
     }
 

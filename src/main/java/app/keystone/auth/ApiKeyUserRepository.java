@@ -80,6 +80,18 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
     public User updateUser(String userId, String password, String displayName, boolean updateDept, String deptId,
                            String postId, String email, String phoneNumber, Integer sex, String avatar,
                            String remark, Boolean enabled, List<String> roleCodes, PasswordPolicy passwordPolicy) {
+        return updateUser(userId, password, displayName, updateDept, deptId, postId, email, phoneNumber,
+                sex, avatar, remark, enabled, roleCodes, passwordPolicy,
+                new UserRepository.UpdateFieldPresence(postId != null, email != null, phoneNumber != null,
+                        sex != null, avatar != null, remark != null));
+    }
+
+    /** 同一用户行锁事务按字段是否出现在 JSON 请求中应用 null 清空语义。 */
+    @Transactional
+    public User updateUser(String userId, String password, String displayName, boolean updateDept, String deptId,
+                           String postId, String email, String phoneNumber, Integer sex, String avatar,
+                           String remark, Boolean enabled, List<String> roleCodes, PasswordPolicy passwordPolicy,
+                           UserRepository.UpdateFieldPresence fields) {
         ApiKeyUserEntity user = find("id = ?1", app.keystone.identity.UuidValues.parse(userId))
                 .withLock(LockModeType.PESSIMISTIC_WRITE)
                 .firstResult();
@@ -89,7 +101,9 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
             passwordPolicy.validate(user.username(), password);
             user.changePassword(BcryptUtil.bcryptHash(password), Instant.now());
         }
-        user.updateProfile(displayName, updateDept, deptId, postId, email, phoneNumber, sex, avatar, remark, enabled);
+        user.updateProfile(displayName, updateDept, deptId,
+                fields.postId(), postId, fields.email(), email, fields.phoneNumber(), phoneNumber,
+                fields.sex(), sex, fields.avatar(), avatar, fields.remark(), remark, enabled);
         if (replacement != null) {
             user.replaceRoles(replacement);
             user.bumpPermissionVersion();

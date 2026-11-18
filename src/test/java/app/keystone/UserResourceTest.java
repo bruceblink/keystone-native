@@ -40,6 +40,22 @@ class UserResourceTest extends AuthTestFixture {
     }
 
     @Test
+    void profileUpdateWithInvalidFieldTypeUsesValidationFailedCode() {
+        String admin = login("admin", "password");
+        String original = given().auth().oauth2(admin).when().get("/v1/profile")
+                .then().statusCode(200).extract().path("data.displayName");
+
+        // 字段类型错误属于请求校验失败，不能误报为展示名缺失。
+        given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"displayName\":\"Changed name\",\"sex\":{}}")
+                .when().put("/v1/profile").then().statusCode(422)
+                .body("error.code", is("validation_failed"));
+
+        given().auth().oauth2(admin).when().get("/v1/profile")
+                .then().statusCode(200).body("data.displayName", is(original));
+    }
+
+    @Test
     void profileAvatarFailuresHaveDedicatedCode() {
         String admin = login("admin", "password");
         String avatar = "/profile/avatar/codex-avatar-test.png";
@@ -52,6 +68,38 @@ class UserResourceTest extends AuthTestFixture {
         }
         given().auth().oauth2(admin).when().get("/v1/profile")
                 .then().statusCode(200).body("data.avatar", is(avatar));
+    }
+
+    @Test
+    void profileUpdateClearsExplicitNullFieldsAndPreservesOmittedFields() {
+        String admin = login("admin", "password");
+        String username = "nullable_profile_" + System.nanoTime();
+        String userId = null;
+        try {
+            userId = given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Nullable profile\",\"email\":\"profile@example.test\",\"phoneNumber\":\"13800000000\",\"sex\":1,\"avatar\":\"/profile/avatar/null-update.png\",\"roleCodes\":[\"ADMIN\"]}")
+                    .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
+            String accessToken = login(username, "password");
+
+            given().auth().oauth2(accessToken).contentType(JSON)
+                    .body("{\"displayName\":\"Nullable profile\"}")
+                    .when().put("/v1/profile").then().statusCode(200)
+                    .body("data.email", is("profile@example.test"))
+                    .body("data.phoneNumber", is("13800000000"))
+                    .body("data.sex", is(1))
+                    .body("data.avatar", is("/profile/avatar/null-update.png"));
+
+            // 与 admin-web 一样，显式 null 清空字段；未提交字段继续保留。
+            given().auth().oauth2(accessToken).contentType(JSON)
+                    .body("{\"displayName\":\"Nullable profile\",\"email\":null,\"phoneNumber\":null,\"sex\":null,\"avatar\":null}")
+                    .when().put("/v1/profile").then().statusCode(200)
+                    .body("data.email", org.hamcrest.Matchers.nullValue())
+                    .body("data.phoneNumber", org.hamcrest.Matchers.nullValue())
+                    .body("data.sex", org.hamcrest.Matchers.nullValue())
+                    .body("data.avatar", org.hamcrest.Matchers.nullValue());
+        } finally {
+            deleteTemporaryUser(admin, userId);
+        }
     }
 
     @Test
@@ -95,6 +143,42 @@ class UserResourceTest extends AuthTestFixture {
                 .when().put("/v1/profile").then().statusCode(200).body("data.email", is("new@example.test"));
         given().auth().oauth2(admin).when().delete("/v1/users/" + id).then().statusCode(200);
         given().auth().oauth2(admin).when().delete("/v1/users/" + peerId).then().statusCode(200);
+    }
+
+    @Test
+    void userUpdateClearsExplicitNullFieldsAndPreservesOmittedFields() {
+        String admin = login("admin", "password");
+        String username = "nullable_update_" + System.nanoTime();
+        String postId = null;
+        String userId = null;
+        try {
+            postId = given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"code\":\"NULLABLE_POST_" + System.nanoTime() + "\",\"name\":\"Nullable post\",\"sortOrder\":1,\"enabled\":true}")
+                    .when().post("/v1/posts").then().statusCode(201).extract().path("data.id");
+            userId = given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"username\":\"" + username + "\",\"password\":\"password\",\"displayName\":\"Nullable user\",\"postId\":\"" + postId + "\",\"email\":\"old@example.test\",\"phoneNumber\":\"13800000000\",\"remark\":\"keep or clear\",\"roleCodes\":[\"USER\"]}")
+                    .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
+
+            // 缺少字段不改变现值；显式 null 表示用户确认清空该字段。
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"displayName\":\"Nullable user\",\"enabled\":true,\"clearDept\":false,\"roleCodes\":null}")
+                    .when().put("/v1/users/" + userId).then().statusCode(200)
+                    .body("data.postId", is(postId))
+                    .body("data.email", is("old@example.test"))
+                    .body("data.phoneNumber", is("13800000000"))
+                    .body("data.remark", is("keep or clear"));
+
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"displayName\":\"Nullable user\",\"postId\":null,\"email\":null,\"phoneNumber\":null,\"remark\":null,\"enabled\":true,\"clearDept\":false,\"roleCodes\":null}")
+                    .when().put("/v1/users/" + userId).then().statusCode(200)
+                    .body("data.postId", org.hamcrest.Matchers.nullValue())
+                    .body("data.email", org.hamcrest.Matchers.nullValue())
+                    .body("data.phoneNumber", org.hamcrest.Matchers.nullValue())
+                    .body("data.remark", org.hamcrest.Matchers.nullValue());
+        } finally {
+            deleteTemporaryUser(admin, userId);
+            if (postId != null) given().auth().oauth2(admin).when().delete("/v1/posts/" + postId).then().statusCode(200);
+        }
     }
 
     @Test

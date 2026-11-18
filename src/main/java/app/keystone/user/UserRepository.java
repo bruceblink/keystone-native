@@ -173,9 +173,19 @@ public class UserRepository {
     }
 
     private User updateExtended(String id, String password, String displayName, boolean updateDept, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
+        return updateExtended(id, password, displayName, updateDept, deptId, postId, email, phoneNumber,
+                sex, avatar, remark, enabled, roleCodes,
+                new UpdateFieldPresence(postId != null, email != null, phoneNumber != null,
+                        sex != null, avatar != null, remark != null));
+    }
+
+    private User updateExtended(String id, String password, String displayName, boolean updateDept, String deptId,
+                                String postId, String email, String phoneNumber, Integer sex, String avatar,
+                                String remark, Boolean enabled, List<String> roleCodes,
+                                UpdateFieldPresence fields) {
         try {
             return ormUsers.updateUser(id, password, displayName, updateDept, deptId, postId,
-                    email, phoneNumber, sex, avatar, remark, enabled, roleCodes, passwordPolicy);
+                    email, phoneNumber, sex, avatar, remark, enabled, roleCodes, passwordPolicy, fields);
         } catch (IllegalArgumentException | java.util.NoSuchElementException e) {
             throw e;
         } catch (RuntimeException e) {
@@ -186,12 +196,27 @@ public class UserRepository {
     public User updateExtended(AuthorizationContext context, String id, String password, String displayName,
                                boolean updateDept, String deptId, String postId, String email, String phoneNumber,
                                Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
+        return updateExtended(context, id, password, displayName, updateDept, deptId, postId, email,
+                phoneNumber, sex, avatar, remark, enabled, roleCodes,
+                new UpdateFieldPresence(postId != null, email != null, phoneNumber != null,
+                        sex != null, avatar != null, remark != null));
+    }
+
+    public User updateExtended(AuthorizationContext context, String id, String password, String displayName,
+                               boolean updateDept, String deptId, String postId, String email, String phoneNumber,
+                               Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes,
+                               UpdateFieldPresence fields) {
         authorization.require(context, "user:update", "user");
         findPublic(context, id);
         if (updateDept && !context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
                 ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this department");
-        return updateExtended(id, password, displayName, updateDept, deptId, postId, email, phoneNumber, sex, avatar, remark, enabled, roleCodes);
+        return updateExtended(id, password, displayName, updateDept, deptId, postId, email, phoneNumber,
+                sex, avatar, remark, enabled, roleCodes, fields);
     }
+
+    /** 标记 JSON 中明确出现的可空字段；显式 null 清空，字段缺失则保持原值。 */
+    public record UpdateFieldPresence(boolean postId, boolean email, boolean phoneNumber,
+                                      boolean sex, boolean avatar, boolean remark) {}
 
     public void markLogin(String id, String ip) {
         try {

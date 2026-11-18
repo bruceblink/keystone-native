@@ -16,6 +16,9 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jboss.resteasy.reactive.RestForm;
 import org.jboss.resteasy.reactive.multipart.FileUpload;
 import java.util.List;
@@ -29,6 +32,7 @@ public class UserResource {
     @Inject SecurityIdentity identity;
     @Inject SessionRepository sessions;
     @Inject AuthorizationService authorization;
+    @Inject ObjectMapper objectMapper;
 
     @GET @RequiresPermission("user:read")
     public ApiResponse<UserRepository.Page> list(@QueryParam("page") Integer page, @QueryParam("size") Integer size,
@@ -92,10 +96,22 @@ public class UserResource {
     }
 
     @PUT @Path("/{id}") @RequiresPermission("user:update") @RequiresMfaStepUp
-    public Response update(@PathParam("id") String id, UserRequest request) {
-        if (request == null) return bad("request body is required");
+    public Response update(@PathParam("id") String id,
+                           @Schema(implementation = UserRequest.class) JsonNode body) {
+        if (body == null || !body.isObject()) return bad("request body is required");
+        UserRequest request;
         try {
-            var updated = users.updateExtended(context(), id, request.password(), request.displayName(), request.clearDepartment() || request.deptId() != null, request.deptId(), request.postId(), request.email(), request.phoneNumber(), request.sex(), request.avatar(), request.remark(), request.enabled(), request.roleCodes());
+            request = objectMapper.treeToValue(body, UserRequest.class);
+        } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
+            return bad("request body is invalid");
+        }
+        try {
+            var fields = new UserRepository.UpdateFieldPresence(body.has("postId"), body.has("email"),
+                    body.has("phoneNumber"), body.has("sex"), body.has("avatar"), body.has("remark"));
+            var updated = users.updateExtended(context(), id, request.password(), request.displayName(),
+                    request.clearDepartment() || request.deptId() != null, request.deptId(), request.postId(),
+                    request.email(), request.phoneNumber(), request.sex(), request.avatar(), request.remark(),
+                    request.enabled(), request.roleCodes(), fields);
             logs.record(context(), "UPDATE", "user", String.valueOf(id), updated.username());
             return Response.ok(ApiResponse.ok(updated)).build();
         } catch (IllegalArgumentException e) { return bad(e.getMessage()); }
