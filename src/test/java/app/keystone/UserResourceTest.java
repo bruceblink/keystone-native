@@ -26,6 +26,20 @@ class UserResourceTest extends AuthTestFixture {
     private static final String PROFILE_PASSWORD = "Profile-Changed-123!";
 
     @Test
+    void profileDisplayNameFailuresHaveDedicatedCode() {
+        String admin = login("admin", "password");
+        // 缺失、null 和空白输入都指向同一展示名必填条件，不修改原资料。
+        String original = given().auth().oauth2(admin).when().get("/v1/profile")
+                .then().statusCode(200).extract().path("data.displayName");
+        for (String body : java.util.List.of("{}", "{\"displayName\":null}", "{\"displayName\":\"  \"}")) {
+            given().auth().oauth2(admin).contentType(JSON).body(body).when().put("/v1/profile")
+                    .then().statusCode(422).body("error.code", is("profile_display_name_required"));
+        }
+        given().auth().oauth2(admin).when().get("/v1/profile")
+                .then().statusCode(200).body("data.displayName", is(original));
+    }
+
+    @Test
     void administratorCanCreateDisabledUserFromTheRequestedStatus() {
         String admin = login("admin", "password");
         String id = null;

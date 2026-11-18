@@ -31,7 +31,7 @@ public class ProfileResource {
 
     @GET @RequiresPermission("user:read") public ApiResponse<UserRepository.AuthUser> get() { return ApiResponse.ok(current()); }
     @PUT @RequiresPermission("user:update") public Response update(ProfileRequest request) {
-        if (request == null || request.displayName() == null || request.displayName().isBlank()) return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, "displayName is required")).build();
+        if (request == null || request.displayName() == null || request.displayName().isBlank()) return Response.status(422).entity(ApiResponse.error(ErrorCode.PROFILE_DISPLAY_NAME_REQUIRED, "displayName is required")).build();
         try { var user = current(); users.updateExtended(context(), user.id(), null, request.displayName(), false, null, null, request.email(), request.phoneNumber(), request.sex(), request.avatar(), null, null, null); logs.record(context(), "UPDATE", "profile", String.valueOf(user.id()), null); return Response.ok(ApiResponse.ok(users.findAuthUser(user.id()).orElseThrow())).build(); }
         catch (java.util.NoSuchElementException e) { return Response.status(404).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "user not found")).build(); }
     }
