@@ -1,6 +1,7 @@
 package app.keystone;
 
 import app.keystone.auth.AuthorizationDeniedException;
+import app.keystone.user.PasswordPolicyException;
 import jakarta.annotation.Priority;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -15,6 +16,9 @@ public class ApiRuntimeExceptionMapper implements ExceptionMapper<RuntimeExcepti
     public Response toResponse(RuntimeException exception) {
         if (exception instanceof AuthorizationDeniedException denied) {
             return response(denied.status(), ErrorCode.fromCode(denied.code()), denied.getMessage());
+        }
+        if (exception instanceof PasswordPolicyException policy) {
+            return response(policy.errorCode().httpStatus(), policy.errorCode(), policy.getMessage());
         }
         if (exception instanceof IllegalArgumentException || containsIllegalArgument(exception)) {
             return response(422, ErrorCode.VALIDATION_FAILED, "request is invalid");

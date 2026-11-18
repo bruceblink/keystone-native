@@ -1,5 +1,6 @@
 package app.keystone.user;
 
+import app.keystone.ErrorCode;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
@@ -61,19 +62,29 @@ public class PasswordPolicy {
     /** 校验密码和用户名关系；密码内容不会进入日志或异常消息。 */
     public void validate(String username, String password) {
         validateConfiguration();
-        if (password == null || password.isBlank()) throw invalid();
+        if (password == null || password.isBlank()) throw invalid(ErrorCode.PASSWORD_REQUIRED);
         int length = password.codePointCount(0, password.length());
-        if (length < minLength) throw invalid();
+        if (length < minLength) throw invalid(ErrorCode.PASSWORD_TOO_SHORT);
         String lowerPassword = password.toLowerCase(Locale.ROOT);
-        if (disallowed.contains(lowerPassword)) throw invalid();
+        if (disallowed.contains(lowerPassword)) throw invalid(ErrorCode.PASSWORD_DISALLOWED);
         if (username != null && !username.isBlank()) {
             String lowerUsername = username.trim().toLowerCase(Locale.ROOT);
-            if (lowerUsername.length() >= 4 && lowerPassword.contains(lowerUsername)) throw invalid();
+            if (lowerUsername.length() >= 4 && lowerPassword.contains(lowerUsername)) {
+                throw invalid(ErrorCode.PASSWORD_CONTAINS_USERNAME);
+            }
         }
-        if (requireUppercase && password.codePoints().noneMatch(Character::isUpperCase)) throw invalid();
-        if (requireLowercase && password.codePoints().noneMatch(Character::isLowerCase)) throw invalid();
-        if (requireDigit && password.codePoints().noneMatch(Character::isDigit)) throw invalid();
-        if (requireSpecial && password.codePoints().noneMatch(value -> !Character.isLetterOrDigit(value))) throw invalid();
+        if (requireUppercase && password.codePoints().noneMatch(Character::isUpperCase)) {
+            throw invalid(ErrorCode.PASSWORD_MISSING_UPPERCASE);
+        }
+        if (requireLowercase && password.codePoints().noneMatch(Character::isLowerCase)) {
+            throw invalid(ErrorCode.PASSWORD_MISSING_LOWERCASE);
+        }
+        if (requireDigit && password.codePoints().noneMatch(Character::isDigit)) {
+            throw invalid(ErrorCode.PASSWORD_MISSING_DIGIT);
+        }
+        if (requireSpecial && password.codePoints().noneMatch(value -> !Character.isLetterOrDigit(value))) {
+            throw invalid(ErrorCode.PASSWORD_MISSING_SPECIAL);
+        }
     }
 
     /** 返回策略的固定摘要，供输入边界测试使用，不包含配置中的禁用密码。 */
@@ -87,8 +98,8 @@ public class PasswordPolicy {
         if (minLength < 8 || minLength > 256) throw new IllegalStateException("password policy min-length must be between 8 and 256");
     }
 
-    private static IllegalArgumentException invalid() {
-        return new IllegalArgumentException("password does not meet security policy");
+    private static PasswordPolicyException invalid(ErrorCode errorCode) {
+        return new PasswordPolicyException(errorCode);
     }
 
     private static Set<String> parseDisallowed(String value) {

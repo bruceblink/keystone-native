@@ -315,6 +315,7 @@ class UserResourceTest extends AuthTestFixture {
         String importedUsername = "imported_aal2_" + System.nanoTime();
         String disabledUsername = importedUsername + "_disabled";
         String defaultEnabledUsername = importedUsername + "_default";
+        String disallowedUsername = importedUsername + "_disallowed";
         String temporaryAdminId = null;
         try {
             temporaryAdminId = given().auth().oauth2(admin).contentType(JSON)
@@ -355,17 +356,25 @@ class UserResourceTest extends AuthTestFixture {
                     java.util.List.of(
                             java.util.List.of("", disabledUsername, "AAL2 禁用用户", "password", false),
                             java.util.List.of("", defaultEnabledUsername, "AAL2 默认启用用户", "password", ""),
-                            java.util.List.of("", importedUsername + "_invalid", "缺少密码", "", true)));
+                            java.util.List.of("", importedUsername + "_invalid", "缺少密码", "", true),
+                            java.util.List.of("", disallowedUsername, "禁止密码", "test-only-disallowed", true)));
 
             given().auth().oauth2(aal2)
                     .multiPart("file", "users.xlsx", workbook,
                             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                     .when().post("/v1/users/import")
                     .then().statusCode(200)
-                    .body("data.total", is(3))
+                    .body("data.total", is(4))
                     .body("data.success", is(2))
-                    .body("data.failed.size()", is(1))
-                    .body("data.failed[0].row", is(4));
+                    .body("data.failed.size()", is(2))
+                    .body("data.failed[0].row", is(4))
+                    .body("data.failed[0].username", is(importedUsername + "_invalid"))
+                    .body("data.failed[0].reason", is("password does not meet security policy"))
+                    .body("data.failed[0].code", is("password_required"))
+                    .body("data.failed[1].row", is(5))
+                    .body("data.failed[1].username", is(disallowedUsername))
+                    .body("data.failed[1].reason", is("password does not meet security policy"))
+                    .body("data.failed[1].code", is("password_disallowed"));
 
             var disabledUser = given().auth().oauth2(aal2).when().get("/v1/users?username=" + disabledUsername)
                     .then().statusCode(200).extract();
@@ -387,6 +396,7 @@ class UserResourceTest extends AuthTestFixture {
             cleanupImportedUser(admin, disabledUsername);
             cleanupImportedUser(admin, defaultEnabledUsername);
             cleanupImportedUser(admin, importedUsername + "_invalid");
+            cleanupImportedUser(admin, disallowedUsername);
             if (temporaryAdminId != null) {
                 given().auth().oauth2(admin).when().delete("/v1/users/" + temporaryAdminId).then().statusCode(200);
             }

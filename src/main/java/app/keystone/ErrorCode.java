@@ -30,6 +30,14 @@ public enum ErrorCode {
     API_KEY_NAME_INVALID("api_key_name_invalid", 422, "API Key 名称缺失、空白或超过 128 个字符", RetryAdvice.AFTER_CORRECTION, "error.api_key_name_invalid", true),
     // 仅表示新密码与已验证的当前密码相同，不覆盖密码策略校验失败。
     PASSWORD_SAME_AS_CURRENT("password_same_as_current", 422, "新密码与当前密码相同", RetryAdvice.AFTER_CORRECTION, "error.password_same_as_current", true),
+    PASSWORD_REQUIRED("password_required", 422, "密码缺失或为空白", RetryAdvice.AFTER_CORRECTION, "error.password_required", true),
+    PASSWORD_TOO_SHORT("password_too_short", 422, "密码长度未达到要求", RetryAdvice.AFTER_CORRECTION, "error.password_too_short", true),
+    PASSWORD_DISALLOWED("password_disallowed", 422, "密码位于禁止列表中", RetryAdvice.AFTER_CORRECTION, "error.password_disallowed", true),
+    PASSWORD_CONTAINS_USERNAME("password_contains_username", 422, "密码包含用户名", RetryAdvice.AFTER_CORRECTION, "error.password_contains_username", true),
+    PASSWORD_MISSING_UPPERCASE("password_missing_uppercase", 422, "密码缺少大写字母", RetryAdvice.AFTER_CORRECTION, "error.password_missing_uppercase", true),
+    PASSWORD_MISSING_LOWERCASE("password_missing_lowercase", 422, "密码缺少小写字母", RetryAdvice.AFTER_CORRECTION, "error.password_missing_lowercase", true),
+    PASSWORD_MISSING_DIGIT("password_missing_digit", 422, "密码缺少数字", RetryAdvice.AFTER_CORRECTION, "error.password_missing_digit", true),
+    PASSWORD_MISSING_SPECIAL("password_missing_special", 422, "密码缺少特殊字符", RetryAdvice.AFTER_CORRECTION, "error.password_missing_special", true),
     // 仅表示个人资料展示名缺失或空白，不复用其他字段校验错误。
     PROFILE_DISPLAY_NAME_REQUIRED("profile_display_name_required", 422, "个人资料展示名缺失或为空白", RetryAdvice.AFTER_CORRECTION, "error.profile_display_name_required", true),
     // 单独更新头像时地址缺失或空白，不能覆盖现有头像。

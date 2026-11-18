@@ -127,7 +127,7 @@ public class UserRepository {
 
     /** 领域创建入口将启用状态与用户资料一起写入同一事务。 */
     private User create(String username, String password, String displayName, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
-        if (username == null || username.isBlank() || password == null || password.isBlank() || displayName == null || displayName.isBlank()) throw new IllegalArgumentException("username, password and displayName are required");
+        if (username == null || username.isBlank() || displayName == null || displayName.isBlank()) throw new IllegalArgumentException("username and displayName are required");
         passwordPolicy.validate(username, password);
         try {
             return ormUsers.createUser(username.trim(), BcryptUtil.bcryptHash(password), displayName.trim(),

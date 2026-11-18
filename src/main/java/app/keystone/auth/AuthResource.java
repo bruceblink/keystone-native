@@ -5,6 +5,7 @@ import app.keystone.ErrorCode;
 import app.keystone.audit.LoginLogRepository;
 import app.keystone.audit.SecurityObservability;
 import app.keystone.user.UserRepository;
+import app.keystone.user.PasswordPolicyException;
 import jakarta.annotation.security.PermitAll;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.POST;
@@ -290,13 +291,15 @@ public class AuthResource {
 
     @POST @Path("/change-initial-password") @PermitAll @RejectApiKey
     public Response changeInitialPassword(InitialPasswordRequest request) {
-        if (request == null || request.username() == null || request.currentPassword() == null || request.newPassword() == null || request.newPassword().isBlank()) return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, "username, currentPassword and newPassword are required")).build();
+        if (request == null || request.username() == null || request.currentPassword() == null) return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, "username and currentPassword are required")).build();
+        if (request.newPassword() == null || request.newPassword().isBlank()) return Response.status(422).entity(ApiResponse.error(ErrorCode.PASSWORD_REQUIRED, "password does not meet security policy")).build();
         var user = users.authenticate(request.username(), request.currentPassword());
         if (user.isEmpty()) return Response.status(401).entity(ApiResponse.error(ErrorCode.INVALID_CREDENTIAL, "invalid credentials")).build();
         if (!user.get().mustChangePassword()) return Response.status(409).entity(ApiResponse.error(ErrorCode.RESOURCE_CONFLICT, "password change is not required")).build();
         // 首次改密必须替换原密码，避免保留已知的初始凭据。
         if (request.currentPassword().equals(request.newPassword())) return Response.status(422).entity(ApiResponse.error(ErrorCode.PASSWORD_SAME_AS_CURRENT, "new password must differ from current password")).build();
         try { users.updateInitialPassword(AuthorizationContext.system(), user.get().id(), request.newPassword()); }
+        catch (PasswordPolicyException e) { return Response.status(422).entity(ApiResponse.error(e.errorCode(), e.getMessage())).build(); }
         catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, e.getMessage())).build(); }
         sessions.revokeAll(user.get().id());
         return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build();

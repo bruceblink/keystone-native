@@ -70,7 +70,7 @@ public class UserResource {
                     logs.record(authorizationContext, "CREATE", "user", String.valueOf(created.id()), created.username());
                     success++;
                 } catch (RuntimeException error) {
-                    failures.add(new ImportFailure(record.row(), record.username(), importFailure(error)));
+                    failures.add(new ImportFailure(record.row(), record.username(), importFailure(error), importFailureCode(error)));
                 }
             }
             return Response.ok(ApiResponse.ok(new ImportResult(records.size(), success, failures))).build();
@@ -92,7 +92,8 @@ public class UserResource {
             var created = users.create(context(), request.username(), request.password(), request.displayName(), request.deptId(), request.postId(), request.email(), request.phoneNumber(), request.sex(), request.avatar(), request.remark(), request.enabled(), request.roleCodes());
             logs.record(context(), "CREATE", "user", String.valueOf(created.id()), created.username());
             return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(created)).build();
-        } catch (IllegalArgumentException e) { return bad(e.getMessage()); }
+        } catch (PasswordPolicyException e) { return passwordPolicyError(e); }
+        catch (IllegalArgumentException e) { return bad(e.getMessage()); }
     }
 
     @PUT @Path("/{id}") @RequiresPermission("user:update") @RequiresMfaStepUp
@@ -114,14 +115,16 @@ public class UserResource {
                     request.enabled(), request.roleCodes(), fields);
             logs.record(context(), "UPDATE", "user", String.valueOf(id), updated.username());
             return Response.ok(ApiResponse.ok(updated)).build();
-        } catch (IllegalArgumentException e) { return bad(e.getMessage()); }
+        } catch (PasswordPolicyException e) { return passwordPolicyError(e); }
+        catch (IllegalArgumentException e) { return bad(e.getMessage()); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
 
     @PUT @Path("/{id}/password") @RequiresPermission("user:reset-password") @RequiresMfaStepUp @RejectApiKey
     public Response password(@PathParam("id") String id, PasswordRequest request) {
-        if (request == null || request.password() == null || request.password().isBlank()) return bad("password is required");
+        if (request == null || request.password() == null || request.password().isBlank()) return passwordRequired();
         try { var updated = users.updatePassword(context(), id, request.password()); sessions.revokeAll(id); logs.record(context(), "UPDATE", "user-password", id, null); return Response.ok(ApiResponse.ok(updated)).build(); }
+        catch (PasswordPolicyException e) { return passwordPolicyError(e); }
         catch (IllegalArgumentException e) { return bad(e.getMessage()); }
         catch (java.util.NoSuchElementException e) { return notFound(); }
     }
@@ -150,6 +153,8 @@ public class UserResource {
     private String actor() { return identity.getPrincipal().getName(); }
     private AuthorizationContext context() { return authorization.context(identity); }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
+    private static Response passwordRequired() { return Response.status(422).entity(ApiResponse.error(ErrorCode.PASSWORD_REQUIRED, "password does not meet security policy")).build(); }
+    private static Response passwordPolicyError(PasswordPolicyException error) { return Response.status(422).entity(ApiResponse.error(error.errorCode(), error.getMessage())).build(); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "user not found")).build(); }
     public record UserRequest(String username, String password, String displayName, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, Boolean clearDept, List<String> roleCodes) {
         public boolean clearDepartment() { return Boolean.TRUE.equals(clearDept); }
@@ -157,7 +162,7 @@ public class UserResource {
     public record PasswordRequest(String password) {}
     public record StatusRequest(Boolean enabled) {}
     public record ImportResult(int total, int success, List<ImportFailure> failed) {}
-    public record ImportFailure(int row, String username, String reason) {}
+    public record ImportFailure(int row, String username, String reason, String code) {}
 
     private static String importFailure(RuntimeException error) {
         if (error instanceof app.keystone.auth.AuthorizationDeniedException denied) return denied.code();
@@ -165,5 +170,13 @@ public class UserResource {
         if (error instanceof IllegalArgumentException argument && argument.getMessage() != null
                 && !argument.getMessage().isBlank()) return argument.getMessage();
         return "user import failed";
+    }
+
+    private static String importFailureCode(RuntimeException error) {
+        if (error instanceof PasswordPolicyException policy) return policy.errorCode().code();
+        if (error instanceof app.keystone.auth.AuthorizationDeniedException denied) return denied.code();
+        if (error instanceof java.util.NoSuchElementException) return ErrorCode.RESOURCE_NOT_FOUND.code();
+        if (error instanceof IllegalArgumentException) return ErrorCode.VALIDATION_FAILED.code();
+        return ErrorCode.SERVICE_UNAVAILABLE.code();
     }
 }

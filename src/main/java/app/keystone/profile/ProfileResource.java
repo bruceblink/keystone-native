@@ -5,6 +5,7 @@ import app.keystone.ErrorCode;
 import app.keystone.ApiResponse;
 import app.keystone.audit.OperationLogRepository;
 import app.keystone.user.UserRepository;
+import app.keystone.user.PasswordPolicyException;
 import app.keystone.auth.RequiresPermission;
 import app.keystone.auth.RejectApiKey;
 import app.keystone.auth.SessionRepository;
@@ -77,14 +78,15 @@ public class ProfileResource {
 
     @PUT @Path("/password") @RequiresPermission("user:reset-password") @RequiresMfaStepUp
     public Response password(PasswordRequest request) {
-        if (request == null || request.password() == null || request.password().isBlank()) return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, "password is required")).build();
+        if (request == null || request.password() == null || request.password().isBlank()) return Response.status(422).entity(ApiResponse.error(ErrorCode.PASSWORD_REQUIRED, "password does not meet security policy")).build();
         try {
             var user = current();
             users.updatePassword(context(), user.id(), request.password());
             sessions.revokeAll(user.id());
             logs.record(context(), "UPDATE", "profile-password", String.valueOf(user.id()), null);
             return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build();
-        } catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, e.getMessage())).build(); }
+        } catch (PasswordPolicyException e) { return Response.status(422).entity(ApiResponse.error(e.errorCode(), e.getMessage())).build(); }
+        catch (IllegalArgumentException e) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, e.getMessage())).build(); }
     }
 
     private UserRepository.AuthUser current() { return users.findAuthUserByUsername(identity.getPrincipal().getName()).orElseThrow(NotFoundException::new); }
