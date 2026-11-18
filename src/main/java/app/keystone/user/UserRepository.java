@@ -106,6 +106,7 @@ public class UserRepository {
         authorization.require(context, "user:create", "user");
         if (!context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
                 ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this department");
+        requireRoleAssignment(context, roleCodes);
         return create(username, password, displayName, deptId, postId, email, phoneNumber, sex, avatar, remark, enabled, roleCodes);
     }
 
@@ -114,9 +115,7 @@ public class UserRepository {
         authorization.require(context, "user:import", "user");
         if (!context.scope().allowsDepartment(record.deptId())) throw new app.keystone.auth.AuthorizationDeniedException(
                 ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this department");
-        if (!record.roleIds().isEmpty() && !context.hasPermission("role:manage") && !context.hasPermission("permission:manage")) {
-            throw new app.keystone.auth.AuthorizationDeniedException(ErrorCode.PERMISSION_DENIED, "role assignment is not allowed");
-        }
+        requireRoleAssignment(context, record.roleIds());
         return create(record.username(), record.password(), record.displayName(), record.deptId(), record.postId(),
                 record.email(), record.phoneNumber(), record.sex(), record.avatar(), record.remark(), record.enabled(),
                 ormUsers.resolveRoleCodes(record.roleIds()));
@@ -152,6 +151,7 @@ public class UserRepository {
         findPublic(context, id);
         if (deptId != null && !context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
                 ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this department");
+        requireRoleAssignment(context, roleCodes);
         validateDepartment(deptId);
         return update(id, password, displayName, deptId, enabled, roleCodes);
     }
@@ -213,9 +213,18 @@ public class UserRepository {
         findPublic(context, id);
         if (updateDept && !context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
                 ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this department");
+        requireRoleAssignment(context, roleCodes);
         if (updateDept) validateDepartment(deptId);
         return updateExtended(id, password, displayName, updateDept, deptId, postId, email, phoneNumber,
                 sex, avatar, remark, enabled, roleCodes, fields);
+    }
+
+    /** 非空角色列表会改变用户角色，因此只允许具有 role:assign 的主体提交。 */
+    private static void requireRoleAssignment(AuthorizationContext context, List<?> requestedRoles) {
+        if (requestedRoles != null && !requestedRoles.isEmpty() && !context.hasPermission("role:assign")) {
+            throw new app.keystone.auth.AuthorizationDeniedException(
+                    ErrorCode.PERMISSION_DENIED, "role assignment is not allowed");
+        }
     }
 
     /** 将无效或不存在的部门关系转换为用户可理解的请求校验错误。 */
