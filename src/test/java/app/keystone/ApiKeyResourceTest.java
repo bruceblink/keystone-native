@@ -204,6 +204,29 @@ class ApiKeyResourceTest extends AuthTestFixture {
         revoke(admin, id);
     }
 
+    /** 到期密钥不属于有效列表，轮换失败后不能新增替代密钥或撤销原记录。 */
+    @Test
+    void expiredKeyIsExcludedFromActiveAndCannotRotate() throws Exception {
+        String admin = login();
+        String marker = "expired-filter-" + System.nanoTime();
+        String id = issue(admin, marker, "api-key:read").path("data.id");
+        expire(id);
+
+        given().auth().oauth2(admin)
+                .when().get("/v1/api-keys?page=1&size=20&keyword=" + marker + "&status=active")
+                .then().statusCode(200).body("data.total", equalTo(0));
+        given().auth().oauth2(admin)
+                .when().get("/v1/api-keys?page=1&size=20&keyword=" + marker + "&status=all")
+                .then().statusCode(200).body("data.total", equalTo(1)).body("data.items[0].revokedAt", nullValue());
+        given().auth().oauth2(admin).contentType(JSON)
+                .when().post("/v1/api-keys/" + id + "/rotate")
+                .then().statusCode(409).body("error.code", equalTo("api_key_expired"));
+        given().auth().oauth2(admin)
+                .when().get("/v1/api-keys?page=1&size=20&keyword=" + marker + "&status=all")
+                .then().statusCode(200).body("data.total", equalTo(1)).body("data.items[0].revokedAt", nullValue());
+        revoke(admin, id);
+    }
+
     @Test
     void apiKeyCannotEnterHumanProfileOrPasswordPathsEvenWithMatchingScope() {
         String admin = login();

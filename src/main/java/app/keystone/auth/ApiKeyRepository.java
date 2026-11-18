@@ -115,7 +115,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         conditions.add("userId = ?1");
         parameters.add(userId);
         appendKeyword(conditions, parameters, keyword);
-        appendStatus(conditions, status);
+        appendStatus(conditions, parameters, status);
         String queryText = String.join(" and ", conditions);
         var query = find(queryText, Sort.by("createdAt", Sort.Direction.Descending), parameters.toArray());
         long total = query.count();
@@ -133,10 +133,14 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         parameters.add(pattern);
     }
 
-    private static void appendStatus(List<String> conditions, String status) {
+    private static void appendStatus(List<String> conditions, List<Object> parameters, String status) {
         if (status == null || status.isBlank() || "all".equalsIgnoreCase(status)) return;
         if ("revoked".equalsIgnoreCase(status)) conditions.add("revokedAt is not null");
-        if ("active".equalsIgnoreCase(status)) conditions.add("revokedAt is null");
+        if ("active".equalsIgnoreCase(status)) {
+            // 与认证使用相同的到期边界，避免把已过期密钥列为有效。
+            conditions.add("revokedAt is null and (expiresAt is null or expiresAt > ?" + (parameters.size() + 1) + ")");
+            parameters.add(Instant.now());
+        }
     }
 
     /**
@@ -170,6 +174,10 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
                 .firstResult();
         if (current == null) throw new NoSuchElementException("API key not found");
         if (current.revokedAt() != null) throw new IllegalArgumentException("API key is already revoked");
+        // 已过期的密钥不能轮换，避免签发后立即失效的替代凭据。
+        if (current.expiresAt() != null && !current.expiresAt().isAfter(Instant.now())) {
+            throw new ApiKeyExpiredException();
+        }
 
         String secret = random(32);
         String prefix = random(8);
@@ -182,6 +190,11 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         flush();
         notifications.apiKeyRotated(userId);
         return new IssuedApiKey(replacementId, current.name(), prefix, value, scopes, current.expiresAt());
+    }
+
+    /** 将已过期轮换与其他状态冲突区分，供接口返回唯一业务错误码。 */
+    public static class ApiKeyExpiredException extends RuntimeException {
+        public ApiKeyExpiredException() { super("API Key 已过期，请新建密钥。"); }
     }
 
     private String ensureSubject(String userId) {
