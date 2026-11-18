@@ -39,7 +39,7 @@ public class MfaStepUpInterceptor {
             throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), ErrorCode.AUTHENTICATION_REQUIRED, "authentication is required"));
         }
         if ("API_KEY".equals(identity.getAttribute("credentialType"))) {
-            throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), ErrorCode.MFA_REQUIRED, "MFA step-up requires a human session"));
+            throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), ErrorCode.MFA_STEP_UP_REQUIRED, "MFA step-up requires a human session"));
         }
         if (!(identity.getPrincipal() instanceof JsonWebToken jwt)) {
             throw new NotAuthorizedException(ApiResponse.response(Response.Status.UNAUTHORIZED.getStatusCode(), ErrorCode.INVALID_CREDENTIAL, "human bearer authentication is required"));
@@ -54,7 +54,7 @@ public class MfaStepUpInterceptor {
             if (!status.required() && !enforce) return context.proceed();
             if (!"AAL2".equals(claims.assurance()) || claims.authenticationMethods().stream().noneMatch(method -> method.equals("otp") || method.equals("recovery"))
                     || !status.enabled() || !sessions.hasRecentStepUp(claims.sessionId(), claims.userId(), claims.clientId(), STEP_UP_AGE, REQUIRED_ASSURANCE)) {
-                throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), ErrorCode.MFA_REQUIRED, "recent MFA step-up is required"));
+                throw new ForbiddenException(ApiResponse.response(Response.Status.FORBIDDEN.getStatusCode(), ErrorCode.MFA_STEP_UP_REQUIRED, "recent MFA step-up is required"));
             }
         } catch (NotAuthorizedException | ForbiddenException e) {
             throw e;

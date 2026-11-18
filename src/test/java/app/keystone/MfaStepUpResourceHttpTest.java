@@ -109,7 +109,7 @@ class MfaStepUpResourceHttpTest extends AuthTestFixture {
                     .when().post("/v1/auth/mfa/step-up/verify").then().statusCode(401)
                     .body("error.code", is("mfa_challenge_invalid"));
             given().auth().oauth2(aal1).when().delete("/v1/roles/" + targetRoleId)
-                    .then().statusCode(403).body("error.code", is("mfa_required"));
+                    .then().statusCode(403).body("error.code", is("mfa_step_up_required"));
 
             var upgraded = given().auth().oauth2(aal1).contentType(JSON)
                     .body("{\"challengeId\":\"" + challengeId + "\",\"code\":\"" + stepUpCode + "\"}")
@@ -167,6 +167,45 @@ class MfaStepUpResourceHttpTest extends AuthTestFixture {
             if (userId != null) given().auth().oauth2(admin).when().delete("/v1/users/" + userId).then().statusCode(200);
             if (targetRoleId != null) given().auth().oauth2(admin).when().delete("/v1/roles/" + targetRoleId).then().statusCode(200);
             if (businessRoleId != null) given().auth().oauth2(admin).when().delete("/v1/roles/" + businessRoleId).then().statusCode(200);
+        }
+    }
+
+    /** 确认 API Key 的普通权限边界，并阻止 API Key 执行需要人类 MFA 的写操作。 */
+    @Test
+    void apiKeysKeepPermissionAndMfaBoundaries() {
+        String admin = login("admin", "password");
+        String readOnlyKeyId = null;
+        String createKeyId = null;
+        try {
+            var readOnlyKey = given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"name\":\"step-up-read-only-" + System.nanoTime()
+                            + "\",\"scopes\":[\"api-key:read\"]}")
+                    .when().post("/v1/api-keys").then().statusCode(201).extract();
+            readOnlyKeyId = readOnlyKey.path("data.id");
+            String readOnlySecret = readOnlyKey.path("data.apiKey");
+
+            given().header("Authorization", "ApiKey " + readOnlySecret)
+                    .when().get("/v1/permissions/catalog").then().statusCode(403)
+                    .body("error.code", is("permission_denied"));
+
+            var createKey = given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"name\":\"step-up-create-" + System.nanoTime()
+                            + "\",\"scopes\":[\"api-key:create\"]}")
+                    .when().post("/v1/api-keys").then().statusCode(201).extract();
+            createKeyId = createKey.path("data.id");
+            String createSecret = createKey.path("data.apiKey");
+
+            given().header("Authorization", "ApiKey " + createSecret).contentType(JSON)
+                    .body("{\"name\":\"must-not-be-created\",\"scopes\":[]}")
+                    .when().post("/v1/api-keys").then().statusCode(403)
+                    .body("error.code", is("mfa_step_up_required"));
+        } finally {
+            if (createKeyId != null) {
+                given().auth().oauth2(admin).when().delete("/v1/api-keys/" + createKeyId).then().statusCode(200);
+            }
+            if (readOnlyKeyId != null) {
+                given().auth().oauth2(admin).when().delete("/v1/api-keys/" + readOnlyKeyId).then().statusCode(200);
+            }
         }
     }
 

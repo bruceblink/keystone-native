@@ -234,7 +234,7 @@ class UserResourceTest extends AuthTestFixture {
                         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
                 .when().post("/v1/users/import")
                 .then().statusCode(403)
-                .body("error.code", is("mfa_required"));
+                .body("error.code", is("mfa_step_up_required"));
     }
 
     // 未启用强制 MFA 时，个人改密应成功、撤销旧会话，并允许新密码登录。
@@ -293,7 +293,7 @@ class UserResourceTest extends AuthTestFixture {
                     .body("{\"password\":\"" + PROFILE_PASSWORD + "\"}")
                     .when().put("/v1/profile/password")
                     .then().statusCode(403)
-                    .body("error.code", is("mfa_required"));
+                    .body("error.code", is("mfa_step_up_required"));
 
             String passwordHashAfter = readPasswordHash(username);
             assertTrue(MessageDigest.isEqual(passwordHashBefore.getBytes(StandardCharsets.UTF_8),
