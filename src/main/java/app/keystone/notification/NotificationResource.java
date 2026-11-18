@@ -11,6 +11,7 @@ import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
@@ -28,8 +29,10 @@ public class NotificationResource {
 
     /** 列表和未读数都只针对已认证的人类用户。 */
     @GET
-    public ApiResponse<NotificationInbox> list() {
-        return ApiResponse.ok(notifications.listForUser(currentUserId()));
+    public ApiResponse<NotificationInbox> list(@QueryParam("page") String page) {
+        String recipientUserId = currentUserId();
+        if (page == null) return ApiResponse.ok(notifications.listForUser(recipientUserId));
+        return ApiResponse.ok(notifications.listForUser(recipientUserId, parsePage(page)));
     }
 
     /** 详情查询不会暴露其他用户是否拥有指定 ID。 */
@@ -56,6 +59,16 @@ public class NotificationResource {
 
     private String currentUserId() {
         return authorization.context(identity).subjectId();
+    }
+
+    /** 页码异常时回到首页，保持与 Phoenix 的通知列表查询行为一致。 */
+    private static int parsePage(String value) {
+        try {
+            int page = Integer.parseInt(value.strip());
+            return page >= 1 && page <= 1_000_000 ? page : 1;
+        } catch (NumberFormatException invalidPage) {
+            return 1;
+        }
     }
 
     private static Response notFound() {

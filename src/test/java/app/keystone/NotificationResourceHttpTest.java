@@ -161,10 +161,13 @@ class NotificationResourceHttpTest extends AuthTestFixture {
     void inboxReturnsFiftyNewestButCountsEveryUnreadNotification() throws Exception {
         String admin = login("admin", "password");
         TestUser owner = createUser(admin, "notification_limit", "USER");
+        TestUser other = createUser(admin, "notification_limit_other", "USER");
         try {
             String token = login(owner.username(), "password");
+            String otherToken = login(other.username(), "password");
             Instant newest = Instant.now().minusSeconds(1);
             String newestId = null;
+            String oldestId = null;
             try (Connection connection = dataSource.getConnection();
                  PreparedStatement statement = connection.prepareStatement(
                          "INSERT INTO sys_notification "
@@ -173,6 +176,7 @@ class NotificationResourceHttpTest extends AuthTestFixture {
                 for (int index = 0; index < 53; index++) {
                     String id = UuidValues.v7();
                     if (index == 0) newestId = id;
+                    if (index == 52) oldestId = id;
                     statement.setBytes(1, UuidValues.toBytes(id));
                     statement.setBytes(2, UuidValues.toBytes(owner.id()));
                     statement.setTimestamp(3, Timestamp.from(newest.minusSeconds(index)));
@@ -182,6 +186,7 @@ class NotificationResourceHttpTest extends AuthTestFixture {
                 }
                 statement.executeBatch();
             }
+            insertNotifications(other.id(), 2, newest);
 
             var response = given().auth().oauth2(token)
                     .when().get("/v1/notifications")
@@ -196,8 +201,87 @@ class NotificationResourceHttpTest extends AuthTestFixture {
             assertNull(items.get(2).get("readAt"));
             assertTrue(Instant.parse(items.get(0).get("createdAt").toString())
                     .isAfter(Instant.parse(items.get(49).get("createdAt").toString())));
+
+            var firstPageResponse = given().auth().oauth2(token).queryParam("page", "1")
+                    .when().get("/v1/notifications").then().statusCode(200)
+                    .body("data.items", org.hamcrest.Matchers.hasSize(50))
+                    .body("data.unreadCount", is(51))
+                    .body("data.page", is(1))
+                    .body("data.hasMore", is(true))
+                    .extract().response();
+            assertEquals(Set.of("items", "unreadCount", "page", "hasMore"),
+                    firstPageResponse.jsonPath().getMap("data").keySet());
+
+            var secondPageResponse = given().auth().oauth2(token).queryParam("page", "2")
+                    .when().get("/v1/notifications").then().statusCode(200)
+                    .body("data.items", org.hamcrest.Matchers.hasSize(3))
+                    .body("data.unreadCount", is(51))
+                    .body("data.page", is(2))
+                    .body("data.hasMore", is(false))
+                    .extract().response();
+            List<Map<String, Object>> secondPage = secondPageResponse.jsonPath().getList("data.items");
+            assertEquals(oldestId, secondPage.get(2).get("id"));
+            assertEquals(ITEM_FIELDS, secondPage.get(2).keySet());
+            assertFalse(secondPageResponse.jsonPath().getBoolean("data.hasMore"));
+
+            for (String invalidPage : List.of("0", "-1", "invalid", "1000001")) {
+                given().auth().oauth2(token).queryParam("page", invalidPage)
+                        .when().get("/v1/notifications").then().statusCode(200)
+                        .body("data.items", org.hamcrest.Matchers.hasSize(50))
+                        .body("data.page", is(1))
+                        .body("data.hasMore", is(true));
+            }
+            given().auth().oauth2(token).queryParam("page", "1000000")
+                    .when().get("/v1/notifications").then().statusCode(200)
+                    .body("data.items", org.hamcrest.Matchers.empty())
+                    .body("data.page", is(1000000))
+                    .body("data.hasMore", is(false));
+            given().auth().oauth2(token).queryParam("page", " 2 ")
+                    .when().get("/v1/notifications").then().statusCode(200)
+                    .body("data.page", is(2))
+                    .body("data.items", org.hamcrest.Matchers.hasSize(3));
+
+            Map<String, Object> oldDetail = given().auth().oauth2(token)
+                    .when().get("/v1/notifications/" + oldestId).then().statusCode(200)
+                    .extract().path("data");
+            assertEquals(oldestId, oldDetail.get("id"));
+            given().auth().oauth2(otherToken).when().get("/v1/notifications/" + oldestId)
+                    .then().statusCode(404).body("error.code", is("resource_not_found"));
+            given().auth().oauth2(otherToken).when().post("/v1/notifications/" + oldestId + "/read")
+                    .then().statusCode(404).body("error.code", is("resource_not_found"));
+            given().auth().oauth2(otherToken).queryParam("page", "2")
+                    .when().get("/v1/notifications").then().statusCode(200)
+                    .body("data.items", org.hamcrest.Matchers.empty())
+                    .body("data.unreadCount", is(2))
+                    .body("data.page", is(2))
+                    .body("data.hasMore", is(false));
+
+            Map<String, Object> oldRead = given().auth().oauth2(token)
+                    .when().post("/v1/notifications/" + oldestId + "/read")
+                    .then().statusCode(200).extract().path("data");
+            assertNotNull(oldRead.get("readAt"));
+            given().auth().oauth2(token).queryParam("page", "2")
+                    .when().get("/v1/notifications").then().statusCode(200)
+                    .body("data.unreadCount", is(50));
         } finally {
             deleteUser(admin, owner.id());
+            deleteUser(admin, other.id());
+        }
+    }
+
+    private void insertNotifications(String recipientUserId, int count, Instant newest) throws SQLException {
+        try (Connection connection = dataSource.getConnection();
+             PreparedStatement statement = connection.prepareStatement(
+                     "INSERT INTO sys_notification "
+                             + "(id, recipient_user_id, type, title, content, created_at, read_at) "
+                             + "VALUES (?, ?, 'test.manual', '测试通知', '隔离验收数据', ?, NULL)")) {
+            for (int index = 0; index < count; index++) {
+                statement.setBytes(1, UuidValues.toBytes(UuidValues.v7()));
+                statement.setBytes(2, UuidValues.toBytes(recipientUserId));
+                statement.setTimestamp(3, Timestamp.from(newest.minusSeconds(index)));
+                statement.addBatch();
+            }
+            statement.executeBatch();
         }
     }
 

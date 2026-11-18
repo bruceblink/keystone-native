@@ -13,6 +13,8 @@ import java.util.NoSuchElementException;
 /** 只通过收件人 ID 查询或修改站内通知。 */
 @ApplicationScoped
 public class NotificationRepository implements PanacheRepositoryBase<NotificationEntity, java.util.UUID> {
+    private static final int PAGE_SIZE = 50;
+
     /** 在调用方事务内写入安全通知；失败时让调用方的业务事务一起回滚。 */
     @Transactional
     public void create(String recipientUserId, String type, String title, String content) {
@@ -20,19 +22,35 @@ public class NotificationRepository implements PanacheRepositoryBase<Notificatio
                 UuidValues.v7(), recipientUserId, type, title, content));
     }
 
-    /** 返回最新 50 条，并单独统计当前用户的全部未读记录。 */
+    /** 无分页参数时返回最新 50 条，并统计当前用户的全部未读记录。 */
     @Transactional
     public NotificationInbox listForUser(String recipientUserId) {
         String owner = UuidValues.requireCanonical(recipientUserId);
         List<NotificationItem> items = find(
                 "recipientUserId = ?1 order by createdAt desc, id desc", owner)
-                .page(Page.of(0, 50))
+                .page(Page.of(0, PAGE_SIZE))
                 .list()
                 .stream()
                 .map(NotificationRepository::toItem)
                 .toList();
-        long unreadCount = count("recipientUserId = ?1 and readAt is null", owner);
-        return new NotificationInbox(items, unreadCount);
+        return new NotificationInbox(items, unreadCount(owner));
+    }
+
+    /** 返回固定 50 条的指定页，并多取一条判断是否还有后续通知。 */
+    @Transactional
+    public NotificationInbox listForUser(String recipientUserId, int page) {
+        String owner = UuidValues.requireCanonical(recipientUserId);
+        int firstResult = (page - 1) * PAGE_SIZE;
+        List<NotificationEntity> rows = find(
+                "recipientUserId = ?1 order by createdAt desc, id desc", owner)
+                .range(firstResult, firstResult + PAGE_SIZE)
+                .list();
+        boolean hasMore = rows.size() > PAGE_SIZE;
+        List<NotificationItem> items = rows.stream()
+                .limit(PAGE_SIZE)
+                .map(NotificationRepository::toItem)
+                .toList();
+        return new NotificationInbox(items, unreadCount(owner), page, hasMore);
     }
 
     /** 详情查询将通知 ID 和认证收件人同时放入数据库条件。 */
@@ -73,5 +91,9 @@ public class NotificationRepository implements PanacheRepositoryBase<Notificatio
                 notification.content(),
                 notification.createdAt(),
                 notification.readAt());
+    }
+
+    private long unreadCount(String owner) {
+        return count("recipientUserId = ?1 and readAt is null", owner);
     }
 }
