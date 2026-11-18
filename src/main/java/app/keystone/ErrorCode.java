@@ -30,6 +30,8 @@ public enum ErrorCode {
     API_KEY_NAME_INVALID("api_key_name_invalid", 422, "API Key 名称缺失、空白或超过 128 个字符", RetryAdvice.AFTER_CORRECTION, "error.api_key_name_invalid", true),
     // 仅表示个人资料展示名缺失或空白，不复用其他字段校验错误。
     PROFILE_DISPLAY_NAME_REQUIRED("profile_display_name_required", 422, "个人资料展示名缺失或为空白", RetryAdvice.AFTER_CORRECTION, "error.profile_display_name_required", true),
+    // 单独更新头像时地址缺失或空白，不能覆盖现有头像。
+    PROFILE_AVATAR_REQUIRED("profile_avatar_required", 422, "个人资料头像地址缺失或为空白", RetryAdvice.AFTER_CORRECTION, "error.profile_avatar_required", true),
     API_KEY_EXPIRY_INVALID("api_key_expiry_invalid", 422, "API Key 到期时间格式无法解析", RetryAdvice.AFTER_CORRECTION, "error.api_key_expiry_invalid", true),
     API_KEY_EXPIRY_OUT_OF_RANGE("api_key_expiry_out_of_range", 422, "API Key 到期时间不晚于当前时间或超过 90 天", RetryAdvice.AFTER_CORRECTION, "error.api_key_expiry_out_of_range", true),
     ROLE_HAS_MEMBERS("role_has_members", 422, "角色仍有关联用户，不能删除", RetryAdvice.AFTER_CORRECTION, "error.role_has_members", true),

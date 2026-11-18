@@ -40,6 +40,21 @@ class UserResourceTest extends AuthTestFixture {
     }
 
     @Test
+    void profileAvatarFailuresHaveDedicatedCode() {
+        String admin = login("admin", "password");
+        String avatar = "/profile/avatar/codex-avatar-test.png";
+        given().auth().oauth2(admin).contentType(JSON).body(java.util.Map.of("avatar", avatar))
+                .when().put("/v1/profile/avatar").then().statusCode(200);
+        // 缺失、null 和空白都不能覆盖已保存的头像。
+        for (String body : java.util.List.of("{}", "{\"avatar\":null}", "{\"avatar\":\"  \"}")) {
+            given().auth().oauth2(admin).contentType(JSON).body(body).when().put("/v1/profile/avatar")
+                    .then().statusCode(422).body("error.code", is("profile_avatar_required"));
+        }
+        given().auth().oauth2(admin).when().get("/v1/profile")
+                .then().statusCode(200).body("data.avatar", is(avatar));
+    }
+
+    @Test
     void administratorCanCreateDisabledUserFromTheRequestedStatus() {
         String admin = login("admin", "password");
         String id = null;

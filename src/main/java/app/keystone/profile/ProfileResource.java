@@ -38,7 +38,7 @@ public class ProfileResource {
 
     @PUT @Path("/avatar") @RequiresPermission("user:update")
     public Response avatar(AvatarRequest request) {
-        if (request == null || request.avatar() == null || request.avatar().isBlank()) return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, "avatar is required")).build();
+        if (request == null || request.avatar() == null || request.avatar().isBlank()) return Response.status(422).entity(ApiResponse.error(ErrorCode.PROFILE_AVATAR_REQUIRED, "avatar is required")).build();
         var user = current(); users.updateExtended(context(), user.id(), null, null, false, null, null, null, null, null, request.avatar(), null, null, null); logs.record(context(), "UPDATE", "profile-avatar", String.valueOf(user.id()), null);
         return Response.ok(ApiResponse.ok(java.util.Map.of("avatar", request.avatar()))).build();
     }
