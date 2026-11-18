@@ -288,9 +288,9 @@ public class ApiKeyUserEntity {
                 mustChangePassword, deptId, postId == null ? null : postId.toString(), email, phoneNumber, sex, avatar, loginIp, loginAt, remark);
     }
 
-    /** 转换为用户管理接口返回的公开字段，不包含密码和凭据版本。 */
+    /** 转换为用户管理接口返回的公开字段，保留已绑定的停用角色且不包含认证凭据。 */
     User toUser() {
-        var roleCodes = roles.stream().filter(ApiKeyRoleEntity::enabled).map(ApiKeyRoleEntity::code).sorted().toList();
+        var roleCodes = roles.stream().map(ApiKeyRoleEntity::code).sorted().toList();
         return new User(id(), username, displayName, deptId, postId == null ? null : postId.toString(), enabled,
                 email, phoneNumber, sex, avatar, loginIp, loginAt, remark,
                 roleCodes);

@@ -131,6 +131,74 @@ class UserRoleAssignmentPermissionHttpTest extends AuthTestFixture {
         }
     }
 
+    /** 已绑定的停用角色继续显示并可移除，但不会进入认证权限。 */
+    @Test
+    void disabledBoundRolesRemainVisibleAndCannotExpandAuthentication() {
+        String admin = login("admin", "password");
+        String suffix = Long.toString(System.nanoTime());
+        String disabledRole = "DISABLED_BOUND_" + suffix;
+        String activeRole = "ACTIVE_BOUND_" + suffix;
+        String replacementRole = "REPLACEMENT_BOUND_" + suffix;
+        String targetUser = null;
+        String emptyUser = null;
+        try {
+            createRole(admin, disabledRole, List.of("user:delete"));
+            createRole(admin, activeRole, List.of("user:read"));
+            createRole(admin, replacementRole, List.of("user:read"));
+            targetUser = createUserWithRoles(admin, "disabled_bound_target_" + suffix,
+                    List.of(disabledRole, activeRole));
+            emptyUser = createUserWithRoles(admin, "disabled_bound_empty_" + suffix, List.of());
+            String disabledRoleId = roleId(admin, disabledRole);
+
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"enabled\":false}")
+                    .when().put("/v1/roles/" + disabledRoleId).then().statusCode(200);
+
+            List<String> boundRoles = List.of(disabledRole, activeRole).stream().sorted().toList();
+            given().auth().oauth2(admin).queryParam("username", "disabled_bound_target_" + suffix)
+                    .when().get("/v1/users")
+                    .then().statusCode(200).body("data.items[0].roles", is(boundRoles));
+            given().auth().oauth2(admin).when().get("/v1/users/" + targetUser)
+                    .then().statusCode(200).body("data.roles", is(boundRoles));
+
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"displayName\":\"停用角色仍保留\"}")
+                    .when().put("/v1/users/" + targetUser)
+                    .then().statusCode(200).body("data.roles", is(boundRoles));
+
+            var targetLogin = given().contentType(JSON)
+                    .body("{\"username\":\"disabled_bound_target_" + suffix
+                            + "\",\"password\":\"password\",\"forceLogin\":true}")
+                    .when().post("/v1/auth/login").then().statusCode(200)
+                    .body("data.roles", is(List.of(activeRole))).extract();
+            String targetToken = targetLogin.path("data.accessToken");
+            given().auth().oauth2(targetToken).when().delete("/v1/users/" + emptyUser)
+                    .then().statusCode(403).body("error.code", is("permission_denied"));
+
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"roleCodes\":[\"" + replacementRole + "\"]}")
+                    .when().put("/v1/users/" + targetUser)
+                    .then().statusCode(200).body("data.roles", is(List.of(replacementRole)));
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"roleCodes\":[]}")
+                    .when().put("/v1/users/" + targetUser)
+                    .then().statusCode(200).body("data.roles", empty());
+
+            given().auth().oauth2(admin).contentType(JSON)
+                    .body("{\"roleCodes\":[\"" + disabledRole + "\"]}")
+                    .when().put("/v1/users/" + emptyUser).then().statusCode(422)
+                    .body("error.code", is("validation_failed"));
+            given().auth().oauth2(admin).when().get("/v1/users/" + emptyUser)
+                    .then().statusCode(200).body("data.roles", empty());
+        } finally {
+            deleteUser(admin, emptyUser);
+            deleteUser(admin, targetUser);
+            deleteRole(admin, replacementRole);
+            deleteRole(admin, activeRole);
+            deleteRole(admin, disabledRole);
+        }
+    }
+
     private static String createRole(String admin, String code, List<String> permissions) {
         String id = given().auth().oauth2(admin).contentType(JSON)
                 .body("{\"code\":\"" + code + "\",\"name\":\"角色授权回归\",\"enabled\":true}")
@@ -144,6 +212,12 @@ class UserRoleAssignmentPermissionHttpTest extends AuthTestFixture {
     private static String createUser(String admin, String username, String roleCode) {
         return given().auth().oauth2(admin).contentType(JSON)
                 .body(userRequest(username, List.of(roleCode)))
+                .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
+    }
+
+    private static String createUserWithRoles(String admin, String username, List<String> roleCodes) {
+        return given().auth().oauth2(admin).contentType(JSON)
+                .body(userRequest(username, roleCodes))
                 .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
     }
 
