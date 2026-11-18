@@ -3,6 +3,7 @@ package app.keystone.menu;
 import app.keystone.auth.ApiKeyRoleEntity;
 import app.keystone.auth.AuthorizationContext;
 import app.keystone.auth.AuthorizationService;
+import app.keystone.auth.ApiKeyPermissionEntity;
 import io.quarkus.hibernate.orm.panache.PanacheRepositoryBase;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -17,6 +18,7 @@ import java.util.Set;
 @ApplicationScoped
 public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.util.UUID> {
     @Inject MenuRoleOrmRepository roles;
+    @Inject MenuPermissionOrmRepository permissions;
     @Inject AuthorizationService authorization;
 
     @Transactional
@@ -38,11 +40,19 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.ut
 
     @Transactional
     public Menu create(AuthorizationContext context, MenuRequest request) {
+        return create(context, request, request.permission() != null);
+    }
+
+    @Transactional
+    public Menu create(AuthorizationContext context, MenuRequest request, boolean permissionSpecified) {
         authorization.require(context, "menu:create", "menu");
+        if (permissionSpecified) authorization.require(context, "menu:manage", "menu");
         require(request.code(), "code");
         require(request.name(), "name");
+        ApiKeyPermissionEntity permission = permissionSpecified ? resolvePermission(request.permission()) : null;
         try {
             MenuEntity entity = new MenuEntity(request);
+            if (permissionSpecified) entity.replacePermission(permission);
             persistAndFlush(entity);
             return entity.toModel();
         } catch (RuntimeException e) {
@@ -53,14 +63,29 @@ public class MenuRepository implements PanacheRepositoryBase<MenuEntity, java.ut
 
     @Transactional
     public Menu update(AuthorizationContext context, String id, MenuRequest request) {
+        return update(context, id, request, request.permission() != null);
+    }
+
+    @Transactional
+    public Menu update(AuthorizationContext context, String id, MenuRequest request, boolean permissionSpecified) {
         authorization.require(context, "menu:update", "menu");
+        if (permissionSpecified) authorization.require(context, "menu:manage", "menu");
         var menuId = parseMenuId(id);
         MenuEntity entity = find("id", menuId).withLock(LockModeType.PESSIMISTIC_WRITE).firstResult();
         if (entity == null) throw new java.util.NoSuchElementException("menu not found");
         var parentId = parseParentId(request.parentId());
         validateParent(menuId, parentId);
+        ApiKeyPermissionEntity permission = permissionSpecified ? resolvePermission(request.permission()) : null;
         entity.update(request, parentId);
+        if (permissionSpecified) entity.replacePermission(permission);
         return entity.toModel();
+    }
+
+    private ApiKeyPermissionEntity resolvePermission(String value) {
+        if (value == null || value.isBlank()) return null;
+        ApiKeyPermissionEntity permission = permissions.findAssignableByCode(value.trim());
+        if (permission == null) throw new IllegalArgumentException("permission not found");
+        return permission;
     }
 
     @Transactional

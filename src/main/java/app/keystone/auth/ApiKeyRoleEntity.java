@@ -115,6 +115,7 @@ public class ApiKeyRoleEntity {
 
     Role toRole() {
         return new Role(id(), code, name, enabled, dataScope, deptScope,
-                permissions.stream().map(ApiKeyPermissionEntity::code).sorted().toList());
+                permissions.stream().filter(ApiKeyPermissionEntity::isActiveAndCurrent)
+                        .map(ApiKeyPermissionEntity::code).sorted().toList());
     }
 }

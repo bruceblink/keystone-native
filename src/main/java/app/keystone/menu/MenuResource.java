@@ -12,6 +12,9 @@ import jakarta.inject.Inject;
 import jakarta.ws.rs.*;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.eclipse.microprofile.openapi.annotations.media.Schema;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -24,6 +27,7 @@ public class MenuResource {
     @Inject OperationLogRepository logs;
     @Inject SecurityIdentity identity;
     @Inject AuthorizationService authorization;
+    @Inject ObjectMapper objectMapper;
 
     @GET @RequiresPermission("menu:read") public ApiResponse<List<MenuNode>> tree() {
         var authorizationContext = context();
@@ -34,8 +38,24 @@ public class MenuResource {
     }
     @GET @Path("/dropdown") @RequiresPermission("menu:read") public ApiResponse<List<Menu>> dropdown() { return ApiResponse.ok(menus.listForRoles(context(), identity.getRoles().stream().toList())); }
 
-    @POST @RequiresPermission("menu:create") public Response create(MenuRepository.MenuRequest request) { if (request == null) return bad("request body is required"); try { var menu = menus.create(context(), request); logs.record(actor(), "CREATE", "menu", String.valueOf(menu.id()), menu.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(menu)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
-    @PUT @Path("/{id}") @RequiresPermission("menu:update") public Response update(@PathParam("id") String id, MenuRepository.MenuRequest request) { if (request == null) return bad("request body is required"); try { var menu = menus.update(context(), id, request); logs.record(actor(), "UPDATE", "menu", id, menu.code()); return Response.ok(ApiResponse.ok(menu)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
+    @POST @RequiresPermission("menu:create") public Response create(
+            @Schema(implementation = MenuRepository.MenuRequest.class) JsonNode body) {
+        if (body == null || !body.isObject()) return bad("request body is required");
+        var request = parseRequest(body);
+        if (request == null) return bad("request body is invalid");
+        try { var menu = menus.create(context(), request, body.has("permission")); logs.record(actor(), "CREATE", "menu", String.valueOf(menu.id()), menu.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(menu)).build(); }
+        catch (IllegalArgumentException e) { return bad(e.getMessage()); }
+    }
+    @PUT @Path("/{id}") @RequiresPermission("menu:update") public Response update(
+            @PathParam("id") String id,
+            @Schema(implementation = MenuRepository.MenuRequest.class) JsonNode body) {
+        if (body == null || !body.isObject()) return bad("request body is required");
+        var request = parseRequest(body);
+        if (request == null) return bad("request body is invalid");
+        try { var menu = menus.update(context(), id, request, body.has("permission")); logs.record(actor(), "UPDATE", "menu", id, menu.code()); return Response.ok(ApiResponse.ok(menu)).build(); }
+        catch (IllegalArgumentException e) { return bad(e.getMessage()); }
+        catch (NoSuchElementException e) { return notFound(); }
+    }
     @PUT @Path("/{id}/roles") @RequiresPermission("menu:manage") public Response assignRoles(@PathParam("id") String id, RoleAssignment request) {
         if (request == null || !(request.roleCodes() instanceof List<?> values)) return bad("roleCodes is required");
         List<String> roleCodes = values.stream().map(value -> value == null ? "" : String.valueOf(value)).toList();
@@ -45,6 +65,10 @@ public class MenuResource {
     @DELETE @Path("/{id}") @RequiresPermission("menu:delete") public Response delete(@PathParam("id") String id) { try { menus.delete(context(), id); logs.record(actor(), "DELETE", "menu", id, null); return Response.ok(ApiResponse.ok(Map.of("deleted", true))).build(); } catch (IllegalArgumentException e) { return bad("id must be a UUID"); } catch (NoSuchElementException e) { return notFound(); } }
 
     private AuthorizationContext context() { return authorization.context(identity); }
+    private MenuRepository.MenuRequest parseRequest(JsonNode body) {
+        try { return objectMapper.treeToValue(body, MenuRepository.MenuRequest.class); }
+        catch (com.fasterxml.jackson.core.JsonProcessingException e) { return null; }
+    }
     private List<MenuNode> toTree(List<Menu> items) { Map<String, MenuNodeBuilder> nodes = items.stream().collect(Collectors.toMap(Menu::id, MenuNodeBuilder::new, (a, b) -> a, LinkedHashMap::new)); List<MenuNodeBuilder> roots = new ArrayList<>(); for (Menu menu : items) { var node = nodes.get(menu.id()); if (menu.parentId() == null || !nodes.containsKey(menu.parentId())) roots.add(node); else nodes.get(menu.parentId()).children.add(node); } return roots.stream().map(MenuNodeBuilder::build).toList(); }
     private String actor() { return identity.getPrincipal().getName(); }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }

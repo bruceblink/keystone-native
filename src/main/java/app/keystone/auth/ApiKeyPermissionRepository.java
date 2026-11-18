@@ -9,8 +9,9 @@ import java.util.UUID;
 /** 通过 ORM 读取角色权限绑定所需的权限记录。 */
 @ApplicationScoped
 class ApiKeyPermissionRepository implements PanacheRepositoryBase<ApiKeyPermissionEntity, UUID> {
-    List<ApiKeyPermissionEntity> findByCodes(List<String> codes) {
+    /** 角色新授权只接受启用且未废弃的目录项。 */
+    List<ApiKeyPermissionEntity> findAssignableByCodes(List<String> codes) {
         if (codes == null || codes.isEmpty()) return List.of();
-        return find("code in ?1", codes).list();
+        return find("code in ?1 and status = 1 and deprecated = false", codes).list();
     }
 }

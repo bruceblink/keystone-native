@@ -291,7 +291,7 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
                 normalized.add(value);
             }
         }
-        var found = permissions.findByCodes(List.copyOf(normalized));
+        var found = permissions.findAssignableByCodes(List.copyOf(normalized));
         if (found.size() != normalized.size()) {
             var foundCodes = found.stream().map(ApiKeyPermissionEntity::code).collect(java.util.stream.Collectors.toSet());
             var unknown = normalized.stream().filter(code -> !foundCodes.contains(code)).findFirst().orElse("unknown");

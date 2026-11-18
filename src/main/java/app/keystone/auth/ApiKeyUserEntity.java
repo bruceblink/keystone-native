@@ -232,6 +232,7 @@ public class ApiKeyUserEntity {
         return roles.stream()
                 .filter(ApiKeyRoleEntity::enabled)
                 .flatMap(role -> role.permissions().stream())
+                .filter(ApiKeyPermissionEntity::isActiveAndCurrent)
                 .map(ApiKeyPermissionEntity::code)
                 .collect(Collectors.toUnmodifiableSet());
     }

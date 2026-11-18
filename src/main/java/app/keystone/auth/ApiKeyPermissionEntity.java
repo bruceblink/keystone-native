@@ -9,7 +9,7 @@ import org.hibernate.type.SqlTypes;
 
 import java.util.UUID;
 
-/** 映射 API Key 签发所需的权限记录。 */
+/** 映射权限目录记录，供授权计算、角色绑定和菜单管理共用。 */
 @Entity
 @Table(name = "sys_permission")
 public class ApiKeyPermissionEntity {
@@ -21,10 +21,31 @@ public class ApiKeyPermissionEntity {
     @Column(nullable = false, length = 128)
     private String code;
 
+    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.TINYINT)
+    private int status;
+
+    @Column(nullable = false)
+    @JdbcTypeCode(SqlTypes.TINYINT)
+    private boolean deprecated;
+
     protected ApiKeyPermissionEntity() {
     }
 
-    String code() {
+    public String code() {
         return code;
+    }
+
+    public int status() {
+        return status;
+    }
+
+    public boolean deprecated() {
+        return deprecated;
+    }
+
+    /** Phoenix 只用启用且未废弃的目录项授予或计算权限。 */
+    public boolean isActiveAndCurrent() {
+        return status == 1 && !deprecated;
     }
 }

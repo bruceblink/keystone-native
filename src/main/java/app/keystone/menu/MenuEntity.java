@@ -1,6 +1,7 @@
 package app.keystone.menu;
 
 import app.keystone.auth.ApiKeyRoleEntity;
+import app.keystone.auth.ApiKeyPermissionEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.FetchType;
@@ -58,6 +59,11 @@ public class MenuEntity {
             inverseJoinColumns = @JoinColumn(name = "role_id"))
     private Set<ApiKeyRoleEntity> roles = new HashSet<>();
 
+    @ManyToMany(fetch = FetchType.LAZY)
+    @JoinTable(name = "sys_menu_permission", joinColumns = @JoinColumn(name = "menu_id"),
+            inverseJoinColumns = @JoinColumn(name = "permission_id"))
+    private Set<ApiKeyPermissionEntity> permissions = new HashSet<>();
+
     protected MenuEntity() {
     }
 
@@ -69,7 +75,8 @@ public class MenuEntity {
         path = request.path();
         component = request.component();
         menuType = request.menuType() == null ? "MENU" : request.menuType();
-        permission = request.permission();
+        permission = request.permission() == null || request.permission().isBlank()
+                ? null : request.permission().trim();
         sortOrder = request.sortOrder() == null ? 0 : request.sortOrder();
         // 新建菜单保留管理端复选框状态；未提供时保持默认启用。
         enabled = request.enabled() == null || request.enabled();
@@ -86,9 +93,19 @@ public class MenuEntity {
         if (request.path() != null) path = request.path();
         if (request.component() != null) component = request.component();
         if (request.menuType() != null) menuType = request.menuType();
-        if (request.permission() != null) permission = request.permission();
         if (request.sortOrder() != null) sortOrder = request.sortOrder();
         if (request.enabled() != null) enabled = request.enabled();
+    }
+
+    /** 替换唯一菜单权限关系，并同步更新旧字符串列供旧读取方兼容。 */
+    void replacePermission(ApiKeyPermissionEntity replacement) {
+        permissions.clear();
+        if (replacement == null) {
+            permission = null;
+        } else {
+            permissions.add(replacement);
+            permission = replacement.code();
+        }
     }
 
     UUID parentId() {
@@ -104,7 +121,16 @@ public class MenuEntity {
         return roles;
     }
 
+    private String activePermissionCode() {
+        var active = permissions.stream().filter(ApiKeyPermissionEntity::isActiveAndCurrent).toList();
+        if (active.size() > 1) {
+            throw new IllegalStateException("menu has multiple active permission bindings");
+        }
+        return active.isEmpty() ? null : active.getFirst().code();
+    }
+
     Menu toModel() {
-        return new Menu(id == null ? null : id.toString(), parentId == null ? null : parentId.toString(), code, name, path, component, menuType, permission, sortOrder, enabled);
+        return new Menu(id == null ? null : id.toString(), parentId == null ? null : parentId.toString(),
+                code, name, path, component, menuType, activePermissionCode(), sortOrder, enabled);
     }
 }
