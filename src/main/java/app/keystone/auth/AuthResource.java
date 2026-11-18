@@ -34,6 +34,8 @@ public class AuthResource {
     @Inject SecurityIdentity identity;
     @Inject LoginRateLimiter loginRateLimiter;
     @Inject LoginPasswordDecoder loginPasswordDecoder;
+    @Inject AuthorizationService authorization;
+    @Inject AuthorizationDenialRecorder denialRecorder;
     @Inject JwkSetService jwkSetService;
     @Inject SecurityObservability securityObservability;
     @Inject MfaService mfa;
@@ -280,9 +282,22 @@ public class AuthResource {
         catch (IllegalStateException e) { return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error(ErrorCode.AUTHORIZATION_UNAVAILABLE, "MFA state is unavailable")).build(); }
     }
 
-    @POST @Path("/logout") @RequiresPermission("session:revoke")
+    @POST @Path("/logout")
     public Response logout() {
-        if (identity.isAnonymous() || !(identity.getPrincipal() instanceof JsonWebToken jwt)) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error(ErrorCode.AUTHENTICATION_REQUIRED, "authentication is required")).build();
+        if (identity.isAnonymous()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error(ErrorCode.AUTHENTICATION_REQUIRED, "authentication is required")).build();
+        // 自助退出只撤销当前 JWT 会话；保留 API Key 原有的权限错误状态，但不允许机器凭据退出人类会话。
+        if ("API_KEY".equals(identity.getAttribute("credentialType"))) {
+            try {
+                if (!authorization.allowed(identity, "session:revoke")) {
+                    denialRecorder.record(identity, routingContext, "session:revoke", "permission denied");
+                    return Response.status(Response.Status.FORBIDDEN).entity(ApiResponse.error(ErrorCode.PERMISSION_DENIED, "permission denied")).build();
+                }
+            } catch (IllegalStateException e) {
+                denialRecorder.record(identity, routingContext, "session:revoke", "authorization state is unavailable");
+                return Response.status(Response.Status.SERVICE_UNAVAILABLE).entity(ApiResponse.error(ErrorCode.AUTHORIZATION_UNAVAILABLE, "authorization state is unavailable")).build();
+            }
+        }
+        if (!(identity.getPrincipal() instanceof JsonWebToken jwt)) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error(ErrorCode.AUTHENTICATION_REQUIRED, "authentication is required")).build();
         Object sessionId = JwtClaims.get(jwt, "sid");
         if (sessionId == null || sessionId.toString().isBlank()) return Response.status(Response.Status.UNAUTHORIZED).entity(ApiResponse.error(ErrorCode.AUTHENTICATION_REQUIRED, "authentication session is incomplete")).build();
         sessions.revokeSession(sessionId.toString());

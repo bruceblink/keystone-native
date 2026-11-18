@@ -146,4 +146,82 @@ class AuthResourceTest extends AuthTestFixture {
                 .when().post("/v1/auth/logout").then().statusCode(200);
         given().auth().oauth2(access).when().get("/v1/profile").then().statusCode(401);
     }
+
+    @Test
+    void lowPrivilegeRoleCanRevokeOnlyItsOwnSession() {
+        String admin = given().contentType(JSON)
+                .body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
+                .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");
+        String roleCode = "LOGOUT_" + Long.toUnsignedString(System.nanoTime());
+        String roleId = given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"code\":\"" + roleCode + "\",\"name\":\"Logout test\",\"enabled\":true}")
+                .when().post("/v1/roles").then().statusCode(201).extract().path("data.id");
+        given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"permissions\":[\"user:read\"]}")
+                .when().put("/v1/roles/" + roleId + "/permissions").then().statusCode(200);
+
+        String username = "logout_" + Long.toUnsignedString(System.nanoTime());
+        String userId = given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"username\":\"" + username + "\",\"password\":\"Very-Strong-Password-9!\",\"displayName\":\"Logout test\",\"roleCodes\":[\"" + roleCode + "\"]}")
+                .when().post("/v1/users").then().statusCode(201).extract().path("data.id");
+        var login = given().contentType(JSON)
+                .body("{\"username\":\"" + username + "\",\"password\":\"Very-Strong-Password-9!\"}")
+                .when().post("/v1/auth/login").then().statusCode(200).extract();
+        String userAccess = login.path("data.accessToken");
+        String userRefresh = login.path("data.refreshToken");
+
+        given().auth().oauth2(userAccess).when().get("/v1/auth/me/capabilities")
+                .then().statusCode(200).body("data.permissions", org.hamcrest.Matchers.not(org.hamcrest.Matchers.hasItem("session:revoke")));
+        given().auth().oauth2(admin).when().get("/v1/auth/me/capabilities").then().statusCode(200);
+        given().auth().oauth2(userAccess).contentType(JSON).when().post("/v1/auth/logout")
+                .then().statusCode(200).body("data.loggedOut", is(true));
+        given().auth().oauth2(userAccess).when().get("/v1/auth/me/capabilities")
+                .then().statusCode(401).body("error.code", is("session_revoked"));
+        given().contentType(JSON).body("{\"refreshToken\":\"" + userRefresh + "\"}")
+                .when().post("/v1/auth/refresh").then().statusCode(401);
+        given().auth().oauth2(admin).when().get("/v1/auth/me/capabilities").then().statusCode(200);
+
+        given().auth().oauth2(admin).when().delete("/v1/users/" + userId).then().statusCode(200);
+        given().auth().oauth2(admin).when().delete("/v1/roles/" + roleId).then().statusCode(200);
+    }
+
+    @Test
+    void logoutKeepsApiKeyPermissionStatusAndRejectsAnonymousRequests() throws Exception {
+        given().contentType(JSON).when().post("/v1/auth/logout")
+                .then().statusCode(401).body("error.code", is("authentication_required"));
+
+        String admin = given().contentType(JSON)
+                .body("{\"username\":\"admin\",\"password\":\"password\",\"forceLogin\":true}")
+                .when().post("/v1/auth/login").then().statusCode(200).extract().path("data.accessToken");
+        var noScope = given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"name\":\"logout-no-scope-" + System.nanoTime() + "\",\"scopes\":[\"api-key:read\"]}")
+                .when().post("/v1/api-keys").then().statusCode(201).extract();
+        var withScope = given().auth().oauth2(admin).contentType(JSON)
+                .body("{\"name\":\"logout-with-scope-" + System.nanoTime() + "\",\"scopes\":[\"session:revoke\"]}")
+                .when().post("/v1/api-keys").then().statusCode(201).extract();
+        String noScopeKey = noScope.path("data.apiKey");
+        String noScopeId = noScope.path("data.id");
+        String withScopeKey = withScope.path("data.apiKey");
+        String withScopeId = withScope.path("data.id");
+        try {
+            given().header("Authorization", "ApiKey " + noScopeKey).contentType(JSON)
+                    .when().post("/v1/auth/logout").then().statusCode(403)
+                    .body("error.code", is("permission_denied"));
+            given().header("Authorization", "ApiKey " + withScopeKey).contentType(JSON)
+                    .when().post("/v1/auth/logout").then().statusCode(401)
+                    .body("error.code", is("authentication_required"));
+
+            try (var connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement("SELECT COUNT(*) FROM sys_security_event WHERE credential_id = ? AND event_type = 'AUTHORIZATION' AND resource = 'permission' AND action = 'session:revoke' AND outcome = 'DENIED' AND detail = 'permission denied'")) {
+                statement.setString(1, noScopeId);
+                try (var rows = statement.executeQuery()) {
+                    assertTrue(rows.next());
+                    assertEquals(1, rows.getInt(1));
+                }
+            }
+        } finally {
+            given().auth().oauth2(admin).when().delete("/v1/api-keys/" + noScopeId).then().statusCode(200);
+            given().auth().oauth2(admin).when().delete("/v1/api-keys/" + withScopeId).then().statusCode(200);
+        }
+    }
 }

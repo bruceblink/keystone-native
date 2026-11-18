@@ -2,8 +2,6 @@ package app.keystone.auth;
 
 import app.keystone.ApiResponse;
 import app.keystone.ErrorCode;
-import app.keystone.audit.SecurityEventRepository;
-import app.keystone.audit.SecurityEventContext;
 import io.quarkus.security.identity.SecurityIdentity;
 import io.vertx.ext.web.RoutingContext;
 import jakarta.annotation.Priority;
@@ -23,8 +21,7 @@ import jakarta.ws.rs.core.Response;
 public class PermissionInterceptor {
     @Inject SecurityIdentity identity;
     @Inject AuthorizationService authorization;
-    @Inject SecurityEventRepository securityEvents;
-    @Inject ClientAddressResolver clientAddresses;
+    @Inject AuthorizationDenialRecorder denialRecorder;
     @Context RoutingContext routingContext;
 
     @AroundInvoke
@@ -53,16 +50,6 @@ public class PermissionInterceptor {
     }
 
     private void recordDenied(String permission, String detail) {
-        try {
-            String actor = identity == null || identity.isAnonymous() ? null : identity.getPrincipal().getName();
-            Object credentialValue = identity == null || identity.isAnonymous() ? null : identity.getAttribute("credentialType");
-            String credential = credentialValue == null ? null : String.valueOf(credentialValue);
-            Object credentialIdValue = identity == null || identity.isAnonymous() ? null : identity.getAttribute("credentialId");
-            String credentialId = credentialIdValue == null ? null : String.valueOf(credentialIdValue);
-            String forwardedFor = routingContext == null || routingContext.request() == null ? null : routingContext.request().getHeader("X-Forwarded-For");
-            String sourceIp = clientAddresses.resolve(routingContext, forwardedFor);
-            securityEvents.record("AUTHORIZATION", actor, credential, credentialId, sourceIp, "permission", permission, "DENIED",
-                    SecurityEventContext.from(identity, routingContext), detail);
-        } catch (IllegalStateException ignored) { }
+        denialRecorder.record(identity, routingContext, permission, detail);
     }
 }
