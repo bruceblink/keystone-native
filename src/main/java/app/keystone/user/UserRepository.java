@@ -14,6 +14,7 @@ import java.util.Optional;
 @ApplicationScoped
 public class UserRepository {
     @Inject app.keystone.auth.ApiKeyUserRepository ormUsers;
+    @Inject app.keystone.dept.DepartmentOrmRepository departments;
     @Inject PasswordPolicy passwordPolicy;
     @Inject AuthorizationService authorization;
     @ConfigProperty(name = "keystone.security.login.account-lock-base-seconds", defaultValue = "60")
@@ -129,6 +130,7 @@ public class UserRepository {
     private User create(String username, String password, String displayName, String deptId, String postId, String email, String phoneNumber, Integer sex, String avatar, String remark, Boolean enabled, List<String> roleCodes) {
         if (username == null || username.isBlank() || displayName == null || displayName.isBlank()) throw new IllegalArgumentException("username and displayName are required");
         passwordPolicy.validate(username, password);
+        validateDepartment(deptId);
         try {
             return ormUsers.createUser(username.trim(), BcryptUtil.bcryptHash(password), displayName.trim(),
                     deptId, postId, email, phoneNumber, sex, avatar, remark, enabled, roleCodes);
@@ -150,6 +152,7 @@ public class UserRepository {
         findPublic(context, id);
         if (deptId != null && !context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
                 ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this department");
+        validateDepartment(deptId);
         return update(id, password, displayName, deptId, enabled, roleCodes);
     }
 
@@ -210,8 +213,16 @@ public class UserRepository {
         findPublic(context, id);
         if (updateDept && !context.scope().allowsDepartment(deptId)) throw new app.keystone.auth.AuthorizationDeniedException(
                 ErrorCode.DATA_SCOPE_DENIED, "data scope does not allow this department");
+        if (updateDept) validateDepartment(deptId);
         return updateExtended(id, password, displayName, updateDept, deptId, postId, email, phoneNumber,
                 sex, avatar, remark, enabled, roleCodes, fields);
+    }
+
+    /** 将无效或不存在的部门关系转换为用户可理解的请求校验错误。 */
+    private void validateDepartment(String departmentId) {
+        if (departmentId != null && !departments.departmentExists(departmentId)) {
+            throw new IllegalArgumentException("department not found");
+        }
     }
 
     /** 标记 JSON 中明确出现的可空字段；显式 null 清空，字段缺失则保持原值。 */

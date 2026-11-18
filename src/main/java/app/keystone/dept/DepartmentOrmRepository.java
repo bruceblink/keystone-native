@@ -54,6 +54,12 @@ public class DepartmentOrmRepository implements PanacheRepositoryBase<Department
         return department.toModel();
     }
 
+    /** 在写入用户关系前确认部门编号格式正确且部门存在。 */
+    @Transactional
+    public boolean departmentExists(String id) {
+        return findById(app.keystone.identity.UuidValues.parse(id)) != null;
+    }
+
     public List<String> findChildIds(Set<String> parentIds) {
         if (parentIds == null || parentIds.isEmpty()) return List.of();
         return find("parentId in ?1", parentIds.stream().map(app.keystone.identity.UuidValues::parse).toList()).list().stream().map(DepartmentEntity::id).toList();
