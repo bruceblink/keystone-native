@@ -190,15 +190,25 @@ class MfaStepUpResourceHttpTest extends AuthTestFixture {
 
             var createKey = given().auth().oauth2(admin).contentType(JSON)
                     .body("{\"name\":\"step-up-create-" + System.nanoTime()
-                            + "\",\"scopes\":[\"api-key:create\"]}")
+                            + "\",\"scopes\":[\"api-key:create\",\"api-key:read\",\"api-key:rotate\",\"api-key:revoke\"]}")
                     .when().post("/v1/api-keys").then().statusCode(201).extract();
             createKeyId = createKey.path("data.id");
             String createSecret = createKey.path("data.apiKey");
 
+            given().header("Authorization", "ApiKey " + createSecret)
+                    .when().get("/v1/api-keys").then().statusCode(403)
+                    .body("error.code", is("permission_denied"));
             given().header("Authorization", "ApiKey " + createSecret).contentType(JSON)
                     .body("{\"name\":\"must-not-be-created\",\"scopes\":[]}")
                     .when().post("/v1/api-keys").then().statusCode(403)
-                    .body("error.code", is("mfa_step_up_required"));
+                    .body("error.code", is("permission_denied"));
+            given().header("Authorization", "ApiKey " + createSecret).contentType(JSON)
+                    .body("{}")
+                    .when().post("/v1/api-keys/" + readOnlyKeyId + "/rotate").then().statusCode(403)
+                    .body("error.code", is("permission_denied"));
+            given().header("Authorization", "ApiKey " + createSecret)
+                    .when().delete("/v1/api-keys/" + readOnlyKeyId).then().statusCode(403)
+                    .body("error.code", is("permission_denied"));
         } finally {
             if (createKeyId != null) {
                 given().auth().oauth2(admin).when().delete("/v1/api-keys/" + createKeyId).then().statusCode(200);

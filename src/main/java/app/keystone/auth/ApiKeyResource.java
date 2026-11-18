@@ -17,10 +17,12 @@ import java.util.NoSuchElementException;
 import org.eclipse.microprofile.openapi.annotations.enums.SchemaType;
 import org.eclipse.microprofile.openapi.annotations.media.Schema;
 
+/** API Key 的管理操作只接受人类会话，并与 Phoenix 保持相同的拒绝规则。 */
 @Path("/v1/api-keys")
 @Produces(MediaType.APPLICATION_JSON)
 @Consumes(MediaType.APPLICATION_JSON)
 @RequiresDataScope("api-key")
+@RejectApiKey
 public class ApiKeyResource {
     @Inject ApiKeyRepository keys;
     @Inject UserRepository users;
