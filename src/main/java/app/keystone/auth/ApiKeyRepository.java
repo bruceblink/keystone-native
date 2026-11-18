@@ -166,7 +166,7 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
         return new RotationReport(total, active, revoked, rotated, expiring, horizonDays, now, horizon);
     }
 
-    /** 锁定旧记录后写入新密钥并撤销旧密钥，整个轮换过程由一个事务完成。 */
+    /** 锁定旧记录后只保留持有人当前仍有权使用的范围，再写入替代密钥并撤销旧密钥。 */
     @Transactional
     public IssuedApiKey rotate(String userId, String id) {
         ApiKeyEntity current = find("id = ?1 and userId = ?2", UuidValues.parse(id), userId)
@@ -179,11 +179,17 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
             throw new ApiKeyExpiredException();
         }
 
+        Set<String> currentPermissions = users.permissions(userId);
+        List<String> scopes = split(current.scopes()).stream()
+                .filter(currentPermissions::contains)
+                .sorted()
+                .toList();
+        if (scopes.isEmpty()) throw new ApiKeyScopeUnavailableException();
+
         String secret = random(32);
         String prefix = random(8);
         String value = "ks_live_" + prefix + "_" + secret;
         String replacementId = UuidValues.v7();
-        List<String> scopes = split(current.scopes());
         persistAndFlush(new ApiKeyEntity(replacementId, userId, current.subjectId(), userId, current.name(), prefix,
                 hash(value), String.join(" ", scopes), current.expiresAt()));
         current.revoke(Instant.now(), "rotated", replacementId);
@@ -195,6 +201,13 @@ public class ApiKeyRepository implements PanacheRepository<ApiKeyEntity> {
     /** 将已过期轮换与其他状态冲突区分，供接口返回唯一业务错误码。 */
     public static class ApiKeyExpiredException extends RuntimeException {
         public ApiKeyExpiredException() { super("API Key 已过期，请新建密钥。"); }
+    }
+
+    /** 旧密钥的授权范围已全部撤销；拒绝轮换且保留旧记录。 */
+    public static class ApiKeyScopeUnavailableException extends RuntimeException {
+        public ApiKeyScopeUnavailableException() {
+            super("原授权范围已不可用，请重新配置权限。");
+        }
     }
 
     private String ensureSubject(String userId) {

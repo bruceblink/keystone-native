@@ -45,6 +45,7 @@ public enum ErrorCode {
     API_KEY_EXPIRY_INVALID("api_key_expiry_invalid", 422, "API Key 到期时间格式无法解析", RetryAdvice.AFTER_CORRECTION, "error.api_key_expiry_invalid", true),
     API_KEY_EXPIRY_OUT_OF_RANGE("api_key_expiry_out_of_range", 422, "API Key 到期时间不晚于当前时间或超过 90 天", RetryAdvice.AFTER_CORRECTION, "error.api_key_expiry_out_of_range", true),
     API_KEY_EXPIRED("api_key_expired", 409, "已过期的 API Key 不能轮换", RetryAdvice.AFTER_CORRECTION, "error.api_key_expired", true),
+    API_KEY_SCOPE_UNAVAILABLE("api_key_scope_unavailable", 422, "API Key 轮换时原授权范围均不再属于持有人", RetryAdvice.AFTER_CORRECTION, "error.api_key_scope_unavailable", true),
     ROLE_HAS_MEMBERS("role_has_members", 422, "角色仍有关联用户，不能删除", RetryAdvice.AFTER_CORRECTION, "error.role_has_members", true),
     ROLE_PROTECTED("role_protected", 422, "内置管理员角色不能删除", RetryAdvice.NEVER, "error.role_protected", true),
     RATE_LIMITED("rate_limited", 429, "请求频率超过限制", RetryAdvice.AFTER_BACKOFF, "error.rate_limited", true),

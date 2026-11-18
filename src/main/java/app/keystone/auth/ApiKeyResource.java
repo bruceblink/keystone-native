@@ -68,6 +68,7 @@ public class ApiKeyResource {
         var user = owner();
         try { var value = keys.rotate(user.id(), id); logs.record(identity.getPrincipal().getName(), "ROTATE", "api-key", id, value.prefix()); return Response.ok(ApiResponse.ok(value)).build(); }
         catch (ApiKeyRepository.ApiKeyExpiredException e) { return Response.status(409).entity(ApiResponse.error(ErrorCode.API_KEY_EXPIRED, e.getMessage())).build(); }
+        catch (ApiKeyRepository.ApiKeyScopeUnavailableException e) { return Response.status(422).entity(ApiResponse.error(ErrorCode.API_KEY_SCOPE_UNAVAILABLE, e.getMessage())).build(); }
         catch (NoSuchElementException e) { return Response.status(404).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, e.getMessage())).build(); }
         catch (IllegalArgumentException e) { return Response.status(409).entity(ApiResponse.error(ErrorCode.RESOURCE_CONFLICT, e.getMessage())).build(); }
     }
