@@ -42,6 +42,11 @@ class ErrorCodeCatalogTest {
         assertEquals("api_key_name_invalid", ErrorCode.API_KEY_NAME_INVALID.code());
         assertEquals("api_key_expiry_invalid", ErrorCode.API_KEY_EXPIRY_INVALID.code());
         assertEquals("api_key_expiry_out_of_range", ErrorCode.API_KEY_EXPIRY_OUT_OF_RANGE.code());
+        assertEquals("api_key_page_changed", ErrorCode.API_KEY_PAGE_CHANGED.code());
+        assertEquals(409, ErrorCode.API_KEY_PAGE_CHANGED.httpStatus());
+        assertTrue(ErrorCode.API_KEY_PAGE_CHANGED.retryable());
+        assertEquals(ErrorCode.API_KEY_PAGE_CHANGED,
+                ErrorCode.find("api_key_page_changed").orElseThrow());
         assertEquals("password_same_as_current", ErrorCode.PASSWORD_SAME_AS_CURRENT.code());
         assertEquals("password_required", ErrorCode.PASSWORD_REQUIRED.code());
         assertEquals("password_too_short", ErrorCode.PASSWORD_TOO_SHORT.code());
