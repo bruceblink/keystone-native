@@ -2,6 +2,7 @@ package app.keystone.auth;
 
 import app.keystone.role.Role;
 import app.keystone.role.RoleMember;
+import app.keystone.role.RoleMemberPage;
 import app.keystone.role.RoleHasAssignedUsersException;
 import app.keystone.role.ProtectedSystemRoleException;
 import app.keystone.role.RoleRepository;
@@ -228,12 +229,30 @@ public class RoleAdminOrmRepository implements PanacheRepositoryBase<ApiKeyRoleE
         return users.findUserIdsByRole(role.uuid(), allocated, username, phoneNumber);
     }
 
+    /** 读取指定角色的成员 ID 当前页，并沿用完整数组查询的筛选条件。 */
+    @Transactional
+    public RoleMemberPage<String> userIdsById(String id, boolean allocated, String username,
+                                               String phoneNumber, int page, int size) {
+        ApiKeyRoleEntity role = findRoleEntityById(id);
+        if (role == null) throw new java.util.NoSuchElementException("role not found");
+        return users.findUserIdsByRole(role.uuid(), allocated, username, phoneNumber, page, size);
+    }
+
     /** 按 ID 查询使用相同成员条件，只把页面识别用户所需的三项字段传到 API。 */
     @Transactional
     public List<RoleMember> membersById(String id, boolean allocated, String username, String phoneNumber) {
         ApiKeyRoleEntity role = findRoleEntityById(id);
         if (role == null) throw new java.util.NoSuchElementException("role not found");
         return users.findRoleMembersByRole(role.uuid(), allocated, username, phoneNumber);
+    }
+
+    /** 读取指定角色的身份字段当前页，避免加载完整用户集合。 */
+    @Transactional
+    public RoleMemberPage<RoleMember> membersById(String id, boolean allocated, String username,
+                                                   String phoneNumber, int page, int size) {
+        ApiKeyRoleEntity role = findRoleEntityById(id);
+        if (role == null) throw new java.util.NoSuchElementException("role not found");
+        return users.findRoleMembersByRole(role.uuid(), allocated, username, phoneNumber, page, size);
     }
 
     private void assignUsers(ApiKeyRoleEntity role, List<String> userIds) {

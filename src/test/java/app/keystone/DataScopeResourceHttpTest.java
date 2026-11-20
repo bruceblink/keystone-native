@@ -63,6 +63,8 @@ class DataScopeResourceHttpTest {
         // 角色成员批量入口必须沿用角色资源的全局范围限制，不能通过子路径绕过检查。
         assertDeniedGet("/v1/roles/" + roleId + "/users");
         assertDeniedGet("/v1/roles/" + roleId + "/users?include=identity");
+        assertDeniedGet("/v1/roles/" + roleId + "/users?page=1&size=10");
+        assertDeniedGet("/v1/roles/" + roleId + "/users?include=identity&page=1&size=10");
         given().auth().oauth2(accessToken).contentType(JSON)
                 .body("{\"userIds\":[]}")
                 .when().put("/v1/roles/" + roleId + "/users")

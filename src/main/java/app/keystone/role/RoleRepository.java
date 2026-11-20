@@ -189,12 +189,30 @@ public class RoleRepository {
         return ormRoles.userIdsById(id, allocated, username, phoneNumber);
     }
 
+    /** 分页读取角色成员 ID，并复用完整数组查询的授权、筛选和资源范围。 */
+    public RoleMemberPage<String> userIdsPageById(AuthorizationContext context, String id,
+                                                   boolean allocated, String username,
+                                                   String phoneNumber, int page, int size) {
+        authorization.require(context, "role:read", "role");
+        requireId(id);
+        return ormRoles.userIdsById(id, allocated, username, phoneNumber, page, size);
+    }
+
     /** 读取成员最小身份字段；仍使用角色读取权限和角色资源范围。 */
     public List<RoleMember> membersById(AuthorizationContext context, String id, boolean allocated,
                                         String username, String phoneNumber) {
         authorization.require(context, "role:read", "role");
         requireId(id);
         return ormRoles.membersById(id, allocated, username, phoneNumber);
+    }
+
+    /** 分页读取角色成员身份字段，并保留最小身份 DTO。 */
+    public RoleMemberPage<RoleMember> membersPageById(AuthorizationContext context, String id,
+                                                       boolean allocated, String username,
+                                                       String phoneNumber, int page, int size) {
+        authorization.require(context, "role:read", "role");
+        requireId(id);
+        return ormRoles.membersById(id, allocated, username, phoneNumber, page, size);
     }
 
     private static void require(String value, String field) {

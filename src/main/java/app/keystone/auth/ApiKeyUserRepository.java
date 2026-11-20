@@ -19,6 +19,7 @@ import app.keystone.user.User;
 import app.keystone.user.UserRepository;
 import app.keystone.user.PasswordPolicy;
 import app.keystone.role.RoleMember;
+import app.keystone.role.RoleMemberPage;
 
 /** 通过 ORM 读取 API Key 认证主体和签发权限。 */
 @ApplicationScoped
@@ -302,6 +303,17 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
                 .stream().map(ApiKeyUserEntity::id).toList();
     }
 
+    /** 使用与旧数组查询相同的筛选和 UUID 降序，只读取请求页的用户 ID。 */
+    RoleMemberPage<String> findUserIdsByRole(java.util.UUID roleId, boolean allocated,
+                                              String username, String phoneNumber, int page, int size) {
+        PanacheQuery<ApiKeyUserEntity> query = findUsersByRole(roleId, allocated, username, phoneNumber);
+        long total = query.count();
+        if (offsetExceedsPanacheLimit(page, size)) return new RoleMemberPage<>(List.of(), page, size, total);
+        List<String> items = query.page(io.quarkus.panache.common.Page.of(page - 1, size))
+                .list().stream().map(ApiKeyUserEntity::id).toList();
+        return new RoleMemberPage<>(items, page, size, total);
+    }
+
     /** 返回角色成员身份字段，复用 ID 查询的成员条件、筛选和排序。 */
     List<RoleMember> findRoleMembersByRole(java.util.UUID roleId, boolean allocated,
                                            String username, String phoneNumber) {
@@ -311,9 +323,23 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
                 .toList();
     }
 
-    /** 统一成员查询条件，保证 ID 和身份响应使用相同筛选与排序。 */
-    private List<ApiKeyUserEntity> findUsersByRole(java.util.UUID roleId, boolean allocated,
-                                                   String username, String phoneNumber) {
+    /** 身份分页使用旧查询的字段和顺序，不读取成员页面不展示的个人资料。 */
+    RoleMemberPage<RoleMember> findRoleMembersByRole(java.util.UUID roleId, boolean allocated,
+                                                      String username, String phoneNumber,
+                                                      int page, int size) {
+        PanacheQuery<ApiKeyUserEntity> query = findUsersByRole(roleId, allocated, username, phoneNumber);
+        long total = query.count();
+        if (offsetExceedsPanacheLimit(page, size)) return new RoleMemberPage<>(List.of(), page, size, total);
+        List<RoleMember> items = query.page(io.quarkus.panache.common.Page.of(page - 1, size))
+                .list().stream()
+                .map(user -> new RoleMember(user.id(), user.username(), user.displayName()))
+                .toList();
+        return new RoleMemberPage<>(items, page, size, total);
+    }
+
+    /** 统一构造成员筛选和 UUID 降序查询，供完整数组及分页响应共用。 */
+    private PanacheQuery<ApiKeyUserEntity> findUsersByRole(java.util.UUID roleId, boolean allocated,
+                                                           String username, String phoneNumber) {
         StringBuilder query = new StringBuilder(allocated
                 ? "select distinct u from ApiKeyUserEntity u join u.roles r where r.id = ?1"
                 : "select u from ApiKeyUserEntity u where not exists (select r.id from u.roles r where r.id = ?1)");
@@ -324,7 +350,12 @@ public class ApiKeyUserRepository implements PanacheRepositoryBase<ApiKeyUserEnt
         appendContainsFilter(query, parameters, "phoneNumber", phoneNumber);
         query.append(" order by u.id desc");
 
-        return find(query.toString(), parameters.toArray()).list();
+        return find(query.toString(), parameters.toArray());
+    }
+
+    /** Hibernate 的分页偏移量使用 int；无法表示的偏移量按超出结果范围返回空页。 */
+    private static boolean offsetExceedsPanacheLimit(int page, int size) {
+        return ((long) page - 1) * size > Integer.MAX_VALUE;
     }
 
     /** 空白搜索不缩小结果集；保留 LIKE 通配符以匹配 Phoenix ILIKE 查询。 */

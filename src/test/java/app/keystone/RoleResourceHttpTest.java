@@ -184,6 +184,17 @@ class RoleResourceHttpTest extends AuthTestFixture {
                     .filter(member -> firstUsername.equals(member.get("username")))
                     .findFirst().orElseThrow().get("displayName"));
 
+            given().auth().oauth2(readerToken)
+                    .queryParam("allocated", true)
+                    .queryParam("include", "identity")
+                    .queryParam("page", 1)
+                    .queryParam("size", 1)
+                    .when().get("/v1/roles/" + roleId + "/users")
+                    .then().statusCode(200)
+                    .body("data.items.size()", is(1))
+                    .body("data.items[0].id", is(expectedMemberIds.get(0)))
+                    .body("data.total", is(2));
+
             List<Map<String, Object>> filteredMembers = given().auth().oauth2(readerToken)
                     .queryParam("allocated", true)
                     .queryParam("include", "identity")
@@ -214,6 +225,12 @@ class RoleResourceHttpTest extends AuthTestFixture {
             String blockedToken = login(blockedUsername, "password");
             given().auth().oauth2(blockedToken)
                     .queryParam("include", "identity")
+                    .when().get("/v1/roles/" + noReadRoleId + "/users")
+                    .then().statusCode(403);
+            given().auth().oauth2(blockedToken)
+                    .queryParam("include", "identity")
+                    .queryParam("page", 1)
+                    .queryParam("size", 1)
                     .when().get("/v1/roles/" + noReadRoleId + "/users")
                     .then().statusCode(403);
         } finally {

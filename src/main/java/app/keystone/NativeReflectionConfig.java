@@ -34,6 +34,8 @@ import app.keystone.post.Post;
 import app.keystone.post.PostResource;
 import app.keystone.profile.ProfileResource;
 import app.keystone.role.Role;
+import app.keystone.role.RoleMember;
+import app.keystone.role.RoleMemberPage;
 import app.keystone.role.RoleResource;
 import app.keystone.user.User;
 import app.keystone.user.UserRepository;
@@ -49,7 +51,8 @@ import io.quarkus.runtime.annotations.RegisterForReflection;
         User.class, UserRepository.AuthUser.class, UserRepository.Page.class,
         UserResource.UserRequest.class, UserResource.PasswordRequest.class, UserResource.StatusRequest.class,
         UserResource.ImportResult.class, UserResource.ImportFailure.class,
-        Role.class, RoleResource.RoleRequest.class, RoleResource.PermissionRequest.class,
+        Role.class, RoleMember.class, RoleMemberPage.class,
+        RoleResource.RoleRequest.class, RoleResource.PermissionRequest.class,
         Menu.class, MenuNode.class, MenuRepository.MenuRequest.class,
         Department.class, DepartmentResource.DepartmentRequest.class,
         DictionaryType.class, DictionaryItem.class, DictionaryResource.TypeRequest.class, DictionaryResource.ItemRequest.class,

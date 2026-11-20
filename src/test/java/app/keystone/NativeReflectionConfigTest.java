@@ -1,6 +1,8 @@
 package app.keystone;
 
 import app.keystone.user.UserResource;
+import app.keystone.role.RoleMember;
+import app.keystone.role.RoleMemberPage;
 import io.quarkus.runtime.annotations.RegisterForReflection;
 import org.junit.jupiter.api.Test;
 
@@ -18,5 +20,14 @@ class NativeReflectionConfigTest {
 
         assertTrue(targets.contains(UserResource.ImportResult.class));
         assertTrue(targets.contains(UserResource.ImportFailure.class));
+    }
+
+    @Test
+    void registersRoleMemberPaginationResponseRecords() {
+        RegisterForReflection registration = NativeReflectionConfig.class.getAnnotation(RegisterForReflection.class);
+        Set<Class<?>> targets = Set.copyOf(Arrays.asList(registration.targets()));
+
+        assertTrue(targets.contains(RoleMember.class));
+        assertTrue(targets.contains(RoleMemberPage.class));
     }
 }

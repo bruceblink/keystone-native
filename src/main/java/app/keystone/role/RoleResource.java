@@ -39,15 +39,26 @@ public class RoleResource {
         return ApiResponse.ok(roles.list(context(), page == null ? 1 : page, size == null ? 20 : size, keyword, status));
     }
 
-    /** 默认返回 ID 数组；仅显式请求身份字段时返回最小成员 DTO。 */
+    /** 未传 page/size 时保留数组响应；分页请求返回当前页和筛选后的总数。 */
     @GET @Path("/{id}/users") @RequiresPermission("role:read")
     public Response users(
             @PathParam("id") String id,
             @QueryParam("allocated") @DefaultValue("true") boolean allocated,
             @QueryParam("username") String username,
             @QueryParam("phoneNumber") String phoneNumber,
-            @QueryParam("include") String include) {
+            @QueryParam("include") String include,
+            @QueryParam("page") String pageParam,
+            @QueryParam("size") String sizeParam) {
         try {
+            if (pageParam != null || sizeParam != null) {
+                int currentPage = positiveIntOrOne(pageParam);
+                int currentSize = sizeParam == null ? 20 : Math.min(100, positiveIntOrOne(sizeParam));
+                Object result = "identity".equals(include)
+                        ? roles.membersPageById(context(), id, allocated, username, phoneNumber, currentPage, currentSize)
+                        : roles.userIdsPageById(context(), id, allocated, username, phoneNumber, currentPage, currentSize);
+                return Response.ok(ApiResponse.ok(result)).build();
+            }
+
             Object members = "identity".equals(include)
                     ? roles.membersById(context(), id, allocated, username, phoneNumber)
                     : roles.userIdsById(context(), id, allocated, username, phoneNumber);
@@ -108,6 +119,15 @@ public class RoleResource {
 
     private AuthorizationContext context() { return authorization.context(identity); }
     private String actor() { return identity.getPrincipal().getName(); }
+    /** 分页参数无效或非正数时归一为一，与 Phoenix REST 的行为一致。 */
+    private static int positiveIntOrOne(String raw) {
+        if (raw == null) return 1;
+        try {
+            return Math.max(1, Integer.parseInt(raw));
+        } catch (NumberFormatException e) {
+            return 1;
+        }
+    }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
     private static Response systemRoleProtected() { return ApiResponse.response(422, ErrorCode.ROLE_PROTECTED, "管理员角色不能删除"); }
     private static Response roleHasUsers() { return ApiResponse.response(422, ErrorCode.ROLE_HAS_MEMBERS, "角色存在用户，不能删除"); }
