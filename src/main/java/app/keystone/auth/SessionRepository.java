@@ -153,7 +153,8 @@ public class SessionRepository {
     @Transactional
     public void revokeAll(String userId) {
         Instant now = Instant.now();
-        ApiKeyUserEntity user = users.findForUpdate(userId);
+        // 停用用户后仍须取得其记录锁，避免有效会话因 enabled 条件而漏撤销。
+        ApiKeyUserEntity user = users.findAnyForUpdate(userId);
         if (user == null) return;
         for (AuthSessionEntity session : sessions.findByUser(userId)) session.revoke(now);
         for (RefreshTokenEntity token : tokens.findByUser(userId)) token.revoke(now);

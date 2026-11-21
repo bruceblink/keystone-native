@@ -113,6 +113,8 @@ public class UserResource {
                     request.clearDepartment() || request.deptId() != null, request.deptId(), request.postId(),
                     request.email(), request.phoneNumber(), request.sex(), request.avatar(), request.remark(),
                     request.enabled(), request.roleCodes(), fields);
+            // 通用编辑显式停用账号后，统一撤销其活动会话和刷新令牌。
+            if (Boolean.FALSE.equals(request.enabled())) sessions.revokeAll(id);
             logs.record(context(), "UPDATE", "user", String.valueOf(id), updated.username());
             return Response.ok(ApiResponse.ok(updated)).build();
         } catch (PasswordPolicyException e) { return passwordPolicyError(e); }
