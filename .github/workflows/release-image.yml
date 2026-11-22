@@ -166,6 +166,7 @@ jobs:
             -e MFA_RECOVERY_PEPPER="$(openssl rand -hex 32)" \
             -e HTTP_REQUIRE_HTTPS=false \
             -e HTTP_HSTS_ENABLED=false \
+            -e TRUSTED_PROXY_CIDRS=127.0.0.1/32 \
             -e KEYSTONE_SECURITY_HTTP_REQUIRE_HTTPS=false \
             -e KEYSTONE_SECURITY_HTTP_HSTS=false \
             -e HTTP_CORS_ENABLED=false \
