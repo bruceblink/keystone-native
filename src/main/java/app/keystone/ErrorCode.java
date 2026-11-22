@@ -48,6 +48,8 @@ public enum ErrorCode {
     // 其他系统可能返回该分页冲突；Native 只登记目录元数据，不增加业务分支。
     API_KEY_PAGE_CHANGED("api_key_page_changed", 409, "API Key 列表页码已变化，刷新后可重试", RetryAdvice.AFTER_CORRECTION, "error.api_key_page_changed", true),
     API_KEY_SCOPE_UNAVAILABLE("api_key_scope_unavailable", 422, "API Key 轮换时原授权范围均不再属于持有人", RetryAdvice.AFTER_CORRECTION, "error.api_key_scope_unavailable", true),
+    // 公告类型按 Unicode 码点计数，超过数据库和接口约定的 32 个码点时拒绝请求。
+    NOTICE_TYPE_INVALID("notice_type_invalid", 422, "公告类型超过 32 个 Unicode 码点", RetryAdvice.AFTER_CORRECTION, "error.notice_type_invalid", true),
     ROLE_HAS_MEMBERS("role_has_members", 422, "角色仍有关联用户，不能删除", RetryAdvice.AFTER_CORRECTION, "error.role_has_members", true),
     ROLE_PROTECTED("role_protected", 422, "内置管理员角色不能删除", RetryAdvice.NEVER, "error.role_protected", true),
     RATE_LIMITED("rate_limited", 429, "请求频率超过限制", RetryAdvice.AFTER_BACKOFF, "error.rate_limited", true),
