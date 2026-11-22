@@ -62,6 +62,7 @@ public enum ErrorCode {
     PAYLOAD_TOO_LARGE("payload_too_large", 413, "请求内容超过允许大小", RetryAdvice.AFTER_CORRECTION, "error.payload_too_large", true),
     HTTPS_REQUIRED("https_required", 426, "请求必须使用 HTTPS", RetryAdvice.AFTER_CORRECTION, "error.https_required", true),
     VALIDATION_FAILED("validation_failed", 422, "请求参数或业务规则校验失败", RetryAdvice.AFTER_CORRECTION, "error.validation_failed", true),
+    PERMISSION_NOT_FOUND("permission_not_found", 422, "权限标识不存在或已停用", RetryAdvice.AFTER_CORRECTION, "error.permission_not_found", true),
     USERNAME_ALREADY_EXISTS("username_already_exists", 422, "用户名已被使用", RetryAdvice.AFTER_CORRECTION, "error.username_already_exists", true),
     // Phoenix 仍拒绝既有用户名格式；Native 只登记跨项目目录项，不增加格式拒绝。
     USERNAME_INVALID_FORMAT("username_invalid_format", 422, "用户名格式不符合 Phoenix 现有规则", RetryAdvice.AFTER_CORRECTION, "error.username_invalid_format", true),

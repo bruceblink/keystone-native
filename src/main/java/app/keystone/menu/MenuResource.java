@@ -44,7 +44,7 @@ public class MenuResource {
         var request = parseRequest(body);
         if (request == null) return bad("request body is invalid");
         try { var menu = menus.create(context(), request, body.has("permission")); logs.record(actor(), "CREATE", "menu", String.valueOf(menu.id()), menu.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(menu)).build(); }
-        catch (IllegalArgumentException e) { return bad(e.getMessage()); }
+        catch (IllegalArgumentException e) { return invalidPermission(e) ; }
     }
     @PUT @Path("/{id}") @RequiresPermission("menu:update") public Response update(
             @PathParam("id") String id,
@@ -53,7 +53,7 @@ public class MenuResource {
         var request = parseRequest(body);
         if (request == null) return bad("request body is invalid");
         try { var menu = menus.update(context(), id, request, body.has("permission")); logs.record(actor(), "UPDATE", "menu", id, menu.code()); return Response.ok(ApiResponse.ok(menu)).build(); }
-        catch (IllegalArgumentException e) { return bad(e.getMessage()); }
+        catch (IllegalArgumentException e) { return invalidPermission(e); }
         catch (NoSuchElementException e) { return notFound(); }
     }
     @PUT @Path("/{id}/roles") @RequiresPermission("menu:manage") public Response assignRoles(@PathParam("id") String id, RoleAssignment request) {
@@ -72,6 +72,11 @@ public class MenuResource {
     private List<MenuNode> toTree(List<Menu> items) { Map<String, MenuNodeBuilder> nodes = items.stream().collect(Collectors.toMap(Menu::id, MenuNodeBuilder::new, (a, b) -> a, LinkedHashMap::new)); List<MenuNodeBuilder> roots = new ArrayList<>(); for (Menu menu : items) { var node = nodes.get(menu.id()); if (menu.parentId() == null || !nodes.containsKey(menu.parentId())) roots.add(node); else nodes.get(menu.parentId()).children.add(node); } return roots.stream().map(MenuNodeBuilder::build).toList(); }
     private String actor() { return identity.getPrincipal().getName(); }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
+    private static Response invalidPermission(IllegalArgumentException error) {
+        return "permission not found".equals(error.getMessage())
+                ? Response.status(422).entity(ApiResponse.error(ErrorCode.PERMISSION_NOT_FOUND, "permission not found")).build()
+                : bad(error.getMessage());
+    }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "menu not found")).build(); }
     private static final class MenuNodeBuilder { final Menu menu; final List<MenuNodeBuilder> children = new ArrayList<>(); MenuNodeBuilder(Menu menu) { this.menu = menu; } MenuNode build() { return new MenuNode(menu, children.stream().map(MenuNodeBuilder::build).toList()); } }
     public record RoleAssignment(Object roleCodes) {}

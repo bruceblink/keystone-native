@@ -79,7 +79,7 @@ class MenuPermissionBindingHttpTest extends AuthTestFixture {
                 .body(menuRequest(unknownCode, "unknown:permission"))
                 .when().post("/v1/menus")
                 .then().statusCode(422)
-                .body("error.code", is("validation_failed"));
+                .body("error.code", is("permission_not_found"));
         assertEquals(0, menuCountByCode(unknownCode));
 
         setCatalogState(0, false);
@@ -88,7 +88,7 @@ class MenuPermissionBindingHttpTest extends AuthTestFixture {
                 .body(menuRequest(disabledCode, "user:read"))
                 .when().post("/v1/menus")
                 .then().statusCode(422)
-                .body("error.code", is("validation_failed"));
+                .body("error.code", is("permission_not_found"));
         assertEquals(0, menuCountByCode(disabledCode));
 
         setCatalogState(1, true);
@@ -97,7 +97,7 @@ class MenuPermissionBindingHttpTest extends AuthTestFixture {
                 .body(menuRequest(deprecatedCode, "user:read"))
                 .when().post("/v1/menus")
                 .then().statusCode(422)
-                .body("error.code", is("validation_failed"));
+                .body("error.code", is("permission_not_found"));
         assertEquals(0, menuCountByCode(deprecatedCode));
 
         setCatalogState(1, false);

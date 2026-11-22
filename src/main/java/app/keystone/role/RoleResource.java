@@ -78,7 +78,7 @@ public class RoleResource {
 
     @POST @RequiresPermission("role:create") @RequiresMfaStepUp public Response create(RoleRequest request) { if (request == null) return bad("request body is required"); try { var role = roles.create(context(), request.code(), request.name(), request.enabled()); logs.record(actor(), "CREATE", "role", String.valueOf(role.id()), role.code()); return Response.status(Response.Status.CREATED).entity(ApiResponse.ok(role)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } }
     @PUT @Path("/{id}") @RequiresPermission("role:update") @RequiresMfaStepUp public Response update(@PathParam("id") String id, RoleRequest request) { if (request == null) return bad("request body is required"); try { var role = roles.updateById(context(), id, request.name(), request.enabled()); logs.record(actor(), "UPDATE", "role", role.id(), role.code()); return Response.ok(ApiResponse.ok(role)).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
-    @PUT @Path("/{id}/permissions") @RequiresPermission("role:manage") @RequiresMfaStepUp public Response permissions(@PathParam("id") String id, PermissionRequest request) { if (request == null) return bad("request body is required"); try { roles.assignPermissionsById(context(), id, request.permissions()); logs.record(actor(), "UPDATE", "role-permission", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build(); } catch (IllegalArgumentException e) { return bad(e.getMessage()); } catch (NoSuchElementException e) { return notFound(); } }
+    @PUT @Path("/{id}/permissions") @RequiresPermission("role:manage") @RequiresMfaStepUp public Response permissions(@PathParam("id") String id, PermissionRequest request) { if (request == null) return bad("request body is required"); try { roles.assignPermissionsById(context(), id, request.permissions()); logs.record(actor(), "UPDATE", "role-permission", id, null); return Response.ok(ApiResponse.ok(java.util.Map.of("updated", true))).build(); } catch (IllegalArgumentException e) { return invalidPermission(e); } catch (NoSuchElementException e) { return notFound(); } }
     /** 原子追加角色成员；成员权限版本在同一事务内递增。 */
     @PUT @Path("/{id}/users") @RequiresPermission("role:assign") @RequiresMfaStepUp
     public Response assignUsers(@PathParam("id") String id, UserAssignmentRequest request) {
@@ -129,6 +129,11 @@ public class RoleResource {
         }
     }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
+    private static Response invalidPermission(IllegalArgumentException error) {
+        return error.getMessage() != null && error.getMessage().startsWith("unknown permission")
+                ? Response.status(422).entity(ApiResponse.error(ErrorCode.PERMISSION_NOT_FOUND, "permission not found")).build()
+                : bad(error.getMessage());
+    }
     private static Response systemRoleProtected() { return ApiResponse.response(422, ErrorCode.ROLE_PROTECTED, "管理员角色不能删除"); }
     private static Response roleHasUsers() { return ApiResponse.response(422, ErrorCode.ROLE_HAS_MEMBERS, "角色存在用户，不能删除"); }
     private static Response notFound() { return Response.status(Response.Status.NOT_FOUND).entity(ApiResponse.error(ErrorCode.RESOURCE_NOT_FOUND, "role not found")).build(); }
