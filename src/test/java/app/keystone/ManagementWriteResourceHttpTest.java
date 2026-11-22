@@ -125,6 +125,24 @@ class ManagementWriteResourceHttpTest extends AuthTestFixture {
                     .when().put("/v1/notices/" + noticeId)
                     .then().statusCode(200)
                     .body("data.enabled", is(true));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{}")
+                    .when().post("/v1/notices/" + noticeId + "/publish")
+                    .then().statusCode(422)
+                    .body("error.code", is("notice_published_invalid"));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"published\":\"true\"}")
+                    .when().post("/v1/notices/" + noticeId + "/publish")
+                    .then().statusCode(422)
+                    .body("error.code", is("notice_published_invalid"));
+
+            given().auth().oauth2(token).contentType(JSON)
+                    .body("{\"published\":true}")
+                    .when().post("/v1/notices/" + noticeId + "/publish")
+                    .then().statusCode(200)
+                    .body("data.published", is(true));
         } finally {
             if (noticeId != null) {
                 given().auth().oauth2(token).when().delete("/v1/notices/" + noticeId).then().statusCode(200);

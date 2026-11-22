@@ -64,6 +64,7 @@ class CrossProjectContractTest {
         assertTrue(ErrorCode.isRegistered("mfa_required"));
         assertTrue(ErrorCode.isRegistered("username_already_exists"));
         assertTrue(ErrorCode.isRegistered("username_invalid_format"));
+        assertTrue(ErrorCode.isRegistered("notice_published_invalid"));
     }
 
     private static Set<String> recordFields(Class<?> recordType) {
