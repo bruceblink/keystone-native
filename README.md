@@ -2,6 +2,18 @@
 
 Keystone 的独立 Quarkus Native 重实现，使用 **Quarkus 3.40.1 + Gradle + GraalVM JDK 25 + MySQL + Flyway + SmallRye JWT（RS256）**。项目与原有 Spring Boot 工程并行演进，不修改原项目。
 
+## 1.0.0 发布
+
+Native `v1.0.0` 已发布。GitHub Release 提供 JVM fast-jar 和 SHA-256 校验文件：
+
+- [Keystone Native v1.0.0 Release](https://github.com/bruceblink/keystone-native/releases/tag/v1.0.0)
+- JVM 资产：`keystone-native-1.0.0-jvm.tar.gz`
+- 校验文件：`keystone-native-1.0.0-jvm.tar.gz.sha256`
+- GHCR 镜像：`ghcr.io/bruceblink/keystone-native:1.0.0`
+- 镜像摘要：`sha256:b7ed4be94e60162b0df285fe601ce1345061f0de99662d3dabc4703819bae25e`
+
+发布工作流会在正式 `vX.Y.Z` 标签上运行完整测试、Native 镜像构建、Cosign 签名、远端 smoke、JVM 资产打包和 Release 创建。发布后 Native 进入维护阶段，只修复缺陷、安全问题和依赖兼容问题。新增业务功能由 Phoenix 主线实现，并继续保持已发布接口的兼容性。
+
 ## 已实现功能
 
 - `GET /api/v1/health`：无数据库依赖的健康检查
@@ -48,6 +60,13 @@ export JWT_KEY_ID="test-rs256-1"
 
 ```bash
 ./gradlew test
+```
+
+发布前可以使用下面的命令复现主要 JVM 检查：
+
+```bash
+./gradlew clean test --no-daemon
+./gradlew quarkusBuild -x test --no-daemon
 ```
 
 如果机器上的 `JAVA_HOME` 不是完整 JDK，请先指向带有 `javac` 的 JDK。Gradle 会自动读取 `HTTPS_PROXY`/`https_proxy` 并配置依赖下载代理。
