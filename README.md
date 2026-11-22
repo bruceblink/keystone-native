@@ -14,6 +14,16 @@ Native `v1.0.0` 已发布。GitHub Release 提供 JVM fast-jar 和 SHA-256 校�
 
 发布工作流会在正式 `vX.Y.Z` 标签上运行完整测试、Native 镜像构建、Cosign 签名、远端 smoke、JVM 资产打包和 Release 创建。发布后 Native 进入维护阶段，只修复缺陷、安全问题和依赖兼容问题。新增业务功能由 Phoenix 主线实现，并继续保持已发布接口的兼容性。
 
+### 与 admin-web 的生产配套关系
+
+Native 只提供管理后台后端，不能单独作为完整的生产管理系统运行。生产部署必须同时部署同版本的 [Keystone Admin Web](https://github.com/bruceblink/keystone-admin-web)：
+
+- 标准配套为 `admin-web v1.0.0 + Native v1.0.0`。admin-web 提供登录、导航、查询、表单、权限和通知页面，Native 提供对应的 `/api/v1` 服务、数据库迁移和运行时能力。
+- `admin-web v1.0.0 + Phoenix v1.0.0` 可以作为已验收的替换组合。切换前必须重新完成接口、权限、错误码和页面闭环验收。
+- 只部署 Native 而不部署 admin-web，或将 Native 与未验收的前端版本混用，均不满足生产发布条件。
+
+部署时需要让 admin-web 的 API 代理或 API 基地址指向 Native，并确保前端构建包、Native 镜像和数据库迁移来自同一发布验收批次。
+
 ## 已实现功能
 
 - `GET /api/v1/health`：无数据库依赖的健康检查
