@@ -65,6 +65,8 @@ public class NotificationRepository implements PanacheRepositoryBase<Notificatio
         NotificationEntity notification = requireForUser(recipientUserId, notificationId, true);
         notification.markRead(Instant.now());
         flush();
+        // 重新读取数据库最终值，避免 MySQL DATETIME 精度截断造成响应与详情不一致。
+        getEntityManager().refresh(notification);
         return toItem(notification);
     }
 
