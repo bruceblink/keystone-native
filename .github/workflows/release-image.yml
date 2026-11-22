@@ -6,7 +6,7 @@ on:
       - "v*"
 
 permissions:
-  contents: read
+  contents: write
   packages: write
   attestations: write
   id-token: write
@@ -177,3 +177,53 @@ jobs:
           done
           echo "Native release image did not become healthy" >&2
           exit 1
+
+      - name: Set up JDK for JVM release asset
+        uses: actions/setup-java@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          distribution: graalvm
+          java-version: '25'
+          cache: gradle
+
+      - name: Package JVM release asset
+        id: package
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          ./gradlew --no-daemon quarkusBuild -x test
+          archive="keystone-native-${version}-jvm.tar.gz"
+          tar -czf "${archive}" -C build quarkus-app
+          sha256sum "${archive}" > "${archive}.sha256"
+          echo "archive=${archive}" >> "$GITHUB_OUTPUT"
+
+      - name: Generate release notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          previous="$(git tag --sort=-version:refname --list 'v*' | grep -v "^${GITHUB_REF_NAME}$" | head -n 1 || true)"
+          {
+            echo "keystone-native ${GITHUB_REF_NAME#v}"
+            if [[ -n "${previous}" ]]; then
+              echo "对比范围：${previous}..${GITHUB_REF_NAME}"
+            fi
+            echo ""
+            echo "🚀 新功能 / Features"
+            git log --format='- %s' ${previous:+"${previous}.."}${GITHUB_REF_NAME} --grep='^feat' || true
+            echo ""
+            echo "🐛 问题修复 / Bug Fixes"
+            git log --format='- %s' ${previous:+"${previous}.."}${GITHUB_REF_NAME} --grep='^fix' || true
+            echo ""
+            echo "🧰 维护、文档与测试 / Maintenance, Docs & Tests"
+            git log --format='- %s' ${previous:+"${previous}.."}${GITHUB_REF_NAME} --grep='^\(chore\|docs\|test\|ci\|build\|refactor\)' || true
+          } > release-notes.md
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            "${{ steps.package.outputs.archive }}" \
+            "${{ steps.package.outputs.archive }}.sha256" \
+            --title "Keystone Native ${GITHUB_REF_NAME#v}" \
+            --notes-file release-notes.md
