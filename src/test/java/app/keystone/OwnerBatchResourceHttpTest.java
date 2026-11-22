@@ -86,7 +86,10 @@ class OwnerBatchResourceHttpTest extends AuthTestFixture {
 
         given().auth().oauth2(ownerToken)
                 .when().delete("/v1/notices?notice_ids=not-a-uuid")
-                .then().statusCode(422).body("error.code", is("validation_failed"));
+                .then().statusCode(422).body("error.code", is("notice_ids_invalid"));
+        given().auth().oauth2(ownerToken)
+                .when().delete("/v1/notices?notice_ids=")
+                .then().statusCode(422).body("error.code", is("notice_ids_invalid"));
         given().auth().oauth2(ownerToken)
                 .when().delete("/v1/notices?notice_ids=" + ownerNoticeId + "," + ownerNoticeId)
                 .then().statusCode(200).body("data.deleted", is(1));
@@ -123,8 +126,11 @@ class OwnerBatchResourceHttpTest extends AuthTestFixture {
     @Test
     void deprecatedBatchQueryAliasesAreRejected() {
         given().auth().oauth2(ownerToken)
+                .when().delete("/v1/notices")
+                .then().statusCode(422).body("error.code", is("notice_ids_invalid"));
+        given().auth().oauth2(ownerToken)
                 .when().delete("/v1/notices?ids=" + UuidValues.v7())
-                .then().statusCode(422).body("error.code", is("validation_failed"));
+                .then().statusCode(422).body("error.code", is("notice_ids_invalid"));
         given().auth().oauth2(ownerToken)
                 .when().delete("/v1/jobs?ids=" + UuidValues.v7())
                 .then().statusCode(422).body("error.code", is("validation_failed"));

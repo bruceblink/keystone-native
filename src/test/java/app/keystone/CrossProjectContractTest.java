@@ -65,6 +65,7 @@ class CrossProjectContractTest {
         assertTrue(ErrorCode.isRegistered("username_already_exists"));
         assertTrue(ErrorCode.isRegistered("username_invalid_format"));
         assertTrue(ErrorCode.isRegistered("notice_published_invalid"));
+        assertTrue(ErrorCode.isRegistered("notice_ids_invalid"));
     }
 
     private static Set<String> recordFields(Class<?> recordType) {

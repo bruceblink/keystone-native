@@ -53,7 +53,7 @@ public class NoticeResource {
             int deleted = notices.deleteAll(context(), splitIds(rawIds));
             logs.record(actor(), "DELETE", "notices", null, "batch deleted=" + deleted);
             return Response.ok(ApiResponse.ok(java.util.Map.of("deleted", deleted))).build();
-        } catch (IllegalArgumentException e) { return bad("ids must be comma separated UUIDs"); }
+        } catch (IllegalArgumentException e) { return invalidNoticeIds(); }
         catch (NoSuchElementException e) { return notFound(); }
     }
 
@@ -61,6 +61,7 @@ public class NoticeResource {
     private String actor() { return identity.getPrincipal().getName(); }
     private static Response bad(String message) { return Response.status(422).entity(ApiResponse.error(ErrorCode.VALIDATION_FAILED, message)).build(); }
     private static Response invalidPublished() { return Response.status(422).entity(ApiResponse.error(ErrorCode.NOTICE_PUBLISHED_INVALID, "published must be a boolean")).build(); }
+    private static Response invalidNoticeIds() { return Response.status(422).entity(ApiResponse.error(ErrorCode.NOTICE_IDS_INVALID, "notice_ids must be comma separated UUIDs")).build(); }
     /** 在查询或持久化前按 Unicode 码点校验公告类型，避免更新入口把校验错误误报为 404。 */
     private static Response invalidNoticeType(String noticeType) {
         if (noticeType == null || noticeType.codePointCount(0, noticeType.length()) <= 32) return null;

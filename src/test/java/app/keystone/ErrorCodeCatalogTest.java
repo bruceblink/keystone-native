@@ -62,6 +62,8 @@ class ErrorCodeCatalogTest {
         assertEquals(422, ErrorCode.USERNAME_ALREADY_EXISTS.httpStatus());
         assertEquals(422, ErrorCode.USERNAME_INVALID_FORMAT.httpStatus());
         assertEquals(422, ErrorCode.NOTICE_PUBLISHED_INVALID.httpStatus());
+        assertEquals("notice_ids_invalid", ErrorCode.NOTICE_IDS_INVALID.code());
+        assertEquals(422, ErrorCode.NOTICE_IDS_INVALID.httpStatus());
         assertEquals(422, ErrorCode.API_KEY_NAME_INVALID.httpStatus());
         assertEquals(422, ErrorCode.API_KEY_EXPIRY_INVALID.httpStatus());
         assertEquals(422, ErrorCode.API_KEY_EXPIRY_OUT_OF_RANGE.httpStatus());

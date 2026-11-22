@@ -52,6 +52,8 @@ public enum ErrorCode {
     NOTICE_TYPE_INVALID("notice_type_invalid", 422, "公告类型超过 32 个 Unicode 码点", RetryAdvice.AFTER_CORRECTION, "error.notice_type_invalid", true),
     // 公告发布状态必须使用 JSON 布尔值，避免把字符串或缺失值当作状态写入。
     NOTICE_PUBLISHED_INVALID("notice_published_invalid", 422, "公告发布状态必须是布尔值", RetryAdvice.AFTER_CORRECTION, "error.notice_published_invalid", true),
+    // 公告批量删除只接受逗号分隔的规范 UUID，便于定位请求参数错误。
+    NOTICE_IDS_INVALID("notice_ids_invalid", 422, "公告编号列表缺失或包含无效 UUID", RetryAdvice.AFTER_CORRECTION, "error.notice_ids_invalid", true),
     ROLE_HAS_MEMBERS("role_has_members", 422, "角色仍有关联用户，不能删除", RetryAdvice.AFTER_CORRECTION, "error.role_has_members", true),
     ROLE_PROTECTED("role_protected", 422, "内置管理员角色不能删除", RetryAdvice.NEVER, "error.role_protected", true),
     RATE_LIMITED("rate_limited", 429, "请求频率超过限制", RetryAdvice.AFTER_BACKOFF, "error.rate_limited", true),
