@@ -101,6 +101,24 @@ class ApiKeyScopeRotationHttpTest extends AuthTestFixture {
         assertNull(state.expiresAt());
     }
 
+    /** 权限全部撤销后保留 API Key 认证状态，并把业务请求统一拒绝为 403。 */
+    @Test
+    void apiKeyWithAllApprovedScopesRevokedReturnsPermissionDeniedInsteadOfAuthenticationFailure() throws Exception {
+        TestSubject subject = createSubject();
+        String token = login(subject.username());
+        IssuedKey key = issue(token, "scope-revoked", List.of("operation-log:read", "job:read"), null);
+
+        given().header("Authorization", "ApiKey " + key.value())
+                .when().get("/v1/operation-logs")
+                .then().statusCode(200);
+
+        changePermissions(subject, List.of("operation-log:read", "job:read"), List.of());
+        given().header("Authorization", "ApiKey " + key.value())
+                .when().get("/v1/operation-logs")
+                .then().statusCode(403)
+                .body("error.code", is("permission_denied"));
+    }
+
     /** 建立只属于本测试的角色和用户，避免修改共享管理员权限。 */
     private TestSubject createSubject() throws Exception {
         String roleId = UUID.randomUUID().toString();
